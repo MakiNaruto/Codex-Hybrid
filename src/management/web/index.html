@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Codex Model Bridge · 模型管理</title><link rel="stylesheet" href="/manage/style.css"><script src="/manage/app.js" defer></script></head>
+<body><main>
+<header><div class="brand">CODEX MODEL BRIDGE <span>LOCAL</span></div><h1>模型管理</h1><p>管理原生下拉框中的第三方模型。可切换项目路由或 OpenAI 原生调用。</p></header>
+<section><h2>客户端路由</h2><div class="routing-control"><div><label id="routing-label" for="routing-toggle">使用项目路由</label><p class="hint">打开走 Codex Model Bridge，关闭走 OpenAI 原生。</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div><p id="routing-status" class="hint" role="status"></p><p class="hint">保存后请重启客户端生效。使用 OpenAI 原生时，请选择官方模型；本地管理服务会继续运行，方便切回。</p></section>
+<section class="source"><h2>配置来源</h2><div class="mode-buttons"><button id="independent">独立管理 <small>在这里维护厂商和模型</small></button><button id="cc_switch">CC Switch <small>只读复用已有配置</small></button></div><div id="cc-path" hidden><label>CC Switch 数据库位置<input id="db-path" spellcheck="false"></label><button id="save-path" class="secondary">更新位置</button><p class="hint">不回写数据库、不切换其他工具的当前厂商。每轮调用前读取最新 API Key，不缓存旧凭据。</p></div></section>
+<p id="sync-status" class="hint" aria-live="off"></p>
+<div id="message" role="status" aria-live="polite"></div>
+<section><div class="section-head"><h2>厂商与模型</h2><div><button id="publish" class="secondary">更新客户端模型列表</button><button id="refresh" class="secondary">刷新</button><button id="add-provider">添加厂商</button></div></div><p id="source-note" class="hint"></p><p id="catalog-status" class="hint"></p><p class="hint">配置登记不代表兼容性验证。测试连接会使用已保存并启用的模型配置，向对应厂商发送一次小额请求。</p><div id="providers"></div></section>
+<footer>仅本机访问 · Key 不回显 · 原生主／子 agent 调用 · 无 MCP</footer>
+</main></body></html>

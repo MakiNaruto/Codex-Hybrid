@@ -1,0 +1,15 @@
+runtime/
+backups/
+.DS_Store
+__pycache__/
+.venv/
+/config/*
+!/config/*.example.yaml
+!/config/*.example.env
+!/config/README.md
+build/
+dist/
+*.egg-info/
+.ruff_cache/
+
+/cli-config.json

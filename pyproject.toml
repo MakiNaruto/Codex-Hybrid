@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-model-bridge"
+version = "0.1.0"
+description = "Local model routing and management for the Codex desktop client"
+readme = "README.md"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+codex-model-bridge = "cli.__main__:main"
+model-router = "cli.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["cli", "cli.*", "gateway", "gateway.*", "adapters", "adapters.*", "model_catalog", "model_catalog.*", "management", "management.*", "desktop", "desktop.*"]
+namespaces = false
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.package-data]
+"management" = ["web/*.html", "web/*.js", "web/*.css"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
