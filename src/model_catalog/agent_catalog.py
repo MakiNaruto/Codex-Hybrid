@@ -1,4 +1,4 @@
-"""Expose the published picker catalog without the backend's five-item preview.
+"""Append published models to the backend's native model preview.
 
 This only changes model-visible descriptions. The native backend still validates
 and creates each child using its own complete model registry.
@@ -42,17 +42,21 @@ def expose_spawn_catalog(original, settings):
     for item in original.get('input', []):
         if item.get('type') in {'additional_tools', 'tool_search_output'}:
             visit(item.get('tools', []))
-    if not targets:
-        return original
-
     catalog = json.loads(Path(settings['catalog']).read_text())['models']
     allowed = set(settings['models'])
     models = [model for model in catalog
               if model.get('visibility') == 'list' and model['slug'] in allowed]
-    listing = model_lines(models)
+    if not models:
+        return original
 
     def replace(text):
-        return PREVIEW.sub(lambda match: match[1] + listing, text)
+        def append_missing(match):
+            existing = set(re.findall(r'^\s*- `([^`]+)`', match[0], re.MULTILINE))
+            listing = model_lines(model for model in models if model['slug'] not in existing)
+            if not listing:
+                return match[0]
+            return match[0].rstrip('\n') + '\n' + listing
+        return PREVIEW.sub(append_missing, text)
 
     request = copy.deepcopy(original)
     # Find the corresponding copied tool objects, leaving the caller's body intact.
@@ -65,7 +69,7 @@ def expose_spawn_catalog(original, settings):
         description = tool.get('description', '')
         updated = replace(description)
         if updated == description and not PREVIEW.search(description):
-            updated += '\nAvailable model overrides (use the exact registered key):\n' + listing
+            updated += '\nAvailable model overrides (use the exact registered key):\n' + model_lines(models)
         tool['description'] = updated
         properties = tool.get('parameters', {}).get('properties', {})
         if 'model' in properties:
