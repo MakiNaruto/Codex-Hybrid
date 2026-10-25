@@ -70,7 +70,7 @@ cd codex-model-bridge
 
 打开开关时，程序会备份并更新 Codex 的 `config.toml`：将 `model_provider` 设为 `codex-model-bridge`，并写入本地模型目录和网关连接配置。关闭开关会将 `model_provider` 切回 `openai`，并移除本地模型目录设置，同时保留 `codex-model-bridge` provider 表，方便之后重新打开。本地服务仍会运行。
 
-默认数据保存在项目 `config/`，后续可在[本地管理页](http://127.0.0.1:18891/manage/)添加厂商、模型或修改 Key。自定义端口或启用私密链接时，用 `manage-url` 获取地址。
+默认数据保存在 `~/.codex-model-bridge/`，后续可在[本地管理页](http://127.0.0.1:18891/manage/)添加厂商、模型或修改 Key。自定义端口或启用私密链接时，用 `manage-url` 获取地址。
 
 > 启用路由后，官方与第三方模型都依赖本地服务；重启电脑后请先运行 `start`。自定义数据目录、Codex 路径及手动 YAML 配置见[安装进阶](docs/zh-CN/cli.md)。
 

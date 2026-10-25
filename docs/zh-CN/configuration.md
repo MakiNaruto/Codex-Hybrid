@@ -4,7 +4,7 @@
 
 [返回首页](../../README.zh-CN.md) · [文档导航](README.md)
 
-返回 [项目首页](../../README.zh-CN.md)。项目的 `config/` 提供配置示例，也是默认数据目录：
+返回 [项目首页](../../README.zh-CN.md)。项目的 `config/` 提供配置示例，运行数据默认保存在 `~/.codex-model-bridge/`：
 
 - [models.example.yaml](../../config/models.example.yaml)：模型配置示例。
 - [deepseek.example.env](../../config/deepseek.example.env)：环境文件示例，仅含占位值。
@@ -13,18 +13,14 @@
 
 ## 数据目录
 
-默认使用项目 `config/`。所有子命令均支持 `--data-dir`，用于临时指定目录；使用 `config --set --data-dir PATH` 修改保存的默认目录。
-`install` 成功后会保存所选数据目录，后续命令无需重复指定。
-默认值保存在项目（或 `CODEX_MODEL_BRIDGE_HOME`）的 `cli-config.json` 中。
-
-优先级：`--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → 保存的默认值 → 项目 `config/`。
+默认数据目录统一为 `~/.codex-model-bridge/`，与 `~/.codex/` 同级，与源码位置无关。优先级：`--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → 默认目录。自定义目录不自动记住，每次命令需使用相同参数或环境变量。不再生成或读取 `cli-config.json`；发现旧安装时会提示显式指定原目录，不自动搬迁。
 向导完成后会打印带有所选目录的管理命令。相对路径按当前工作目录解析，建议使用绝对路径。
 `--models-config` 仍可单独选择外部 YAML，省略时读取所选数据目录的 `models.yaml`。
 管理页生成的托管配置保存到同一数据目录。
 
 指定新目录不会自动导入旧目录，后续命令必须选择同一目录。旧版已初始化的实例仍需显式指定原数据目录，完成回滚、停止后再重新初始化。
 `--codex-home` 仍独立选择 Codex 用户目录；启用时，其 `config.toml` 引用所选数据目录的
-`models.json`。`CODEX_MODEL_BRIDGE_HOME`（兼容旧 `MODEL_ROUTER_HOME` / `CONNECTED_HOME`）用于选择项目数据根目录，不用于单独选择数据目录。
+`models.json`。`CODEX_MODEL_BRIDGE_HOME`（兼容旧 `MODEL_ROUTER_HOME` / `CONNECTED_HOME`）仅用于发现旧安装，不再设置数据根目录。
 
 迁移或重装前，在原位置使用原数据目录执行 `uninstall`，按提示确认回滚；本机数据和凭据会保留。新位置安装依赖后，
 指定数据目录重新运行 `install`。不要直接复用另一台机器的状态、备份或虚拟环境，
@@ -52,11 +48,11 @@
 
 ## 手动 YAML
 
-首次使用且尚未初始化时，复制示例并填写配置。以下使用默认目录；自定义目录时修改变量，并统一设置环境变量 `CODEX_MODEL_BRIDGE_DATA_DIR` 或使用 `config` 保存相同目录。所有命令在项目根目录执行。
+首次使用且尚未初始化时，复制示例并填写配置。以下使用默认目录；自定义目录时修改变量，并统一设置环境变量 `CODEX_MODEL_BRIDGE_DATA_DIR` 。所有命令在项目根目录执行。
 
 ```sh
 # macOS / Linux
-ROUTER_DATA_DIR="$(pwd)/config"
+ROUTER_DATA_DIR="$HOME/.codex-model-bridge"
 mkdir -p "$ROUTER_DATA_DIR"
 cp config/models.example.yaml "$ROUTER_DATA_DIR/models.yaml"
 cp config/deepseek.example.env "$ROUTER_DATA_DIR/deepseek.env"
@@ -65,7 +61,7 @@ chmod 600 "$ROUTER_DATA_DIR/models.yaml" "$ROUTER_DATA_DIR/deepseek.env"
 
 ```powershell
 # Windows PowerShell
-$RouterDataDir = Join-Path (Get-Location) "config"
+$RouterDataDir = Join-Path $HOME ".codex-model-bridge"
 New-Item -ItemType Directory -Force $RouterDataDir
 Copy-Item config/models.example.yaml (Join-Path $RouterDataDir "models.yaml")
 Copy-Item config/deepseek.example.env (Join-Path $RouterDataDir "deepseek.env")
@@ -143,7 +139,7 @@ credentials:
 管理页面和管理操作都必须通过返回的私密链接访问。开关保存在数据目录的 `settings.json`，
 普通 `restart` 会保留设置；不带 `--management-auth` 时只获取当前地址，不改变设置。
 
-安装成功后自动使用保存的默认目录；临时切换可附加 `--data-dir`，或设置 `CODEX_MODEL_BRIDGE_DATA_DIR`。Windows 使用 `.\scripts\codex-model-bridge.cmd manage-url`。
+安装成功后使用统一用户目录，自定义目录需持续显式指定；临时切换可附加 `--data-dir`，或设置 `CODEX_MODEL_BRIDGE_DATA_DIR`。Windows 使用 `.\scripts\codex-model-bridge.cmd manage-url`。
 在“独立管理”中添加厂商、填写 API、协议、Key 和模型，然后保存；在“CC Switch”中选择只读数据库来源。
 Key 不回显；开启私密链接后链接带本机访问令牌，不要公开分享。
 

@@ -4,7 +4,7 @@
 
 [Project home](../../README.md) · [Documentation](README.md)
 
-The project's `config/` directory holds configuration examples and is the default private data directory:
+The project's `config/` directory holds configuration examples while private data defaults to `~/.codex-model-bridge/`:
 
 - [models.example.yaml](../../config/models.example.yaml): model configuration template.
 - [deepseek.example.env](../../config/deepseek.example.env): placeholder-only environment file.
@@ -13,15 +13,14 @@ Examples use `<name>.example.<extension>`. Generated configuration, credentials,
 
 ## Data directory
 
-The default is the project's `config/`. All subcommands accept `--data-dir` as a temporary override; `config --set --data-dir PATH` changes the saved default. Successful `install` saves the selected directory for subsequent commands. Defaults live in `cli-config.json` under the project root or `CODEX_MODEL_BRIDGE_HOME`.
+Private data defaults to `~/.codex-model-bridge/` on every OS, alongside `~/.codex/`, independently of source location. Precedence: `--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → default directory. Custom directories are not remembered; supply the same flag or environment variable for subsequent commands. `cli-config.json` is no longer generated or loaded. Legacy installations require an explicit original data directory; no automatic migration occurs.
 
-Precedence: `--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → saved default → project `config/`.
 
 The wizard prints commands using the selected directory. Relative paths resolve from the working directory; absolute paths are recommended. `--models-config` can select an external YAML file; otherwise the source defaults to `models.yaml` in the selected data directory. Management-generated YAML is saved in that same directory.
 
 Selecting a new directory does not import files from the old one. Use the same directory for subsequent operations. Older initialized instances still need their original directory specified explicitly; roll back and stop before reinitializing.
 
-`--codex-home` independently selects the Codex user directory. Its `config.toml` references the data directory's `models.json`. `CODEX_MODEL_BRIDGE_HOME`, with legacy `MODEL_ROUTER_HOME` / `CONNECTED_HOME` compatibility, selects the project data root rather than just the private data directory.
+`--codex-home` independently selects the Codex user directory. Its `config.toml` references the data directory's `models.json`. `CODEX_MODEL_BRIDGE_HOME`, with legacy `MODEL_ROUTER_HOME` / `CONNECTED_HOME` compatibility, is used only for legacy installation detection; it no longer selects the data root.
 
 Before migration or reinstallation, run `uninstall` in the original location with the original data directory and confirm the configuration rollback. Local data and credentials remain in place. Install dependencies in the new location and run `install` with the selected directory. Do not reuse another machine's state, backups, or virtual environment; they contain machine-specific absolute paths and process state. Automatic migration is not provided.
 
@@ -51,7 +50,7 @@ For the first initialization, copy and edit the examples. These commands use the
 
 ```sh
 # macOS / Linux shell
-ROUTER_DATA_DIR="$(pwd)/config"
+ROUTER_DATA_DIR="$HOME/.codex-model-bridge"
 mkdir -p "$ROUTER_DATA_DIR"
 cp config/models.example.yaml "$ROUTER_DATA_DIR/models.yaml"
 cp config/deepseek.example.env "$ROUTER_DATA_DIR/deepseek.env"
@@ -60,7 +59,7 @@ chmod 600 "$ROUTER_DATA_DIR/models.yaml" "$ROUTER_DATA_DIR/deepseek.env"
 
 ```powershell
 # Windows PowerShell
-$RouterDataDir = Join-Path (Get-Location) "config"
+$RouterDataDir = Join-Path $HOME ".codex-model-bridge"
 New-Item -ItemType Directory -Force $RouterDataDir
 Copy-Item config/models.example.yaml (Join-Path $RouterDataDir "models.yaml")
 Copy-Item config/deepseek.example.env (Join-Path $RouterDataDir "deepseek.env")
@@ -135,7 +134,7 @@ To require a private access link:
 
 Specifying `--management-auth` automatically restarts the service. When enabled, both the page and management operations require the returned private link; the plain URL shows an access-restricted message. The setting lives in the data directory's `settings.json` and survives ordinary `restart`. Without the flag, `manage-url` retrieves the current address without changing settings.
 
-Commands use the saved data directory after successful install. Override temporarily with `--data-dir` or `CODEX_MODEL_BRIDGE_DATA_DIR`. On Windows, use `.\scripts\codex-model-bridge.cmd manage-url`.
+Commands use the fixed user directory after installation. Override temporarily with `--data-dir` or `CODEX_MODEL_BRIDGE_DATA_DIR`. On Windows, use `.\scripts\codex-model-bridge.cmd manage-url`.
 
 In **Independent management**, add a provider and enter its API URL, protocol, key, and models, then save. In **CC Switch**, select the read-only database source. Keys are not echoed. Do not share private links containing the local access token.
 

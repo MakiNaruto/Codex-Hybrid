@@ -17,9 +17,7 @@
 Windows 建议安装 Python 时勾选 Python Launcher 或 Add Python to PATH。
 如果暂时不填写，可在依赖安装完成后按 `Ctrl+C` 退出，之后重新运行 `install` 补充；首次初始化仍需有效模型配置，完成后才能启动服务和打开管理页。
 
-默认数据保存在项目 `config/`。所有子命令都支持 `--data-dir` 参数，可在执行时临时指定数据目录。
-安装成功后，`install` 会将所选目录（通过参数、环境变量或向导选择）保存为当前项目的默认数据目录，后续命令无需重复指定。
-可通过 `config --set --data-dir PATH` 修改默认目录；普通命令中的 `--data-dir` 只影响本次执行。环境变量 `CODEX_MODEL_BRIDGE_DATA_DIR` 优先于保存的默认值。
+默认数据目录统一为 `~/.codex-model-bridge/`，与 `~/.codex/` 同级，与源码位置无关。优先级：`--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → 默认目录。自定义目录不自动记住，每次命令需使用相同参数或环境变量。不再生成或读取 `cli-config.json`；发现旧安装时会提示显式指定原目录，不自动搬迁。
 
 向导会询问是否现在启动本机服务，但不会在安装时启用路由。需要接入 Codex 时，在管理页打开“客户端路由”开关；程序会更新目标 Codex 的 `config.toml`。之后请**完全退出并重新打开 Codex**。
 Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始化时的 `--codex-home` 指定；应选择客户端实际使用的目录。
@@ -56,21 +54,14 @@ Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始�
 安装完成后运行 `status`，`service_running` 应为 `true`，
 `config_state` 应为 `activated`；重启 Codex 后，原生模型列表中应出现第三方模型。
 
-## 命令行默认配置
+## 实例配置
 
 ```sh
-./scripts/codex-model-bridge.sh config                         # 查看保存默认值及已初始化服务设置
-./scripts/codex-model-bridge.sh config --set --port 18892 --management-auth on
-./scripts/codex-model-bridge.sh config --set --codex-home ~/.codex   # 也可单独修改一项
-./scripts/codex-model-bridge.sh config --reset                 # 恢复内置默认值
+./scripts/codex-model-bridge.sh config
+./scripts/codex-model-bridge.sh config --data-dir /path/to/data
 ```
 
-默认值保存在项目（或 `CODEX_MODEL_BRIDGE_HOME`）下的 `cli-config.json`，独立于数据目录。
-数据目录优先级为显式 `--data-dir`、`CODEX_MODEL_BRIDGE_DATA_DIR`、保存的默认值、项目 `config/`。
-`--codex-home` 优先于 `CODEX_HOME`，环境变量优先于保存的默认值；显式 `--port` 优先于保存值。
-这些默认值同时适用于 `install` 和普通命令。更改数据目录不会迁移已有文件。
-端口和认证默认值在首次初始化时写入服务配置，不会改动已有服务；已有服务认证可用
-`manage-url --management-auth on|off` 立即切换。修改默认值不需要服务已初始化。
+`config` 只读查看所选实例，不再支持 `--set` 或 `--reset`。端口和鉴权设置保存在数据目录的 `settings.json`；Codex 目标沿用初始化时记录的路径。首次安装可用 `--port`、`--codex-home`，已有实例鉴权使用 `manage-url --management-auth on|off` 修改。
 
 ## 模型配置方式
 

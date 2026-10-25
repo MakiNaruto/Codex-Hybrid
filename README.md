@@ -70,7 +70,7 @@ The launcher creates `.venv`, installs dependencies, and opens the install wizar
 
 Turning the switch on backs up and updates Codex's `config.toml`: it sets `model_provider` to `codex-model-bridge` and writes the local model catalog and gateway connection settings. Turning it off switches `model_provider` back to `openai` and removes the local model catalog setting while keeping the `codex-model-bridge` provider table for a later switch back. The local service keeps running.
 
-Private data is stored in the project's `config/` directory by default. Use the [local management page](http://127.0.0.1:18891/manage/) to add providers and models or update API keys. For a custom port or private access link, run `manage-url` to get the address.
+Private data is stored in `~/.codex-model-bridge/` by default. Use the [local management page](http://127.0.0.1:18891/manage/) to add providers and models or update API keys. For a custom port or private access link, run `manage-url` to get the address.
 
 > While routing is enabled, both official and third-party models depend on the local service. Run `start` after restarting your computer. See [advanced setup](docs/en/cli.md) for custom data directories, Codex paths, and YAML configuration.
 

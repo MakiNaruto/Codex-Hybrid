@@ -46,7 +46,7 @@ The replies above are expected examples. Verify the subagent workflow in your ow
 
 ## Daily management
 
-See [common commands](../../README.md#common-commands) for starting, stopping, and checking the service. Commands use the data directory saved during install. See [CLI defaults](cli.md#cli-defaults) for precedence and [data directory](configuration.md#data-directory) for migration.
+See [common commands](../../README.md#common-commands) for starting, stopping, and checking the service. Commands use the fixed user directory; custom directories must be supplied explicitly. See [CLI defaults](cli.md#instance-configuration) for precedence and [data directory](configuration.md#data-directory) for migration.
 
 After running `refresh-models`, restart the service and fully quit and reopen Codex. After adding or removing models, update the client catalog and restart Codex. API key or base URL updates take effect on the next request.
 

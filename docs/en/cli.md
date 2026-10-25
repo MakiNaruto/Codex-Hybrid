@@ -17,9 +17,7 @@ The launcher creates the project's `.venv`, installs dependencies, and opens a C
 
 If you are not ready to enter model details, press `Ctrl+C` after dependency installation, then rerun `install` later. Initial setup still requires a valid model configuration before the service and management page can start.
 
-Private data defaults to the project's `config/` directory. All subcommands accept `--data-dir` for a per-command override. Successful `install` saves the selected directory, whether supplied through a flag, environment variable, or wizard, as this project's default.
-
-Use `config --set --data-dir PATH` to change the saved default; on other commands the flag affects only that invocation. `CODEX_MODEL_BRIDGE_DATA_DIR` takes precedence over the saved default.
+Private data defaults to `~/.codex-model-bridge/` on every OS, alongside `~/.codex/`, independently of source location. Precedence: `--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → default directory. Custom directories are not remembered; supply the same flag or environment variable for subsequent commands. `cli-config.json` is no longer generated or loaded. Legacy installations require an explicit original data directory; no automatic migration occurs.
 
 The wizard asks whether to start the local service. It does not enable routing during installation. To connect Codex, turn on **Client routing** in the management page; this updates the target Codex `config.toml`. **Fully quit and reopen Codex** afterward. The Codex user directory defaults to `~/.codex`; use `CODEX_HOME` or `--codex-home` during initialization to select the directory your client actually uses.
 
@@ -52,22 +50,14 @@ After install, `status` should report `service_running: true` and `config_state:
 
 `uninstall` stops the service first, asks whether to restore the Codex configuration from its installation backup, and removes the `codex-model-bridge` provider table. If later edits are detected, it asks for a second explicit confirmation before overwriting them. Runtime files and provider credentials remain in the data directory for a future reinstall.
 
-## CLI defaults
+## Instance configuration
 
 ```sh
-./scripts/codex-model-bridge.sh config                         # Show saved defaults and initialized service settings
-./scripts/codex-model-bridge.sh config --set --port 18892 --management-auth on
-./scripts/codex-model-bridge.sh config --set --codex-home ~/.codex    # Update one default
-./scripts/codex-model-bridge.sh config --reset                 # Reset built-in defaults
+./scripts/codex-model-bridge.sh config
+./scripts/codex-model-bridge.sh config --data-dir /path/to/data
 ```
 
-Defaults are stored in `cli-config.json` under the project root, or `CODEX_MODEL_BRIDGE_HOME`, separately from the data directory.
-
-Data directory precedence: explicit `--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → saved default → project `config/`.
-
-Explicit `--codex-home` overrides `CODEX_HOME`, which overrides the saved default. Explicit `--port` overrides its saved value. These defaults apply to install and ordinary commands. Changing the data directory does not migrate existing files.
-
-Port and authentication defaults are written into service configuration only at initialization; changing defaults does not modify an existing service. Use `manage-url --management-auth on|off` to change existing service authentication immediately. Defaults can be edited before initialization.
+`config` inspects the selected instance; `--set` and `--reset` are removed. Port and authentication live in its `settings.json`; the Codex target uses the path recorded at initialization. Use `--port` and `--codex-home` at installation, and `manage-url --management-auth on|off` for existing authentication.
 
 ## Model configuration options
 
