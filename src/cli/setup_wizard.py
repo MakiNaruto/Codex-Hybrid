@@ -122,10 +122,8 @@ if __name__ == '__main__':
     try:
         main()
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:
-        # Catalog/config exceptions contain codes, never print arbitrary exception text.
-        print('配置未完成。请检查 Python/Codex 登录、输入格式、端口及现有配置；不会覆盖后续用户配置。', file=sys.stderr)
-        if isinstance(exc, ValueError) and type(exc) is ValueError:
-            print(str(exc), file=sys.stderr)
+        from cli.diagnostics import report_error
+        report_error(exc, '安装未完成')
         sys.exit(1)
     except (KeyboardInterrupt, EOFError):
         print('\n已取消；可重新运行 ./scripts/codex-model-bridge.sh install。', file=sys.stderr)

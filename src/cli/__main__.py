@@ -17,10 +17,8 @@ def main():
             from desktop.service import main as run
         return run()
     except (ValueError, OSError, StopIteration, subprocess.CalledProcessError) as error:
-        if wizard and type(error) is ValueError:
-            print('安装未完成：' + str(error), file=sys.stderr)
-        else:
-            print('Operation failed. Check configuration, runtime state, permissions and service availability.', file=sys.stderr)
+        from cli.diagnostics import report_error
+        report_error(error, '安装未完成' if wizard else '命令执行失败')
         return 1
     except (KeyboardInterrupt, EOFError):
         print('Cancelled.', file=sys.stderr)

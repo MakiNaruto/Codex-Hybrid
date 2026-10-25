@@ -11,6 +11,7 @@ import ssl
 from pathlib import Path
 import socketserver
 import threading
+import tempfile
 import time
 import traceback
 import urllib.error
@@ -20,7 +21,8 @@ import uuid
 
 from model_catalog.legacy_config import load_config
 from gateway.transport import NoRedirect
-from adapters.responses import ResponsesAdapter, plaintext_collaboration_schema, NativeCoordinationAdapter
+from adapters.responses import (ResponsesAdapter, UnregisteredToolError,
+                                 plaintext_collaboration_schema, NativeCoordinationAdapter)
 from model_catalog.sources import load_source
 from model_catalog.catalog import resolve_api_key
 from adapters.chat import ChatAdapter
@@ -29,6 +31,7 @@ from model_catalog.agent_catalog import expose_spawn_catalog
 
 OPENAI_URL = 'https://chatgpt.com/backend-api/codex/responses'
 MAX_BODY = 32 * 1024 * 1024
+MAX_UNKNOWN_TOOL_RETRIES = 2
 
 # Hop-by-hop and local-only fields never reach an upstream provider.
 OFFICIAL_HEADER_DENY = {
@@ -224,6 +227,23 @@ def adapted_stream(response, adapt, on_event=None):
                 return
 
 
+def retry_payload_after_unknown_tool(payload, error):
+    """Ask the third-party model to correct an unregistered tool proposal."""
+    retry = json.loads(json.dumps(payload))
+    items = retry.get('input')
+    if not isinstance(items, list):
+        raise error
+    items.append({'type': 'message', 'role': 'developer', 'content': [{
+        'type': 'input_text', 'text': (
+            f'Your previous response called the unregistered tool {error.tool_name!r}. '
+            'That call was discarded and no tool was executed. Continue the task using only '
+            'the tools listed in the current request, with their exact names, or answer without '
+            'a tool. Do not repeat the unavailable call.'
+        )
+    }]})
+    return retry
+
+
 class Gateway:
     def __init__(self, settings, settings_path=None):
         self.settings = settings
@@ -346,45 +366,104 @@ class Gateway:
                     url, payload, headers, adapt = route(body, self.headers, settings, owner.deepseek)
                     observation['model'] = body['model']
                     target = urllib.parse.urlsplit(url)
-                    timeout = getattr(adapt.__self__, 'timeout_seconds', 120)
+                    adapter_owner = getattr(adapt, '__self__', None)
+                    converter = getattr(adapter_owner, 'adapt', adapt)
+                    protocol_adapter = getattr(converter, '__self__', adapter_owner)
+                    native_adapter = getattr(protocol_adapter, 'native', protocol_adapter)
+                    timeout = getattr(protocol_adapter, 'timeout_seconds', 120)
                     observation.update(upstream_host=target.hostname, upstream_port=target.port,
                                        upstream_scheme=target.scheme, timeout_seconds=timeout,
                                        phase='connect_upstream')
-                    request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-                    with owner.opener.open(request, timeout=timeout) as response:
-                        observation['headers_received_ms'] = round((time.monotonic() - began) * 1000)
-                        observation['phase'] = 'write_client'
-                        self.send_response(response.status)
+                    # Chat and official traffic retain immediate streaming. Only
+                    # Responses generations can be discarded and regenerated.
+                    retry_unknown_tools = isinstance(protocol_adapter, ResponsesAdapter)
+                    coordination = getattr(adapter_owner, 'coordination', None)
+                    initial_calls = dict(getattr(native_adapter, 'call_bindings', {}))
+
+                    def start_stream():
+                        nonlocal started
+                        self.send_response(200)
                         self.send_header('Content-Type', 'text/event-stream')
                         self.send_header('Cache-Control', 'no-cache')
                         self.end_headers()
                         started = True
+
+                    def write_event(adapted):
+                        nonlocal sequence
+                        observation['phase'] = 'write_client'
+                        if adapted.get('type') == 'response.output_text.delta':
+                            observation['text_delta_events'] = observation.get('text_delta_events', 0) + 1
+                        if adapted.get('type') in {'response.completed', 'response.failed', 'response.incomplete'}:
+                            final = adapted.get('response', {})
+                            observation.update(status=final.get('status'), returned_model=(
+                                final.get('metadata') or {}).get('connected_upstream_model', final.get('model')),
+                                usage=usage_fields(final.get('usage') or {}))
+                        adapted['sequence_number'] = sequence
+                        sequence += 1
+                        self.wfile.write(('event: ' + adapted['type'] + '\ndata: ' +
+                                          json.dumps(adapted) + '\n\n').encode())
+                        self.wfile.flush()
                         observation['phase'] = 'read_upstream'
-                        def observe_event(upstream_event):
-                            nonlocal event
-                            event = upstream_event
-                            observation['phase'] = 'adapt_event'
-                            observation['last_upstream_event'] = event.get('type')
-                        for event, adapted in adapted_stream(response, adapt, observe_event):
-                            if adapted.get('type') == 'response.output_text.delta':
-                                observation['text_delta_events'] = observation.get('text_delta_events', 0) + 1
-                            if adapted.get('type') in {'response.completed', 'response.failed', 'response.incomplete'}:
-                                final = adapted.get('response', {})
-                                usage = final.get('usage') or {}
-                                observation.update(status=final.get('status'), returned_model=(
-                                    final.get('metadata') or {}).get('connected_upstream_model', final.get('model')),
-                                    usage=usage_fields(usage))
-                            adapted['sequence_number'] = sequence
-                            sequence += 1
-                            observation['phase'] = 'write_client'
-                            self.wfile.write(('event: ' + adapted['type'] + '\ndata: ' +
-                                              json.dumps(adapted) + '\n\n').encode())
-                            self.wfile.flush()
-                            observation['phase'] = 'read_upstream'
-                        observation['phase'] = 'read_upstream'
-                        if observation['status'] == 'rejected':
-                            observation['status'] = 'stream_ended_without_completion'
-                            self.stream_failure('UPSTREAM_STREAM_ENDED_EARLY', sequence=sequence)
+
+                    retries = 0
+                    while True:
+                        observation['phase'] = 'connect_upstream'
+                        current_request = urllib.request.Request(
+                            url, data=json.dumps(payload).encode(), headers=headers)
+                        try:
+                            # Spill large generations to disk; close the spool on
+                            # success, retry, transport failure and client failure.
+                            with tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode='w+t') as buffered:
+                                with owner.opener.open(current_request, timeout=timeout) as response:
+                                    observation['headers_received_ms'] = round((time.monotonic() - began) * 1000)
+                                    observation['phase'] = 'read_upstream'
+                                    if not retry_unknown_tools:
+                                        start_stream()
+                                    def observe_event(upstream_event):
+                                        nonlocal event
+                                        event = upstream_event
+                                        observation['phase'] = 'adapt_event'
+                                        observation['last_upstream_event'] = event.get('type')
+                                    terminal = False
+                                    for _, adapted in adapted_stream(response, adapt, observe_event):
+                                        terminal = adapted.get('type') in {
+                                            'response.completed', 'response.failed', 'response.incomplete'}
+                                        if retry_unknown_tools:
+                                            buffered.write(json.dumps(adapted) + '\n')
+                                        else:
+                                            write_event(adapted)
+                                        observation['phase'] = 'read_upstream'
+                                if retry_unknown_tools:
+                                    if not terminal:
+                                        # Never publish potentially executable calls
+                                        # from a truncated, unvalidated generation.
+                                        self.reply(502, {'error': {'code': 'UPSTREAM_STREAM_ENDED_EARLY',
+                                            'message': 'UPSTREAM_STREAM_ENDED_EARLY',
+                                            'request_id': observation['request_id']}})
+                                        observation['status'] = 'stream_ended_without_completion'
+                                        return
+                                    start_stream()
+                                    buffered.seek(0)
+                                    for line in buffered:
+                                        write_event(json.loads(line))
+                            break
+                        except UnregisteredToolError as error:
+                            if not retry_unknown_tools or retries >= MAX_UNKNOWN_TOOL_RETRIES:
+                                raise
+                            retries += 1
+                            observation['unknown_tool_retries'] = retries
+                            observation['last_unknown_tool'] = error.tool_name
+                            payload = retry_payload_after_unknown_tool(payload, error)
+                            # Keep advertised tools and historical call bindings.
+                            native_adapter.call_bindings = dict(initial_calls)
+                            native_adapter.pending_added = {}
+                            if coordination is not None:
+                                coordination.names = {}
+                                coordination.spawn_items = set()
+                    observation['phase'] = 'read_upstream'
+                    if observation['status'] == 'rejected':
+                        observation['status'] = 'stream_ended_without_completion'
+                        self.stream_failure('UPSTREAM_STREAM_ENDED_EARLY', sequence=sequence)
                 except urllib.error.HTTPError as error:
                     # Do not log upstream bodies: they may echo input or credentials.
                     observation.update(status='upstream_http_error', http_status=error.code)
@@ -414,8 +493,7 @@ class Gateway:
                         for f in traceback.extract_tb(error.__traceback__)]
                     if hasattr(error, 'tool_name'):
                         observation['unregistered_tool'] = error.tool_name
-                        adapter = adapt.__self__
-                        bindings = getattr(getattr(adapter, 'native', adapter), 'bindings', {})
+                        bindings = getattr(native_adapter, 'bindings', {})
                         observation['registered_tool_names'] = sorted(bindings)
                     if event:
                         observation['event_type'] = event.get('type')
@@ -430,7 +508,7 @@ class Gateway:
                                   f'unknown tool {error.tool_name!r}; no tool was executed; '
                                   f'request_id={observation["request_id"]}'}
                     if not started:
-                        self.reply(400, {'error': {'message': getattr(error, 'code', None) or 'INCOMPATIBLE_REQUEST_OR_STREAM'}})
+                        self.reply(400, {'error': {'code': code, 'message': code, **(detail or {})}})
                     else:
                         self.stream_failure(code, detail, sequence=sequence)
                 except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:

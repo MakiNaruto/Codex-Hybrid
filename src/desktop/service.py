@@ -227,7 +227,7 @@ def start_service(settings):
             stdout=out, stderr=err, **options)
     for _ in range(30):
         if process.poll() is not None:
-            raise ValueError('Gateway exited before readiness; inspect service.stderr')
+            raise ValueError(f'网关在就绪前退出（退出码 {process.returncode}）；请检查 {RUNTIME / "service.stderr"}')
         try:
             health(settings)
             break
@@ -235,7 +235,8 @@ def start_service(settings):
             time.sleep(.1)
     else:
         process.terminate()
-        raise ValueError('Gateway did not become ready')
+        raise ValueError(f'网关启动后约 3 秒内未通过就绪检查（127.0.0.1:{settings["port"]}/healthz）；'
+                         '请检查端口占用、服务日志和本机网络权限')
     private_write(RUNTIME / 'service.pid', str(process.pid))
     print('本机服务已启动并通过就绪检查')
 
@@ -574,7 +575,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (ValueError, OSError, StopIteration, subprocess.CalledProcessError):
-        # Never include config contents or environment values in exception output.
-        print('Operation failed. Check config compatibility, runtime state, permissions and service availability.', file=sys.stderr)
+    except (ValueError, OSError, StopIteration, subprocess.CalledProcessError) as error:
+        from cli.diagnostics import report_error
+        report_error(error, '服务命令执行失败')
         raise SystemExit(1)
