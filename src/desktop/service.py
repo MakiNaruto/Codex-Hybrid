@@ -18,8 +18,7 @@ import urllib.request
 
 from model_catalog.sources import load_source, merged_catalog
 
-from desktop.paths import ROOT, RUNTIME, default_models_path, data_directory, environment_value
-from desktop.preferences import load_defaults
+from desktop.paths import ROOT, RUNTIME, default_models_path, data_directory, environment_value, check_legacy_installation
 
 WINDOWS = sys.platform == 'win32'
 
@@ -173,7 +172,7 @@ def prepare(port, codex_home, source=None):
                 'official_models': [m['slug'] for m in models],
                 'local_token': secrets.token_urlsafe(32),
                 'catalog': str(RUNTIME / 'models.json'), 'max_concurrent_requests': 4,
-                'management_auth_required': load_defaults().get('management_auth', 'off') == 'on',
+                'management_auth_required': False,
                 'disable_legacy_plugin': True, 'official_header_passthrough': True}
     external = load_source(settings)
     merged = merged_catalog(models, external)
@@ -335,14 +334,13 @@ ACTIONS = ('prepare', 'refresh-models', 'start', 'restart', 'stop', 'status',
 
 
 def common_arguments(parser, defaults):
-    saved = load_defaults() if defaults else {}
     # Subcommands suppress unset values so options placed before the action survive.
     value = (lambda item: item) if defaults else (lambda item: argparse.SUPPRESS)
     parser.add_argument('--data-dir', type=Path, default=value(None),
                         help='Private data directory (or CODEX_MODEL_BRIDGE_DATA_DIR)')
-    parser.add_argument('--port', type=int, default=value(saved.get('port', 18891)))
+    parser.add_argument('--port', type=int, default=value(18891))
     parser.add_argument('--codex-home', type=Path,
-                        default=value(Path(os.environ.get('CODEX_HOME', saved.get('codex_home', Path.home() / '.codex')))))
+                        default=value(Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))))
     parser.add_argument('--source', choices=['yaml', 'cc-switch'], default=value(None))
     parser.add_argument('--models-config', type=Path, default=value(None))
     parser.add_argument('--cc-db', type=Path, default=value(Path.home() / '.cc-switch/cc-switch.db'))
@@ -351,7 +349,7 @@ def common_arguments(parser, defaults):
 def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common_arguments(common, defaults=False)
-    parser = argparse.ArgumentParser(description=__doc__, epilog='CLI defaults: config [--data-dir PATH] [--port PORT] [--management-auth on|off] [--codex-home PATH] [--reset]')
+    parser = argparse.ArgumentParser(description=__doc__, epilog='View instance settings: config [--data-dir PATH]')
     common_arguments(parser, defaults=True)
     commands = parser.add_subparsers(dest='action', required=True)
     for action in ACTIONS:
@@ -365,8 +363,9 @@ def build_parser():
 def main():
     global RUNTIME
     args = build_parser().parse_args()
-    if args.data_dir is not None or environment_value('DATA_DIR') or load_defaults().get('data_dir'):
+    if args.data_dir is not None or environment_value('DATA_DIR'):
         RUNTIME = data_directory(args.data_dir)
+    check_legacy_installation(RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
     args.models_config = args.models_config or RUNTIME / 'models.yaml'
     if args.action == 'prepare':
         if not 1024 <= args.port <= 65535:
@@ -433,7 +432,8 @@ def main():
         print(json.dumps({'url': f'http://127.0.0.1:{settings["port"]}/manage/{"#" + token if token else ""}'}))
         return
     if args.action == 'refresh-models':
-        original_models = official_cache(args.codex_home, settings)
+        codex_home = args.codex_home if '--codex-home' in sys.argv or os.environ.get('CODEX_HOME') else Path(state['config_path']).parent
+        original_models = official_cache(codex_home, settings)
         if args.source:
             settings['source'] = {'type': args.source, 'path': str((
                 args.cc_db if args.source == 'cc-switch' else args.models_config).expanduser().resolve())}

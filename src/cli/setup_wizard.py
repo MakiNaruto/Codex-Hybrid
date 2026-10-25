@@ -12,8 +12,7 @@ import webbrowser
 import yaml
 
 import desktop.service as desktop
-from desktop.paths import data_directory, environment_value
-from desktop.preferences import load_defaults, save_data_directory
+from desktop.paths import data_directory, environment_value, check_legacy_installation
 from model_catalog.catalog import Catalog
 
 
@@ -30,17 +29,14 @@ def run(action):
 
 
 def main():
-    saved = load_defaults()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--codex-home', type=Path, default=Path(os.environ.get('CODEX_HOME', saved.get('codex_home', Path.home() / '.codex'))))
+    parser.add_argument('--codex-home', type=Path, default=Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')))
     parser.add_argument('--data-dir', type=Path, help='Private data directory (or CODEX_MODEL_BRIDGE_DATA_DIR)')
-    parser.add_argument('--port', type=int, default=saved.get('port', 18891))
+    parser.add_argument('--port', type=int, default=18891)
     args = parser.parse_args()
     print('Codex Model Bridge 本机配置向导（macOS / Windows / Python 3.11+）')
-    if args.data_dir is not None or environment_value('DATA_DIR') or saved.get('data_dir'):
-        desktop.RUNTIME = data_directory(args.data_dir)
-    else:
-        desktop.RUNTIME = data_directory(ask('路由器数据目录', str(desktop.RUNTIME)))
+    desktop.RUNTIME = data_directory(args.data_dir)
+    check_legacy_installation(desktop.RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
     runtime = desktop.RUNTIME
     print(f'数据目录：{runtime}')
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -99,9 +95,8 @@ def main():
         run('start')
     settings = json.loads((runtime / 'settings.json').read_text())
     token = settings.get('management_token') if settings.get('management_auth_required', False) else ''
-    save_data_directory(runtime)
     print('\n配置完成')
-    print(f'  数据目录已保存为默认值：{runtime}')
+    print(f'  数据目录：{runtime}')
     if service_started:
         print('  是否启用本地路由，可在管理页面点击“客户端路由”开关。')
         url = f'http://127.0.0.1:{settings["port"]}/manage/{"#" + token if token else ""}'
