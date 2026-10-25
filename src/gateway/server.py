@@ -20,7 +20,7 @@ import urllib.parse
 import uuid
 
 from model_catalog.legacy_config import load_config
-from gateway.transport import NoRedirect
+from gateway.transport import FreshProxyOpener
 from adapters.responses import (ResponsesAdapter, UnregisteredToolError,
                                  plaintext_collaboration_schema, NativeCoordinationAdapter)
 from model_catalog.sources import load_source
@@ -252,7 +252,7 @@ class Gateway:
             raise ValueError('DeepSeek model changed; prepare a matching catalog first')
         self.slots = threading.BoundedSemaphore(settings['max_concurrent_requests'])
         # No redirects: credentials can only go to the fixed official endpoints.
-        self.opener = urllib.request.build_opener(NoRedirect())
+        self.opener = FreshProxyOpener()
         self.manager = None
         if settings_path is not None and 'source' in settings:
             from management.service import Management, private_write
@@ -343,6 +343,7 @@ class Gateway:
                 observation = {'time': int(time.time()), 'status': 'rejected',
                                'request_id': uuid.uuid4().hex, 'phase': 'read_request'}
                 event = None
+                current_request = None
                 settings = owner.settings
                 try:
                     size = int(self.headers.get('Content-Length', '0'))
@@ -529,6 +530,8 @@ class Gateway:
                     else:
                         self.stream_failure('UPSTREAM_CONNECTION_FAILED', detail, sequence=sequence)
                 finally:
+                    if current_request is not None and hasattr(current_request, 'connected_proxy_configured'):
+                        observation['proxy_configured'] = current_request.connected_proxy_configured
                     observation['elapsed_ms'] = round((time.monotonic() - began) * 1000)
                     owner.slots.release()
                     # Only metadata; no prompts, messages, tool inputs, headers or tokens.

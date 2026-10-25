@@ -12,6 +12,24 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class FreshProxyOpener:
+    """Discover proxies for every request, without sharing mutable handlers.
+
+    urllib's default ProxyHandler snapshots macOS system proxies at creation.
+    A desktop service can outlive VPN/proxy changes and sleep/wake cycles.
+    Rebuilding locally also keeps concurrent requests independent. Do not
+    replay failed POSTs: the upstream may already have accepted a generation.
+    """
+
+    def open(self, request, timeout=120):
+        proxies = urllib.request.getproxies()
+        # Record only presence, never proxy URLs, credentials or bypass lists.
+        request.connected_proxy_configured = bool(proxies.get(request.type))
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler(proxies), NoRedirect())
+        return opener.open(request, timeout=timeout)
+
+
 VALIDATION_CODES = frozenset({
     'INVALID_ENV_FILE', 'MISSING_CONFIGURATION', 'OFFICIAL_ENDPOINT_REQUIRED',
     'UNSUPPORTED_REQUEST_FIELDS', 'MESSAGES_REQUIRED', 'INVALID_TOKEN_LIMIT',
