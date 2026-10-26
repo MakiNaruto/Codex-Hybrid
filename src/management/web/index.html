@@ -1,11 +1,40 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Codex Hybrid · 模型管理</title><link rel="stylesheet" href="/manage/style.css"><script src="/manage/app.js" defer></script></head>
-<body><main>
-<header><div class="brand">CODEX HYBRID <span>LOCAL</span></div><h1>模型管理</h1><p>管理原生下拉框中的第三方模型。可切换项目路由或 OpenAI 原生调用。</p></header>
-<section><h2>客户端路由</h2><div class="routing-control"><div><label id="routing-label" for="routing-toggle">使用项目路由</label><p class="hint">打开走 Codex Hybrid，关闭走 OpenAI 原生。</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div><p id="routing-status" class="hint" role="status"></p><p class="hint">保存后请重启客户端生效。使用 OpenAI 原生时，请选择官方模型；本地管理服务会继续运行，方便切回。</p></section>
-<section class="source"><h2>配置来源</h2><div class="mode-buttons"><button id="independent">独立管理 <small>在这里维护厂商和模型</small></button><button id="cc_switch">CC Switch <small>只读复用已有配置</small></button></div><div id="cc-path" hidden><label>CC Switch 数据库位置<input id="db-path" spellcheck="false"></label><button id="save-path" class="secondary">更新位置</button><p class="hint">不回写数据库、不切换其他工具的当前厂商。每轮调用前读取最新 API Key，不缓存旧凭据。</p></div></section>
-<p id="sync-status" class="hint" aria-live="off"></p>
-<div id="message" role="status" aria-live="polite"></div>
-<section><div class="section-head"><h2>厂商与模型</h2><div><button id="publish" class="secondary">更新客户端模型列表</button><button id="refresh" class="secondary">刷新</button><button id="add-provider">添加厂商</button></div></div><p id="source-note" class="hint"></p><p id="catalog-status" class="hint"></p><p class="hint">配置登记不代表兼容性验证。测试连接会使用已保存并启用的模型配置，向对应厂商发送一次小额请求。</p><div id="providers"></div></section>
-<footer>仅本机访问 · Key 不回显 · 原生主／子 agent 调用 · 无 MCP</footer>
-</main></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Codex Hybrid · 模型管理</title>
+  <link rel="stylesheet" href="/manage/style.css">
+  <script src="/manage/app.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">C</span> CODEX HYBRID <span class="local-badge">LOCAL</span></div>
+    <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1>模型管理</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
+    <p class="intro">管理厂商连接，为客户端配置合适的模型。</p>
+  </header>
+  <div class="settings-grid">
+    <section aria-labelledby="routing-heading">
+      <div class="section-title"><h2 id="routing-heading">客户端路由</h2><button type="button" class="help-trigger" aria-label="客户端路由说明" aria-expanded="false" data-help="打开后通过 Codex Hybrid 调用第三方模型；关闭后使用 OpenAI 原生调用，此时请选择官方模型。本地管理服务会继续运行，方便随时切回。">?</button></div>
+      <div class="routing-control"><div><label id="routing-label" for="routing-toggle">使用项目路由</label><p class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
+      <p id="routing-status" class="routing-status" role="status"></p>
+      <p class="hint section-footnote">切换后请重启客户端生效。</p>
+    </section>
+    <section class="source" aria-labelledby="source-heading">
+      <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>
+      <div class="mode-buttons"><button id="independent" type="button" aria-pressed="false">独立管理 <small>在这里维护厂商和模型</small></button><button id="cc_switch" type="button" aria-pressed="false">CC Switch <small>只读复用已有配置</small></button></div>
+
+      <div id="cc-path" hidden><div class="field-caption"><label for="db-path">数据库位置</label><button type="button" class="help-trigger" aria-label="数据库位置说明" aria-expanded="false" data-help="只读访问 CC Switch 数据库，不回写、不切换当前厂商。每轮调用读取最新 API Key。">?</button></div><div class="path-control"><input id="db-path" spellcheck="false"><button id="save-path" class="secondary" type="button">更新位置</button></div></div>
+    </section>
+  </div>
+  <section class="providers-section" aria-labelledby="providers-heading">
+    <div class="section-head"><div class="section-title"><h2 id="providers-heading">厂商与模型</h2><span id="model-count" class="count-badge">0 个模型</span></div><div class="toolbar"><button id="publish" class="secondary" type="button">更新客户端模型列表</button><button id="refresh" class="secondary" type="button">刷新</button><button id="add-provider" type="button">＋ 添加厂商</button></div></div>
+    <div class="catalog-notes"><span id="source-note" class="source-label"></span><span id="catalog-status" class="hint" role="status"></span><button type="button" class="help-trigger" aria-label="模型列表更新说明" aria-expanded="false" data-help="新增、删除模型或修改显示名称、上下文窗口后，请更新客户端模型列表并重启客户端。仅修改 Key 或 API 地址时，下一轮调用即生效。">?</button><span id="sync-status" class="hint" aria-live="off"></span></div>
+    <div id="providers"></div>
+  </section>
+</main>
+<div id="notifications" class="notifications" aria-label="操作提示"><div id="message" role="status" aria-live="polite" aria-atomic="true"></div><button id="dismiss-message" type="button" class="dismiss-message" aria-label="关闭提示" hidden>×</button></div>
+</body>
+</html>
