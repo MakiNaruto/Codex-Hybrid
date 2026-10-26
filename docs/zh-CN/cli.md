@@ -10,45 +10,45 @@
 
 | 系统 | 双击启动 | 终端启动 |
 | --- | --- | --- |
-| macOS | `scripts/start-macos.command` | `./scripts/codex-model-bridge.sh install` |
-| Windows（PowerShell） | `scripts/start-windows.cmd` | `.\scripts\codex-model-bridge.cmd install` |
+| macOS | `scripts/start-macos.command` | `./scripts/codex-hybrid.sh install` |
+| Windows（PowerShell） | `scripts/start-windows.cmd` | `.\scripts\codex-hybrid.cmd install` |
 
 启动器会创建项目 `.venv`、安装依赖并进入中文配置向导，按提示填写模型信息即可。
 Windows 建议安装 Python 时勾选 Python Launcher 或 Add Python to PATH。
 如果暂时不填写，可在依赖安装完成后按 `Ctrl+C` 退出，之后重新运行 `install` 补充；首次初始化仍需有效模型配置，完成后才能启动服务和打开管理页。
 
-默认数据目录统一为 `~/.codex-model-bridge/`，与 `~/.codex/` 同级，与源码位置无关。优先级：`--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → 默认目录。自定义目录不自动记住，每次命令需使用相同参数或环境变量。不再生成或读取 `cli-config.json`；发现旧安装时会提示显式指定原目录，不自动搬迁。
+默认数据目录统一为 `~/.codex-hybrid/`，与 `~/.codex/` 同级，与源码位置无关。优先级：`--data-dir` → `CODEX_HYBRID_DATA_DIR` → 默认目录。自定义目录不自动记住，每次命令需使用相同参数或环境变量。不再生成或读取 `cli-config.json`；发现旧安装时会提示显式指定原目录，不自动搬迁。
 
 向导会询问是否现在启动本机服务，但不会在安装时启用路由。需要接入 Codex 时，在管理页打开“客户端路由”开关；程序会更新目标 Codex 的 `config.toml`。之后请**完全退出并重新打开 Codex**。
 Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始化时的 `--codex-home` 指定；应选择客户端实际使用的目录。
 
 ## 常用命令
 
-安装配置完成后，使用以下命令管理服务。下面以 macOS 为例；Windows 将 `./scripts/codex-model-bridge.sh` 换成 `.\scripts\codex-model-bridge.cmd`。
+安装配置完成后，使用以下命令管理服务。下面以 macOS 为例；Windows 将 `./scripts/codex-hybrid.sh` 换成 `.\scripts\codex-hybrid.cmd`。
 
 ```sh
-./scripts/codex-model-bridge.sh install         # 安装依赖、首次配置；已有初始化时保留配置并启动
-./scripts/codex-model-bridge.sh start           # 启动服务
-./scripts/codex-model-bridge.sh stop            # 停止服务
-./scripts/codex-model-bridge.sh manage-url      # 获取管理页面地址
-./scripts/codex-model-bridge.sh status          # 查看服务、配置来源与模型 key
-./scripts/codex-model-bridge.sh refresh-models  # 从当前来源更新客户端模型列表
-./scripts/codex-model-bridge.sh restart         # 重启服务，更新代码后执行
-./scripts/codex-model-bridge.sh activate        # 将 Codex 接入本项目的本地路由服务
-./scripts/codex-model-bridge.sh rollback        # 恢复初次安装时的备份配置
-./scripts/codex-model-bridge.sh uninstall       # 停止服务并确认是否恢复 Codex 配置
+./scripts/codex-hybrid.sh install         # 安装依赖、首次配置；已有初始化时保留配置并启动
+./scripts/codex-hybrid.sh start           # 启动服务
+./scripts/codex-hybrid.sh stop            # 停止服务
+./scripts/codex-hybrid.sh manage-url      # 获取管理页面地址
+./scripts/codex-hybrid.sh status          # 查看服务、配置来源与模型 key
+./scripts/codex-hybrid.sh refresh-models  # 从当前来源更新客户端模型列表
+./scripts/codex-hybrid.sh restart         # 重启服务，更新代码后执行
+./scripts/codex-hybrid.sh activate        # 将 Codex 接入本项目的本地路由服务
+./scripts/codex-hybrid.sh rollback        # 恢复初次安装时的备份配置
+./scripts/codex-hybrid.sh uninstall       # 停止服务并确认是否恢复 Codex 配置
 ```
 
-`uninstall` 会先停止 Codex Model Bridge 本机服务，再询问是否将 Codex 配置恢复为安装前备份，并移除该服务写入的 `codex-model-bridge` provider 表。若检测到初始化后的配置改动，覆盖前还会再次要求输入 `yes` 确认。为便于重新安装，数据目录中的配置文件和凭据会保留。
+`uninstall` 会先停止 Codex Hybrid 本机服务，再询问是否将 Codex 配置恢复为安装前备份，并移除该服务写入的 `codex-hybrid` provider 表。若检测到初始化后的配置改动，覆盖前还会再次要求输入 `yes` 确认。为便于重新安装，数据目录中的配置文件和凭据会保留。
 
 默认直接打开 http://127.0.0.1:18891/manage/ 即可管理（自定义端口时替换端口）。
 私密链接访问默认关闭；已有 `management_token` 也不会自动开启校验。
-需要开启时执行 `./scripts/codex-model-bridge.sh manage-url --management-auth on`，获取带令牌的私密链接；开启后管理页面和管理操作均必须通过该链接访问，普通地址只显示访问受限提示。
-执行 `./scripts/codex-model-bridge.sh manage-url --management-auth off` 可关闭校验。
+需要开启时执行 `./scripts/codex-hybrid.sh manage-url --management-auth on`，获取带令牌的私密链接；开启后管理页面和管理操作均必须通过该链接访问，普通地址只显示访问受限提示。
+执行 `./scripts/codex-hybrid.sh manage-url --management-auth off` 可关闭校验。
 指定 `--management-auth on|off` 时会自动重启服务使设置生效，并输出对应的管理链接；该参数必须跟 `on` 或 `off`。不带该参数时只获取当前链接。新安装默认关闭鉴权，可直接打开本机管理页。
 开关保存在数据目录的 `settings.json` 中，普通重启会保留设置。
 
-`activate` 会将 Codex 的模型提供方设为 `codex-model-bridge`，请求地址指向本项目的本地服务。
+`activate` 会将 Codex 的模型提供方设为 `codex-hybrid`，请求地址指向本项目的本地服务。
 模型仍通过 Codex 原生模型列表选择，实际请求由本项目按模型 key 转发到对应供应商；官方模型请求也经过本地服务。
 
 安装完成后运行 `status`，`service_running` 应为 `true`，
@@ -57,8 +57,8 @@ Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始�
 ## 实例配置
 
 ```sh
-./scripts/codex-model-bridge.sh config
-./scripts/codex-model-bridge.sh config --data-dir /path/to/data
+./scripts/codex-hybrid.sh config
+./scripts/codex-hybrid.sh config --data-dir /path/to/data
 ```
 
 `config` 只读查看所选实例，不再支持 `--set` 或 `--reset`。端口和鉴权设置保存在数据目录的 `settings.json`；Codex 目标沿用初始化时记录的路径。首次安装可用 `--port`、`--codex-home`，已有实例鉴权使用 `manage-url --management-auth on|off` 修改。
@@ -96,9 +96,9 @@ Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始�
 
 ```sh
 # 仅首次初始化使用 prepare；Windows 替换启动器路径即可
-./scripts/codex-model-bridge.sh prepare --source yaml
-./scripts/codex-model-bridge.sh start
-./scripts/codex-model-bridge.sh activate
+./scripts/codex-hybrid.sh prepare --source yaml
+./scripts/codex-hybrid.sh start
+./scripts/codex-hybrid.sh activate
 ```
 
 随后完全退出并重开 Codex。已有初始化要切换 YAML，使用 `refresh-models --source yaml --models-config /path/to/models.yaml`，
@@ -112,7 +112,7 @@ Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始�
 ## 交给模型安装
 
 ```text
-请按本仓库 README 为当前机器安装 Codex Model Bridge。
+请按本仓库 README 为当前机器安装 Codex Hybrid。
 先检查 Python 3.11+、Codex 实际用户目录及其中 config.toml/models_cache.json，
 确认路由器数据目录（参数、环境变量或向导选择；默认 config），
 再检查该目录的 state.json；已有初始化时复用，不重复 prepare。后续命令使用同一目录。

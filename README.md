@@ -1,8 +1,8 @@
 <div align="center">
 
-# Codex Model Bridge
+# Codex Hybrid
 
-**Use your OpenAI subscription and third-party APIs from Codex's native model picker.**
+**Switch freely between official and third-party models within a single Codex session.**
 
 Switch models in your main chat, or let an official-model agent delegate to a third-party native subagent.<br>
 Manage providers, models, and API keys locally, with optional CC Switch integration.
@@ -21,7 +21,7 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
       <img src="docs/images/codex-model-picker.png" width="520" alt="Select a third-party model in Codex's native model picker and receive a Hello World reply">
     </td>
     <td align="center" valign="middle">
-      <img src="docs/images/management.png" width="290" alt="Codex Model Bridge local management page: routing, configuration sources, providers, and models">
+      <img src="docs/images/management.png" width="290" alt="Codex Hybrid local management page: routing, configuration sources, providers, and models">
     </td>
   </tr>
   <tr>
@@ -49,16 +49,16 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
 Clone the repository into a directory you plan to keep:
 
 ```sh
-git clone https://github.com/MakiNaruto/CodexModelBridge.git codex-model-bridge
-cd codex-model-bridge
+git clone git@github.com:MakiNaruto/Codex-Hybrid.git codex-hybrid
+cd codex-hybrid
 ```
 
 Run the command for your system from the project root, or double-click the launcher:
 
 | System | Terminal command | Double-click launcher |
 | --- | --- | --- |
-| macOS | `sh scripts/codex-model-bridge.sh install` | `scripts/start-macos.command` |
-| Windows (PowerShell) | `.\scripts\codex-model-bridge.cmd install` | `scripts/start-windows.cmd` |
+| macOS | `sh scripts/codex-hybrid.sh install` | `scripts/start-macos.command` |
+| Windows (PowerShell) | `.\scripts\codex-hybrid.cmd install` | `scripts/start-windows.cmd` |
 
 The launcher creates `.venv`, installs dependencies, and opens the install wizard. **The wizard and management UI are currently in Chinese.** The first installation needs internet access to download dependencies.
 
@@ -68,9 +68,9 @@ The launcher creates `.venv`, installs dependencies, and opens the install wizar
 2. Choose whether to start the local service now. Installation does not enable client routing automatically.
 3. After the service starts, enable **Client routing** in the management page, then **fully quit and reopen Codex**.
 
-Turning the switch on backs up and updates Codex's `config.toml`: it sets `model_provider` to `codex-model-bridge` and writes the local model catalog and gateway connection settings. Turning it off switches `model_provider` back to `openai` and removes the local model catalog setting while keeping the `codex-model-bridge` provider table for a later switch back. The local service keeps running.
+Turning the switch on backs up and updates Codex's `config.toml`: it sets `model_provider` to `codex-hybrid` and writes the local model catalog and gateway connection settings. Turning it off switches `model_provider` back to `openai` and removes the local model catalog setting while keeping the `codex-hybrid` provider table for a later switch back. The local service keeps running.
 
-Private data is stored in `~/.codex-model-bridge/` by default. Use the [local management page](http://127.0.0.1:18891/manage/) to add providers and models or update API keys. For a custom port or private access link, run `manage-url` to get the address.
+Private data is stored in `~/.codex-hybrid/` by default. Use the [local management page](http://127.0.0.1:18891/manage/) to add providers and models or update API keys. For a custom port or private access link, run `manage-url` to get the address.
 
 > While routing is enabled, both official and third-party models depend on the local service. Run `start` after restarting your computer. See [advanced setup](docs/en/cli.md) for custom data directories, Codex paths, and YAML configuration.
 
@@ -88,17 +88,17 @@ You can also click **Test connection** in the management page to send a basic re
 
 ## Common commands
 
-The examples below use macOS. On Windows, replace `./scripts/codex-model-bridge.sh` with `.\scripts\codex-model-bridge.cmd`.
+The examples below use macOS. On Windows, replace `./scripts/codex-hybrid.sh` with `.\scripts\codex-hybrid.cmd`.
 
 ```sh
-./scripts/codex-model-bridge.sh start           # Start the service
-./scripts/codex-model-bridge.sh stop            # Stop the service
-./scripts/codex-model-bridge.sh status          # Show service status and model keys
-./scripts/codex-model-bridge.sh manage-url      # Get the management page URL
-./scripts/codex-model-bridge.sh refresh-models  # Update the model catalog, then restart Codex
-./scripts/codex-model-bridge.sh restart         # Restart the service after updating code
-./scripts/codex-model-bridge.sh rollback        # Restore the backup
-./scripts/codex-model-bridge.sh uninstall       # Stop service and confirm Codex configuration rollback
+./scripts/codex-hybrid.sh start           # Start the service
+./scripts/codex-hybrid.sh stop            # Stop the service
+./scripts/codex-hybrid.sh status          # Show service status and model keys
+./scripts/codex-hybrid.sh manage-url      # Get the management page URL
+./scripts/codex-hybrid.sh refresh-models  # Update the model catalog, then restart Codex
+./scripts/codex-hybrid.sh restart         # Restart the service after updating code
+./scripts/codex-hybrid.sh rollback        # Restore the backup
+./scripts/codex-hybrid.sh uninstall       # Stop service and confirm Codex configuration rollback
 ```
 
 After adding or removing models, update the client model catalog and restart Codex. API key or base URL changes take effect on the next request.

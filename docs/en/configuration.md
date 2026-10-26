@@ -4,7 +4,7 @@
 
 [Project home](../../README.md) · [Documentation](README.md)
 
-The project's `config/` directory holds configuration examples while private data defaults to `~/.codex-model-bridge/`:
+The project's `config/` directory holds configuration examples while private data defaults to `~/.codex-hybrid/`:
 
 - [models.example.yaml](../../config/models.example.yaml): model configuration template.
 - [deepseek.example.env](../../config/deepseek.example.env): placeholder-only environment file.
@@ -13,14 +13,14 @@ Examples use `<name>.example.<extension>`. Generated configuration, credentials,
 
 ## Data directory
 
-Private data defaults to `~/.codex-model-bridge/` on every OS, alongside `~/.codex/`, independently of source location. Precedence: `--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → default directory. Custom directories are not remembered; supply the same flag or environment variable for subsequent commands. `cli-config.json` is no longer generated or loaded. Legacy installations require an explicit original data directory; no automatic migration occurs.
+Private data defaults to `~/.codex-hybrid/` on every OS, alongside `~/.codex/`, independently of source location. Precedence: `--data-dir` → `CODEX_HYBRID_DATA_DIR` → default directory. Custom directories are not remembered; supply the same flag or environment variable for subsequent commands. `cli-config.json` is no longer generated or loaded. Legacy installations require an explicit original data directory; no automatic migration occurs.
 
 
 The wizard prints commands using the selected directory. Relative paths resolve from the working directory; absolute paths are recommended. `--models-config` can select an external YAML file; otherwise the source defaults to `models.yaml` in the selected data directory. Management-generated YAML is saved in that same directory.
 
 Selecting a new directory does not import files from the old one. Use the same directory for subsequent operations. Older initialized instances still need their original directory specified explicitly; roll back and stop before reinitializing.
 
-`--codex-home` independently selects the Codex user directory. Its `config.toml` references the data directory's `models.json`. `CODEX_MODEL_BRIDGE_HOME`, with legacy `MODEL_ROUTER_HOME` / `CONNECTED_HOME` compatibility, is used only for legacy installation detection; it no longer selects the data root.
+`--codex-home` independently selects the Codex user directory. Its `config.toml` references the data directory's `models.json`. `CODEX_HYBRID_HOME`, with legacy `MODEL_ROUTER_HOME` / `CONNECTED_HOME` compatibility, is used only for legacy installation detection; it no longer selects the data root.
 
 Before migration or reinstallation, run `uninstall` in the original location with the original data directory and confirm the configuration rollback. Local data and credentials remain in place. Install dependencies in the new location and run `install` with the selected directory. Do not reuse another machine's state, backups, or virtual environment; they contain machine-specific absolute paths and process state. Automatic migration is not provided.
 
@@ -46,11 +46,11 @@ The bridge only reads third-party static API configuration in the OpenAI / Codex
 
 ## Manual YAML
 
-For the first initialization, copy and edit the examples. These commands use the default directory; for a custom directory, change the variable and set `CODEX_MODEL_BRIDGE_DATA_DIR` or save the same directory with `config`. Run commands from the project root.
+For the first initialization, copy and edit the examples. These commands use the default directory; for a custom directory, change the variable and set `CODEX_HYBRID_DATA_DIR` or save the same directory with `config`. Run commands from the project root.
 
 ```sh
 # macOS / Linux shell
-ROUTER_DATA_DIR="$HOME/.codex-model-bridge"
+ROUTER_DATA_DIR="$HOME/.codex-hybrid"
 mkdir -p "$ROUTER_DATA_DIR"
 cp config/models.example.yaml "$ROUTER_DATA_DIR/models.yaml"
 cp config/deepseek.example.env "$ROUTER_DATA_DIR/deepseek.env"
@@ -59,7 +59,7 @@ chmod 600 "$ROUTER_DATA_DIR/models.yaml" "$ROUTER_DATA_DIR/deepseek.env"
 
 ```powershell
 # Windows PowerShell
-$RouterDataDir = Join-Path $HOME ".codex-model-bridge"
+$RouterDataDir = Join-Path $HOME ".codex-hybrid"
 New-Item -ItemType Directory -Force $RouterDataDir
 Copy-Item config/models.example.yaml (Join-Path $RouterDataDir "models.yaml")
 Copy-Item config/deepseek.example.env (Join-Path $RouterDataDir "deepseek.env")
@@ -69,16 +69,16 @@ Edit the API URL, protocol, and model ID in `models.yaml`, and set `DEEPSEEK_API
 
 ```sh
 # macOS: prepare → start → connect Codex
-./scripts/codex-model-bridge.sh prepare --source yaml
-./scripts/codex-model-bridge.sh start
-./scripts/codex-model-bridge.sh activate
+./scripts/codex-hybrid.sh prepare --source yaml
+./scripts/codex-hybrid.sh start
+./scripts/codex-hybrid.sh activate
 ```
 
 ```powershell
 # Windows
-.\scripts\codex-model-bridge.cmd prepare --source yaml
-.\scripts\codex-model-bridge.cmd start
-.\scripts\codex-model-bridge.cmd activate
+.\scripts\codex-hybrid.cmd prepare --source yaml
+.\scripts\codex-hybrid.cmd start
+.\scripts\codex-hybrid.cmd activate
 ```
 
 `prepare` is for first initialization only. To change YAML on an existing installation, run `refresh-models --source yaml --models-config /path/to/models.yaml` as described in [commands](cli.md), not `prepare` again.
@@ -122,19 +122,19 @@ Do not commit files containing credentials. Set manually created key files to PO
 Initialize through the wizard or manual YAML first; installation cannot start from an empty management page. The default URL is [http://127.0.0.1:18891/manage/](http://127.0.0.1:18891/manage/). Use your custom port if needed, or obtain the URL with:
 
 ```sh
-./scripts/codex-model-bridge.sh manage-url
+./scripts/codex-hybrid.sh manage-url
 ```
 
 To require a private access link:
 
 ```sh
-./scripts/codex-model-bridge.sh manage-url --management-auth on   # Enable and print a token-bearing link
-./scripts/codex-model-bridge.sh manage-url --management-auth off  # Disable authentication
+./scripts/codex-hybrid.sh manage-url --management-auth on   # Enable and print a token-bearing link
+./scripts/codex-hybrid.sh manage-url --management-auth off  # Disable authentication
 ```
 
 Specifying `--management-auth` automatically restarts the service. When enabled, both the page and management operations require the returned private link; the plain URL shows an access-restricted message. The setting lives in the data directory's `settings.json` and survives ordinary `restart`. Without the flag, `manage-url` retrieves the current address without changing settings.
 
-Commands use the fixed user directory after installation. Override temporarily with `--data-dir` or `CODEX_MODEL_BRIDGE_DATA_DIR`. On Windows, use `.\scripts\codex-model-bridge.cmd manage-url`.
+Commands use the fixed user directory after installation. Override temporarily with `--data-dir` or `CODEX_HYBRID_DATA_DIR`. On Windows, use `.\scripts\codex-hybrid.cmd manage-url`.
 
 In **Independent management**, add a provider and enter its API URL, protocol, key, and models, then save. In **CC Switch**, select the read-only database source. Keys are not echoed. Do not share private links containing the local access token.
 
@@ -155,11 +155,11 @@ To edit manually, run `prepare` and `start`, then use the generated `desktop-con
 
 ```toml
 # Top-level fields must precede all [tables]. Replace existing fields; do not duplicate them.
-model_provider = "codex-model-bridge"
+model_provider = "codex-hybrid"
 model_catalog_json = "/absolute/path/to/router-data/models.json"
 
-[model_providers.codex-model-bridge]
-name = "Codex Model Bridge"
+[model_providers.codex-hybrid]
+name = "Codex Hybrid"
 base_url = "http://127.0.0.1:18891"
 wire_api = "responses"
 requires_openai_auth = true

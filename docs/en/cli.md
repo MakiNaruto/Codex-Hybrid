@@ -10,51 +10,51 @@ Clone the repository with Git into a directory you plan to keep. Run the followi
 
 | System | Double-click launcher | Terminal command |
 | --- | --- | --- |
-| macOS | `scripts/start-macos.command` | `./scripts/codex-model-bridge.sh install` |
-| Windows (PowerShell) | `scripts/start-windows.cmd` | `.\scripts\codex-model-bridge.cmd install` |
+| macOS | `scripts/start-macos.command` | `./scripts/codex-hybrid.sh install` |
+| Windows (PowerShell) | `scripts/start-windows.cmd` | `.\scripts\codex-hybrid.cmd install` |
 
 The launcher creates the project's `.venv`, installs dependencies, and opens a Chinese-language install wizard. On Windows, enable Python Launcher or Add Python to PATH when installing Python.
 
 If you are not ready to enter model details, press `Ctrl+C` after dependency installation, then rerun `install` later. Initial setup still requires a valid model configuration before the service and management page can start.
 
-Private data defaults to `~/.codex-model-bridge/` on every OS, alongside `~/.codex/`, independently of source location. Precedence: `--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → default directory. Custom directories are not remembered; supply the same flag or environment variable for subsequent commands. `cli-config.json` is no longer generated or loaded. Legacy installations require an explicit original data directory; no automatic migration occurs.
+Private data defaults to `~/.codex-hybrid/` on every OS, alongside `~/.codex/`, independently of source location. Precedence: `--data-dir` → `CODEX_HYBRID_DATA_DIR` → default directory. Custom directories are not remembered; supply the same flag or environment variable for subsequent commands. `cli-config.json` is no longer generated or loaded. Legacy installations require an explicit original data directory; no automatic migration occurs.
 
 The wizard asks whether to start the local service. It does not enable routing during installation. To connect Codex, turn on **Client routing** in the management page; this updates the target Codex `config.toml`. **Fully quit and reopen Codex** afterward. The Codex user directory defaults to `~/.codex`; use `CODEX_HOME` or `--codex-home` during initialization to select the directory your client actually uses.
 
 ## Common commands
 
-After install, use these commands to manage the service. On Windows, replace `./scripts/codex-model-bridge.sh` with `.\scripts\codex-model-bridge.cmd`.
+After install, use these commands to manage the service. On Windows, replace `./scripts/codex-hybrid.sh` with `.\scripts\codex-hybrid.cmd`.
 
 ```sh
-./scripts/codex-model-bridge.sh install         # Install dependencies and configure; reuse existing initialization
-./scripts/codex-model-bridge.sh start           # Start the service
-./scripts/codex-model-bridge.sh stop            # Stop the service
-./scripts/codex-model-bridge.sh manage-url      # Get the management page URL
-./scripts/codex-model-bridge.sh status          # Show service, source, and model keys
-./scripts/codex-model-bridge.sh refresh-models  # Update the client model catalog from the current source
-./scripts/codex-model-bridge.sh restart         # Restart after updating code
-./scripts/codex-model-bridge.sh activate        # Connect Codex to the local router
-./scripts/codex-model-bridge.sh rollback        # Restore the initialization backup
-./scripts/codex-model-bridge.sh uninstall       # Stop service and confirm Codex configuration rollback
+./scripts/codex-hybrid.sh install         # Install dependencies and configure; reuse existing initialization
+./scripts/codex-hybrid.sh start           # Start the service
+./scripts/codex-hybrid.sh stop            # Stop the service
+./scripts/codex-hybrid.sh manage-url      # Get the management page URL
+./scripts/codex-hybrid.sh status          # Show service, source, and model keys
+./scripts/codex-hybrid.sh refresh-models  # Update the client model catalog from the current source
+./scripts/codex-hybrid.sh restart         # Restart after updating code
+./scripts/codex-hybrid.sh activate        # Connect Codex to the local router
+./scripts/codex-hybrid.sh rollback        # Restore the initialization backup
+./scripts/codex-hybrid.sh uninstall       # Stop service and confirm Codex configuration rollback
 ```
 
 The default management URL is [http://127.0.0.1:18891/manage/](http://127.0.0.1:18891/manage/); substitute your port if customized. Private-link authentication is off by default, even if a `management_token` already exists.
 
-Run `./scripts/codex-model-bridge.sh manage-url --management-auth on` to enable authentication and get a private token-bearing link. Both the page and management operations then require that link; the plain address shows an access-restricted message. Use `--management-auth off` to disable it.
+Run `./scripts/codex-hybrid.sh manage-url --management-auth on` to enable authentication and get a private token-bearing link. Both the page and management operations then require that link; the plain address shows an access-restricted message. Use `--management-auth off` to disable it.
 
 Specifying `--management-auth` requires `on` or `off`, automatically restarts the service, and prints the corresponding link. New installations default to off, so the local page opens directly. Without the flag, the command only retrieves the current link. The setting is stored in the data directory's `settings.json` and survives ordinary restarts.
 
-`activate` sets Codex's provider to `codex-model-bridge`, pointing requests at the local service. Models are still selected in the native picker; the service routes by model key. Official requests also pass through the local service.
+`activate` sets Codex's provider to `codex-hybrid`, pointing requests at the local service. Models are still selected in the native picker; the service routes by model key. Official requests also pass through the local service.
 
 After install, `status` should report `service_running: true` and `config_state: activated`. Third-party models should appear after restarting Codex.
 
-`uninstall` stops the service first, asks whether to restore the Codex configuration from its installation backup, and removes the `codex-model-bridge` provider table. If later edits are detected, it asks for a second explicit confirmation before overwriting them. Runtime files and provider credentials remain in the data directory for a future reinstall.
+`uninstall` stops the service first, asks whether to restore the Codex configuration from its installation backup, and removes the `codex-hybrid` provider table. If later edits are detected, it asks for a second explicit confirmation before overwriting them. Runtime files and provider credentials remain in the data directory for a future reinstall.
 
 ## Instance configuration
 
 ```sh
-./scripts/codex-model-bridge.sh config
-./scripts/codex-model-bridge.sh config --data-dir /path/to/data
+./scripts/codex-hybrid.sh config
+./scripts/codex-hybrid.sh config --data-dir /path/to/data
 ```
 
 `config` inspects the selected instance; `--set` and `--reset` are removed. Port and authentication live in its `settings.json`; the Codex target uses the path recorded at initialization. Use `--port` and `--codex-home` at installation, and `manage-url --management-auth on|off` for existing authentication.
@@ -91,9 +91,9 @@ If using the example's credential method, also copy `config/deepseek.example.env
 
 ```sh
 # prepare is for first initialization only; use the Windows launcher on Windows
-./scripts/codex-model-bridge.sh prepare --source yaml
-./scripts/codex-model-bridge.sh start
-./scripts/codex-model-bridge.sh activate
+./scripts/codex-hybrid.sh prepare --source yaml
+./scripts/codex-hybrid.sh start
+./scripts/codex-hybrid.sh activate
 ```
 
 Fully quit and reopen Codex. For an existing installation, switch YAML with `refresh-models --source yaml --models-config /path/to/models.yaml`, then run `restart` and restart Codex. Do not repeat `prepare`.
@@ -106,7 +106,7 @@ Saving in the management page switches the active source to `managed-models.yaml
 ## Ask an agent to install
 
 ```text
-Install Codex Model Bridge on this machine using the repository README.
+Install Codex Hybrid on this machine using the repository README.
 First check Python 3.11+, the actual Codex user directory and its config.toml/models_cache.json,
 and the router data directory (flag, environment variable, or wizard; default config).
 Check state.json there: reuse existing initialization instead of repeating prepare.

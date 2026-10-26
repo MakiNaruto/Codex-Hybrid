@@ -6,7 +6,7 @@ _CHECKOUT = Path(__file__).resolve().parents[2]
 
 def environment_value(name):
     """Prefer the current brand while accepting existing installation settings."""
-    return os.environ.get('CODEX_MODEL_BRIDGE_' + name, os.environ.get('MODEL_ROUTER_' + name,
+    return os.environ.get('CODEX_HYBRID_' + name, os.environ.get('MODEL_ROUTER_' + name,
                           os.environ.get('CONNECTED_' + name)))
 
 
@@ -17,7 +17,7 @@ ROOT = _CHECKOUT
 def data_directory(value=None):
     """Resolve explicit overrides, otherwise use the same user directory on every OS."""
     value = value if value is not None else environment_value('DATA_DIR')
-    return (Path(value).expanduser().resolve() if value else Path.home() / '.codex-model-bridge')
+    return (Path(value).expanduser().resolve() if value else Path.home() / '.codex-hybrid')
 
 
 def check_legacy_installation(directory, explicit=False):

@@ -1,4 +1,4 @@
-"""Codex Model Bridge command line entry point."""
+"""Codex Hybrid command line entry point."""
 import subprocess
 import sys
 

@@ -53,7 +53,7 @@ def configure(argv):
     if not active:
         source_label = 'YAML（默认）'
         source_path = str(effective_data / 'models.yaml')
-    print('Codex Model Bridge 配置')
+    print('Codex Hybrid 配置')
     table(['项目', '当前生效值'], [
         ('数据目录', str(effective_data)),
         ('端口', active.get('port') if active.get('port') is not None else saved_port),

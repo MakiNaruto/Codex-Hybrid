@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare, start, activate and roll back the desktop model router."""
+"""Prepare, start, activate and roll back Codex Hybrid."""
 import argparse
 import copy
 import hashlib
@@ -22,7 +22,7 @@ from desktop.paths import ROOT, RUNTIME, default_models_path, data_directory, en
 
 WINDOWS = sys.platform == 'win32'
 
-PROVIDER = 'codex-model-bridge'
+PROVIDER = 'codex-hybrid'
 
 
 def digest(data):
@@ -45,7 +45,7 @@ def is_bridge_provider(provider):
               'http_headers'}
     headers = provider.get('http_headers', {}) if isinstance(provider, dict) else {}
     return (isinstance(provider, dict)
-            and provider.get('name') == 'Codex Model Bridge'
+            and provider.get('name') == 'Codex Hybrid'
             and set(provider) == fields
             and str(provider.get('base_url', '')).startswith('http://127.0.0.1:')
             and provider.get('wire_api') == 'responses'
@@ -67,16 +67,16 @@ def remove_bridge_provider_table(original):
     if provider is None:
         return original, False
     if not is_bridge_provider(provider):
-        raise ValueError('Codex 配置中的 codex-model-bridge provider 不是本项目生成的格式，未移除。')
+        raise ValueError('Codex 配置中的 codex-hybrid provider 不是本项目生成的格式，未移除。')
     split = re.search(r'^\s*\[', original, re.MULTILINE)
     boundary = split.start() if split else len(original)
     root, tables = original[:boundary], original[boundary:]
     header = re.compile(
-        r'^\[model_providers\.(?:"codex-model-bridge"|codex-model-bridge)\]\s*(?:#.*)?$',
+        r'^\[model_providers\.(?:"codex-hybrid"|codex-hybrid)\]\s*(?:#.*)?$',
         re.MULTILINE)
     match = header.search(tables)
     if not match:
-        raise ValueError('无法安全定位 Codex Model Bridge provider 配置，未移除。')
+        raise ValueError('无法安全定位 Codex Hybrid provider 配置，未移除。')
     following = re.search(r'^\s*\[', tables[match.end():], re.MULTILINE)
     end = match.end() + following.start() if following else len(tables)
     result = root + tables[:match.start()] + tables[end:]
@@ -86,7 +86,7 @@ def remove_bridge_provider_table(original):
     if not expected['model_providers']:
         expected.pop('model_providers')
     if after != expected:
-        raise ValueError('移除 Codex Model Bridge provider 时发现其他配置变化，未移除。')
+        raise ValueError('移除 Codex Hybrid provider 时发现其他配置变化，未移除。')
     return result, True
 
 
@@ -100,7 +100,7 @@ def candidate_config(original, settings):
     if existing_provider is not None:
         original, _ = remove_bridge_provider_table(original)
         parsed = tomllib.loads(original)
-    marker = '# Codex Model Bridge; rollback with ./scripts/codex-model-bridge.sh rollback'
+    marker = '# Codex Hybrid; rollback with ./scripts/codex-hybrid.sh rollback'
     original = re.sub(r'(?m)^' + re.escape(marker) + r'[ \t]*(?:\r?\n|$)', '', original)
     # Root values only; preserve unrelated tables, comments and configuration.
     split = re.search(r'^\s*\[', original, re.MULTILINE)
@@ -108,10 +108,10 @@ def candidate_config(original, settings):
     root, tables = original[:boundary], original[boundary:]
     for key in ['model_provider', 'model_catalog_json']:
         root = re.sub(r'^' + key + r'\s*=.*(?:\n|$)', '', root, flags=re.MULTILINE)
-    result = ('# Codex Model Bridge; rollback with ./scripts/codex-model-bridge.sh rollback\n'
+    result = ('# Codex Hybrid; rollback with ./scripts/codex-hybrid.sh rollback\n'
               f'model_provider = "{PROVIDER}"\nmodel_catalog_json = {json.dumps(settings["catalog"])}\n' +
               root + '\n' + tables + '\n' +
-              f'\n[model_providers.{PROVIDER}]\nname = "Codex Model Bridge"\n'
+              f'\n[model_providers.{PROVIDER}]\nname = "Codex Hybrid"\n'
               f'base_url = "http://127.0.0.1:{settings["port"]}"\n'
               'wire_api = "responses"\nrequires_openai_auth = true\nsupports_websockets = false\n'
               'request_max_retries = 0\nstream_max_retries = 0\n'
@@ -337,7 +337,7 @@ def common_arguments(parser, defaults):
     # Subcommands suppress unset values so options placed before the action survive.
     value = (lambda item: item) if defaults else (lambda item: argparse.SUPPRESS)
     parser.add_argument('--data-dir', type=Path, default=value(None),
-                        help='Private data directory (or CODEX_MODEL_BRIDGE_DATA_DIR)')
+                        help='Private data directory (or CODEX_HYBRID_DATA_DIR)')
     parser.add_argument('--port', type=int, default=value(18891))
     parser.add_argument('--codex-home', type=Path,
                         default=value(Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))))
@@ -379,7 +379,7 @@ def main():
     uninstalling = args.action == 'uninstall'
     if uninstalling:
         stop_service(missing_ok=True)
-        print('Codex Model Bridge 本机服务已停止。')
+        print('Codex Hybrid 本机服务已停止。')
         config_path = Path(state['config_path'])
         current = digest(config_path.read_bytes())
         if current == state['original_sha256']:
@@ -390,7 +390,7 @@ def main():
                 return
             if removed:
                 try:
-                    confirmed = input('发现 Codex 配置中仍保留 Codex Model Bridge 本机服务使用的 provider 表。卸载将从 Codex 配置中移除此服务配置，输入 y 确认：[y/N] ')
+                    confirmed = input('发现 Codex 配置中仍保留 Codex Hybrid 本机服务使用的 provider 表。卸载将从 Codex 配置中移除此服务配置，输入 y 确认：[y/N] ')
                 except EOFError:
                     confirmed = ''
                 if confirmed.strip().lower() not in ('y', 'yes'):
@@ -490,7 +490,7 @@ def main():
 
         source = settings.get('source') or {}
         source_label = {'cc-switch': 'CC Switch', 'yaml': 'YAML'}.get(source.get('type'), source.get('type', '未知'))
-        print('Codex Model Bridge 状态')
+        print('Codex Hybrid 状态')
         print('┌──────────────────┬──────────────────────────────────────────────')
         row('服务状态', '运行中' if running else '未运行')
         row('监听端口', settings['port'])

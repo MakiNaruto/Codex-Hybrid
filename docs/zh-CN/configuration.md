@@ -4,7 +4,7 @@
 
 [返回首页](../../README.zh-CN.md) · [文档导航](README.md)
 
-返回 [项目首页](../../README.zh-CN.md)。项目的 `config/` 提供配置示例，运行数据默认保存在 `~/.codex-model-bridge/`：
+返回 [项目首页](../../README.zh-CN.md)。项目的 `config/` 提供配置示例，运行数据默认保存在 `~/.codex-hybrid/`：
 
 - [models.example.yaml](../../config/models.example.yaml)：模型配置示例。
 - [deepseek.example.env](../../config/deepseek.example.env)：环境文件示例，仅含占位值。
@@ -13,14 +13,14 @@
 
 ## 数据目录
 
-默认数据目录统一为 `~/.codex-model-bridge/`，与 `~/.codex/` 同级，与源码位置无关。优先级：`--data-dir` → `CODEX_MODEL_BRIDGE_DATA_DIR` → 默认目录。自定义目录不自动记住，每次命令需使用相同参数或环境变量。不再生成或读取 `cli-config.json`；发现旧安装时会提示显式指定原目录，不自动搬迁。
+默认数据目录统一为 `~/.codex-hybrid/`，与 `~/.codex/` 同级，与源码位置无关。优先级：`--data-dir` → `CODEX_HYBRID_DATA_DIR` → 默认目录。自定义目录不自动记住，每次命令需使用相同参数或环境变量。不再生成或读取 `cli-config.json`；发现旧安装时会提示显式指定原目录，不自动搬迁。
 向导完成后会打印带有所选目录的管理命令。相对路径按当前工作目录解析，建议使用绝对路径。
 `--models-config` 仍可单独选择外部 YAML，省略时读取所选数据目录的 `models.yaml`。
 管理页生成的托管配置保存到同一数据目录。
 
 指定新目录不会自动导入旧目录，后续命令必须选择同一目录。旧版已初始化的实例仍需显式指定原数据目录，完成回滚、停止后再重新初始化。
 `--codex-home` 仍独立选择 Codex 用户目录；启用时，其 `config.toml` 引用所选数据目录的
-`models.json`。`CODEX_MODEL_BRIDGE_HOME`（兼容旧 `MODEL_ROUTER_HOME` / `CONNECTED_HOME`）仅用于发现旧安装，不再设置数据根目录。
+`models.json`。`CODEX_HYBRID_HOME`（兼容旧 `MODEL_ROUTER_HOME` / `CONNECTED_HOME`）仅用于发现旧安装，不再设置数据根目录。
 
 迁移或重装前，在原位置使用原数据目录执行 `uninstall`，按提示确认回滚；本机数据和凭据会保留。新位置安装依赖后，
 指定数据目录重新运行 `install`。不要直接复用另一台机器的状态、备份或虚拟环境，
@@ -48,11 +48,11 @@
 
 ## 手动 YAML
 
-首次使用且尚未初始化时，复制示例并填写配置。以下使用默认目录；自定义目录时修改变量，并统一设置环境变量 `CODEX_MODEL_BRIDGE_DATA_DIR` 。所有命令在项目根目录执行。
+首次使用且尚未初始化时，复制示例并填写配置。以下使用默认目录；自定义目录时修改变量，并统一设置环境变量 `CODEX_HYBRID_DATA_DIR` 。所有命令在项目根目录执行。
 
 ```sh
 # macOS / Linux
-ROUTER_DATA_DIR="$HOME/.codex-model-bridge"
+ROUTER_DATA_DIR="$HOME/.codex-hybrid"
 mkdir -p "$ROUTER_DATA_DIR"
 cp config/models.example.yaml "$ROUTER_DATA_DIR/models.yaml"
 cp config/deepseek.example.env "$ROUTER_DATA_DIR/deepseek.env"
@@ -61,7 +61,7 @@ chmod 600 "$ROUTER_DATA_DIR/models.yaml" "$ROUTER_DATA_DIR/deepseek.env"
 
 ```powershell
 # Windows PowerShell
-$RouterDataDir = Join-Path $HOME ".codex-model-bridge"
+$RouterDataDir = Join-Path $HOME ".codex-hybrid"
 New-Item -ItemType Directory -Force $RouterDataDir
 Copy-Item config/models.example.yaml (Join-Path $RouterDataDir "models.yaml")
 Copy-Item config/deepseek.example.env (Join-Path $RouterDataDir "deepseek.env")
@@ -71,16 +71,16 @@ Copy-Item config/deepseek.example.env (Join-Path $RouterDataDir "deepseek.env")
 
 ```sh
 # macOS：准备 → 启动 → 接入 Codex
-./scripts/codex-model-bridge.sh prepare --source yaml
-./scripts/codex-model-bridge.sh start
-./scripts/codex-model-bridge.sh activate
+./scripts/codex-hybrid.sh prepare --source yaml
+./scripts/codex-hybrid.sh start
+./scripts/codex-hybrid.sh activate
 ```
 
 ```powershell
 # Windows
-.\scripts\codex-model-bridge.cmd prepare --source yaml
-.\scripts\codex-model-bridge.cmd start
-.\scripts\codex-model-bridge.cmd activate
+.\scripts\codex-hybrid.cmd prepare --source yaml
+.\scripts\codex-hybrid.cmd start
+.\scripts\codex-hybrid.cmd activate
 ```
 
 `prepare` 只适用于首次初始化。已有配置要切换 YAML，请按[命令与安装进阶](cli.md)执行 `refresh-models --source yaml --models-config /path/to/models.yaml`，不要重复 `prepare`。
@@ -125,21 +125,21 @@ credentials:
 `http://127.0.0.1:18891/manage/` 即可管理（自定义端口时替换端口），也可运行以下命令获取地址：
 
 ```sh
-./scripts/codex-model-bridge.sh manage-url
+./scripts/codex-hybrid.sh manage-url
 ```
 
 需要只允许通过私密链接访问时，在 `manage-url` 后附加开关：
 
 ```sh
-./scripts/codex-model-bridge.sh manage-url --management-auth on   # 开启并返回带令牌的链接
-./scripts/codex-model-bridge.sh manage-url --management-auth off  # 关闭校验
+./scripts/codex-hybrid.sh manage-url --management-auth on   # 开启并返回带令牌的链接
+./scripts/codex-hybrid.sh manage-url --management-auth off  # 关闭校验
 ```
 
 新安装默认关闭校验，`manage-url` 返回可直接打开的普通地址。指定 `--management-auth` 时必须跟 `on` 或 `off`，并会自动重启服务。开启后普通地址只显示访问受限提示，
 管理页面和管理操作都必须通过返回的私密链接访问。开关保存在数据目录的 `settings.json`，
 普通 `restart` 会保留设置；不带 `--management-auth` 时只获取当前地址，不改变设置。
 
-安装成功后使用统一用户目录，自定义目录需持续显式指定；临时切换可附加 `--data-dir`，或设置 `CODEX_MODEL_BRIDGE_DATA_DIR`。Windows 使用 `.\scripts\codex-model-bridge.cmd manage-url`。
+安装成功后使用统一用户目录，自定义目录需持续显式指定；临时切换可附加 `--data-dir`，或设置 `CODEX_HYBRID_DATA_DIR`。Windows 使用 `.\scripts\codex-hybrid.cmd manage-url`。
 在“独立管理”中添加厂商、填写 API、协议、Key 和模型，然后保存；在“CC Switch”中选择只读数据库来源。
 Key 不回显；开启私密链接后链接带本机访问令牌，不要公开分享。
 
@@ -160,11 +160,11 @@ Key 不回显；开启私密链接后链接带本机访问令牌，不要公开�
 
 ```toml
 # 顶层字段，必须放在所有 [表] 之前；已有同名字段应替换，不能重复添加。
-model_provider = "codex-model-bridge"
+model_provider = "codex-hybrid"
 model_catalog_json = "/absolute/path/to/router-data/models.json"
 
-[model_providers.codex-model-bridge]
-name = "Codex Model Bridge"
+[model_providers.codex-hybrid]
+name = "Codex Hybrid"
 base_url = "http://127.0.0.1:18891"
 wire_api = "responses"
 requires_openai_auth = true

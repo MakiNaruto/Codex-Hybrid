@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codex-model-bridge"
+name = "codex-hybrid"
 version = "0.1.0"
 description = "Local model routing and management for the Codex desktop client"
 readme = "README.md"
@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dynamic = ["dependencies"]
 
 [project.scripts]
-codex-model-bridge = "cli.__main__:main"
+codex-hybrid = "cli.__main__:main"
 model-router = "cli.__main__:main"
 
 [tool.setuptools.packages.find]

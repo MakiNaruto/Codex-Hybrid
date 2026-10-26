@@ -31,10 +31,10 @@ def run(action):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--codex-home', type=Path, default=Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')))
-    parser.add_argument('--data-dir', type=Path, help='Private data directory (or CODEX_MODEL_BRIDGE_DATA_DIR)')
+    parser.add_argument('--data-dir', type=Path, help='Private data directory (or CODEX_HYBRID_DATA_DIR)')
     parser.add_argument('--port', type=int, default=18891)
     args = parser.parse_args()
-    print('Codex Model Bridge 本机配置向导（macOS / Windows / Python 3.11+）')
+    print('Codex Hybrid 本机配置向导（macOS / Windows / Python 3.11+）')
     desktop.RUNTIME = data_directory(args.data_dir)
     check_legacy_installation(desktop.RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
     runtime = desktop.RUNTIME
@@ -121,5 +121,5 @@ if __name__ == '__main__':
         report_error(exc, '安装未完成')
         sys.exit(1)
     except (KeyboardInterrupt, EOFError):
-        print('\n已取消；可重新运行 ./scripts/codex-model-bridge.sh install。', file=sys.stderr)
+        print('\n已取消；可重新运行 ./scripts/codex-hybrid.sh install。', file=sys.stderr)
         sys.exit(1)
