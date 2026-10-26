@@ -59,8 +59,10 @@ def handle(handler, gateway, method):
         body = json.loads(handler.rfile.read(length))
         if not isinstance(body, dict):
             raise ConfigError('INVALID_BODY')
-        if handler.path == '/manage/api/routing':
-            result = manager.set_routing(body['mode'])
+        if handler.path == '/manage/api/routing/preview':
+            result = manager.preview_routing(body['mode'])
+        elif handler.path == '/manage/api/routing':
+            result = manager.set_routing(body['mode'], body.get('revision'))
         elif handler.path == '/manage/api/source':
             result = manager.set_source(body['mode'], body.get('cc_db_path'))
         elif handler.path == '/manage/api/provider':

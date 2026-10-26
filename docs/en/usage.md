@@ -4,6 +4,12 @@
 
 [Project home](../../README.md) · [Documentation](README.md)
 
+## Browser Codex connection switch (minimal version)
+
+Use the connection switch on the existing local management page. Review the change and confirm to save routing and catalog settings; cancel leaves configuration untouched. Disabling restores the fields from before this connection, including absent fields, while retaining unrelated edits. Changes after preview, conflicting edits to managed fields, or an invalid backup stop the switch.
+
+The switch reports saved configuration; it cannot verify that Codex has reloaded it. Finish current tasks, fully exit Codex, and reopen it manually. Select an official model after disabling. The management page and gateway remain available, and closing the browser does not undo the connection. This version requires the existing installation and running local service; desktop packaging, tray integration, process control, task activity detection, and automatic restart are deferred.
+
 ## Test a model connection
 
 Open the management page, save and enable a model, then click **Test connection**. The test sends `Reply with exactly hello and nothing else.` with an output budget of at most 8192 tokens, or the model's lower configured limit.

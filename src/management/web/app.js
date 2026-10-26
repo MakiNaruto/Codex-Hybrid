@@ -4,6 +4,7 @@ if (token) sessionStorage.setItem('connectedNativeManagementToken', token);
 history.replaceState(null, '', location.pathname);
 let state;
 let routingSaving=false;
+let routingError='';
 const $ = id => document.getElementById(id);
 function el(tag, text, cls) { const node=document.createElement(tag); if(text!==undefined)node.textContent=text; if(cls)node.className=cls; return node; }
 let messageTimer, fadeTimer;
@@ -19,7 +20,7 @@ function message(text,error=false){
 }
 $('dismiss-message').onclick=()=>message('');
 async function api(path,body){const response=await fetch('/manage/api/'+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw Error(data.code||'请求失败');return data;}
-function errorMessage(error){if(error.message==='LOCAL_AUTH_REQUIRED')return '已开启私密链接访问，请运行 codex-hybrid manage-url 获取管理链接。';if(error.message==='UPSTREAM_HTTP_401'){const source=state?.mode==='cc_switch'?'CC Switch':'独立管理';const next=state?.mode==='cc_switch'?'请在 CC Switch 更新该厂商的 API Key，然后重试。':'请在厂商配置中更新 API Key 并保存，然后重试。';return '厂商认证失败（401）。当前凭据来源：'+source+'。'+next+'无需重启网关，不会回退到其他 Key。';}return '操作未完成：'+error.message;}
+function errorMessage(error){const routingErrors={CLIENT_CONFIG_CHANGED:'Codex 配置在预览后发生变化，或接入字段已被外部修改。未应用切换，请刷新并检查配置后重试。',CLIENT_BASELINE_UNAVAILABLE:'缺少可信的接入前配置备份，已停止自动恢复。请检查本地备份后修复。',CLIENT_CONFIG_REWRITE_UNSAFE:'无法安全修改 Codex 配置，已停止切换。请检查配置格式。',CLIENT_ROUTING_UNAVAILABLE:'当前 Codex 配置无法切换，请检查配置文件、厂商和 profile。',CLIENT_ROUTING_ALREADY_SET:'配置已处于目标状态，请刷新查看。'};if(routingErrors[error.message])return routingErrors[error.message];if(error.message==='LOCAL_AUTH_REQUIRED')return '已开启私密链接访问，请运行 codex-hybrid manage-url 获取管理链接。';if(error.message==='UPSTREAM_HTTP_401'){const source=state?.mode==='cc_switch'?'CC Switch':'独立管理';const next=state?.mode==='cc_switch'?'请在 CC Switch 更新该厂商的 API Key，然后重试。':'请在厂商配置中更新 API Key 并保存，然后重试。';return '厂商认证失败（401）。当前凭据来源：'+source+'。'+next+'无需重启网关，不会回退到其他 Key。';}return '操作未完成：'+error.message;}
 async function action(fn){try{await fn();}catch(error){message(errorMessage(error),true);}}
 function button(text,fn,cls='secondary'){const b=el('button',text,cls);b.type='button';b.onclick=()=>action(async()=>{b.disabled=true;try{await fn();}finally{b.disabled=false;}});return b;}
 let fieldId=0;
@@ -149,9 +150,37 @@ function ccCard(entry){
   if(!entry.models.length)rows.append(el('p','暂无可同步的模型','hint'));return card;
 }
 let refreshing=false;
-async function refresh(automatic=false){if(refreshing||(automatic&&testingConnections))return;refreshing=true;try{const next=await api('state');const changed=state&&JSON.stringify(state.sync_revision)!==JSON.stringify(next.sync_revision);if(automatic&&document.querySelector('#providers input:focus,#providers textarea:focus,#providers .help-trigger:focus,#providers select:focus'))return;if(automatic&&state&&JSON.stringify(state)===JSON.stringify(next)){$('sync-status').textContent='每 1 秒自动同步 · '+new Date().toLocaleTimeString();return;}state=next;$('routing-toggle').setAttribute('aria-checked',String(state.routing_mode==='project'));$('routing-toggle').disabled=routingSaving||!['project','openai'].includes(state.routing_mode);$('routing-status').textContent=state.routing_mode==='project'?'已保存配置：项目路由':state.routing_mode==='openai'?'已保存配置：OpenAI 原生':'无法切换：客户端配置不可用或使用了其他厂商／配置档案';if(automatic&&changed)message('CC Switch 配置已更新；后续调用使用最新配置。');for(const mode of ['independent','cc_switch']){$(mode).classList.toggle('active',mode===state.mode);$(mode).setAttribute('aria-pressed',String(mode===state.mode));}$('model-count').textContent=state.models.length+' 个模型';$('cc-path').hidden=state.mode!=='cc_switch';if(document.activeElement!==$('db-path'))$('db-path').value=state.cc_db_path;$('add-provider').hidden=state.mode!=='independent';$('source-note').textContent=state.mode==='independent'?'独立管理':'CC Switch · 只读同步';$('providers').replaceChildren();if(state.mode==='independent'){for(const [id,spec]of Object.entries(state.config.providers))$('providers').append(providerCard(id,spec));}else{for(const entry of state.inventory)$('providers').append(ccCard(entry));}if(!$('providers').children.length)$('providers').append(el('p',state.mode==='cc_switch'?'CC Switch 中暂无可读取的第三方 OpenAI 配置。':'尚无厂商，请添加厂商和模型。','hint'));if(state.source_error)message('配置来源提示：'+state.source_error,true);$('catalog-status').textContent=state.catalog_pending?'模型列表有变更 · 更新列表后请重启客户端':'客户端模型列表已更新';$('sync-status').textContent=state.mode==='cc_switch'?'每 1 秒自动同步 · '+new Date().toLocaleTimeString():'';}finally{refreshing=false;}}
+async function refresh(automatic=false){if(refreshing||(automatic&&(testingConnections||routingSaving)))return;refreshing=true;try{const next=await api('state');const changed=state&&JSON.stringify(state.sync_revision)!==JSON.stringify(next.sync_revision);if(automatic&&document.querySelector('#providers input:focus,#providers textarea:focus,#providers .help-trigger:focus,#providers select:focus'))return;if(automatic&&state&&JSON.stringify(state)===JSON.stringify(next)){$('sync-status').textContent='每 1 秒自动同步 · '+new Date().toLocaleTimeString();return;}state=next;renderRouting();if(automatic&&changed)message('CC Switch 配置已更新；后续调用使用最新配置。');for(const mode of ['independent','cc_switch']){$(mode).classList.toggle('active',mode===state.mode);$(mode).setAttribute('aria-pressed',String(mode===state.mode));}$('model-count').textContent=state.models.length+' 个模型';$('cc-path').hidden=state.mode!=='cc_switch';if(document.activeElement!==$('db-path'))$('db-path').value=state.cc_db_path;$('add-provider').hidden=state.mode!=='independent';$('source-note').textContent=state.mode==='independent'?'独立管理':'CC Switch · 只读同步';$('providers').replaceChildren();if(state.mode==='independent'){for(const [id,spec]of Object.entries(state.config.providers))$('providers').append(providerCard(id,spec));}else{for(const entry of state.inventory)$('providers').append(ccCard(entry));}if(!$('providers').children.length)$('providers').append(el('p',state.mode==='cc_switch'?'CC Switch 中暂无可读取的第三方 OpenAI 配置。':'尚无厂商，请添加厂商和模型。','hint'));if(state.source_error)message('配置来源提示：'+state.source_error,true);$('catalog-status').textContent=state.catalog_pending?'模型列表有变更 · 更新列表后请重启客户端':'客户端模型列表已更新';$('sync-status').textContent=state.mode==='cc_switch'?'每 1 秒自动同步 · '+new Date().toLocaleTimeString():'';}finally{refreshing=false;}}
 for(const mode of ['independent','cc_switch'])$(mode).onclick=()=>action(async()=>{await api('source',{mode});message('');await refresh();});
-$('routing-toggle').onclick=()=>action(async()=>{if(routingSaving)return;const toggle=$('routing-toggle');const mode=state.routing_mode==='project'?'openai':'project';routingSaving=true;toggle.disabled=true;toggle.setAttribute('aria-busy','true');try{await api('routing',{mode});state.routing_mode=mode;toggle.setAttribute('aria-checked',String(mode==='project'));await refresh();message('路由配置已保存，请重启客户端生效。');}finally{routingSaving=false;toggle.removeAttribute('aria-busy');toggle.disabled=!['project','openai'].includes(state?.routing_mode);}});
+function renderRouting(){
+  const toggle=$('routing-toggle');
+  toggle.setAttribute('aria-checked',String(state?.routing_mode==='project'));
+  toggle.disabled=routingSaving||!['project','openai'].includes(state?.routing_mode);
+  toggle.setAttribute('aria-busy',String(routingSaving));
+  $('routing-status').textContent=routingSaving?'正在切换接入配置…':routingError||(
+    state?.routing_mode==='project'?'已保存：接入开启 · 需重启 Codex 生效':
+    state?.routing_mode==='openai'?'已保存：接入关闭 · 使用原生路由；切换后需重启 Codex':
+    '无法切换：Codex 配置不可用，或使用了其他厂商／配置档案');
+}
+$('routing-toggle').onclick=async()=>{
+  if(routingSaving)return;
+  const mode=state.routing_mode==='project'?'openai':'project';
+  routingSaving=true;routingError='';renderRouting();
+  try{
+    const preview=await api('routing/preview',{mode});
+    if(!confirm((mode==='project'?'开启':'关闭')+' Codex 接入？\n\n'+preview.changes.join('\n')+
+      '\n\n本地管理服务保持运行。切换会影响后续打开的 Codex 窗口。请先结束当前任务，保存后手动完全退出并重新打开 Codex。'+
+      (mode==='openai'?'\n关闭后请选择官方模型。':'')+'\n\n确定后保存配置，取消则保持原状态。'))return;
+    const saved=await api('routing',{mode,revision:preview.revision});
+    state.routing_mode=saved.routing_mode;
+    message('接入配置已保存，请手动完全退出并重新打开 Codex。');
+  }catch(error){
+    routingError=errorMessage(error);message(routingError,true);
+  }finally{
+    try{await refresh();}catch(error){routingError=errorMessage(error);message(routingError,true);}
+    routingSaving=false;renderRouting();
+  }
+};
 $('save-path').onclick=()=>action(async()=>{await api('source',{mode:'cc_switch',cc_db_path:$('db-path').value});message('');await refresh();});
 $('publish').onclick=()=>action(async()=>{await api('publish',{});await refresh();message('客户端模型列表已更新，请重启客户端加载最新列表。');});
 $('refresh').onclick=()=>action(async()=>{message('');await refresh();});

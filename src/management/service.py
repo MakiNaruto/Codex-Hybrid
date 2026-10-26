@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import json
 import os
-import re
 import tomllib
 from pathlib import Path
 import secrets
@@ -22,7 +21,7 @@ def private_write(path, value):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_name(path.name + '.' + secrets.token_hex(8) + '.tmp')
     try:
-        with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as out:
+        with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w', encoding='utf-8', newline='') as out:
             out.write(value)
         os.replace(temporary, path)
     finally:
@@ -51,53 +50,43 @@ class Management:
         except (OSError, ValueError, KeyError):
             return 'unavailable'
 
-    def set_routing(self, mode):
-        if mode not in ('project', 'openai'):
-            raise ConfigError('INVALID_ROUTING_MODE')
+    def routing_plan(self, mode):
+        from management.routing import prepare
+        state, path, current, baseline, result = prepare(self.directory, self.gateway.settings, mode)
+        revision = hmac.new(self.revision_secret,
+            json.dumps([mode, str(path), state, current, baseline, result]).encode(), hashlib.sha256).hexdigest()
+        return state, path, current, baseline, result, revision
+
+    def preview_routing(self, mode):
         with self.lock:
-            from desktop.service import PROVIDER, candidate_config, is_bridge_provider
-            if self.routing_state() not in ('project', 'openai'):
-                raise ConfigError('CLIENT_ROUTING_UNAVAILABLE')
-            state_path = self.directory/'state.json'
-            state = json.loads(state_path.read_text())
-            path = Path(state['config_path'])
-            original = path.read_text()
-            parsed = tomllib.loads(original)
-            boundary = re.search(r'^\s*\[', original, re.MULTILINE)
-            root, tables = (original[:boundary.start()], original[boundary.start():]) if boundary else (original, '')
-            for key in ('model_provider', 'model_catalog_json'):
-                root = re.sub(r'^' + key + r'\s*=.*(?:\n|$)', '', root, flags=re.MULTILINE)
-            if mode == 'project':
-                providers = parsed.get('model_providers', {})
-                if PROVIDER not in providers:
-                    result = candidate_config(original, self.gateway.settings)
-                else:
-                    if not is_bridge_provider(providers[PROVIDER]):
-                        raise ConfigError('CLIENT_CONFIG_REWRITE_UNSAFE')
-                    result = (f'model_provider = "{PROVIDER}"\nmodel_catalog_json = '
-                              + json.dumps(self.gateway.settings['catalog']) + '\n' + root + tables)
-            else:
-                result = 'model_provider = "openai"\n' + root + tables
-            after = tomllib.loads(result)
-            # Verify the root rewrite preserved every unrelated setting.
-            providers = parsed.get('model_providers', {})
-            if mode == 'openai' or PROVIDER in providers:
-                expected = copy.deepcopy(parsed)
-                expected['model_provider'] = PROVIDER if mode == 'project' else 'openai'
-                expected.pop('model_catalog_json', None)
-                if mode == 'project':
-                    expected['model_catalog_json'] = self.gateway.settings['catalog']
-                if after != expected:
-                    raise ConfigError('CLIENT_CONFIG_REWRITE_UNSAFE')
-            # Keep CLI activate/rollback snapshots consistent with the UI switch.
+            *_, revision = self.routing_plan(mode)
+            return {'mode': mode, 'revision': revision,
+                    'changes': ['启用 Codex Hybrid 路由和模型列表' if mode == 'project' else '恢复接入前的路由和模型列表配置'],
+                    'restart_client': True}
+
+    def set_routing(self, mode, revision=None):
+        with self.lock:
             from desktop.service import digest
-            private_write(self.directory/('desktop-config.toml' if mode == 'project' else 'original-config.toml'), result)
-            state['candidate_sha256' if mode == 'project' else 'original_sha256'] = digest(result.encode())
+            state, path, current, baseline, result, expected = self.routing_plan(mode)
+            if not isinstance(revision, str) or not hmac.compare_digest(revision, expected):
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
+            if path.read_bytes().decode('utf-8') != current:
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
+            # Keep the native baseline across retries; never capture bridge routing as native.
+            if mode == 'project':
+                private_write(self.directory/'original-config.toml', baseline)
+                state['original_sha256'] = digest(baseline.encode())
+                private_write(self.directory/'desktop-config.toml', result)
+                state['candidate_sha256'] = digest(result.encode())
+            else:
+                private_write(self.directory/'original-config.toml', result)
+                state['original_sha256'] = digest(result.encode())
             state['activated'] = mode == 'project'
-            if path.read_text() != original:
+            # Record recovery metadata before replacing config, so an interrupted write remains recoverable.
+            private_write(self.directory/'state.json', json.dumps(state))
+            if path.read_bytes().decode('utf-8') != current:
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
             private_write(path, result)
-            private_write(state_path, json.dumps(state))
             return {'saved': True, 'routing_mode': mode, 'restart_client': True}
 
     def official(self):

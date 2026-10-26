@@ -17,10 +17,10 @@
   </header>
   <div class="settings-grid">
     <section aria-labelledby="routing-heading">
-      <div class="section-title"><h2 id="routing-heading">客户端路由</h2><button type="button" class="help-trigger" aria-label="客户端路由说明" aria-expanded="false" data-help="打开后通过 Codex Hybrid 调用第三方模型；关闭后使用 OpenAI 原生调用，此时请选择官方模型。本地管理服务会继续运行，方便随时切回。">?</button></div>
-      <div class="routing-control"><div><label id="routing-label" for="routing-toggle">使用项目路由</label><p class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
+      <div class="section-title"><h2 id="routing-heading">Codex 接入</h2><button type="button" class="help-trigger" aria-label="Codex 接入说明" aria-expanded="false" data-help="开启后通过 Codex Hybrid 调用模型；关闭后恢复接入前的路由与模型列表配置。切换前会展示确认提示。管理服务保持运行，Codex 需手动完全退出并重新打开。">?</button></div>
+      <div class="routing-control"><div><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><p class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
       <p id="routing-status" class="routing-status" role="status"></p>
-      <p class="hint section-footnote">切换后请重启客户端生效。</p>
+      <p class="hint section-footnote">切换仅保存配置。请手动完全退出并重新打开 Codex；关闭接入后请选择官方模型。</p>
     </section>
     <section class="source" aria-labelledby="source-heading">
       <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>
