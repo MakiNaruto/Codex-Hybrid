@@ -11,15 +11,24 @@
 <body>
 <main>
   <header>
-    <div class="brand"><span class="brand-mark" aria-hidden="true">C</span> CODEX HYBRID <span class="local-badge">LOCAL</span></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">C</span> CODEX HYBRID <span class="local-badge">LOCAL</span><span id="connection-indicator" class="connection-indicator" role="status">正在连接</span></div>
     <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1>模型管理</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
     <p class="intro">管理厂商连接，为客户端配置合适的模型。</p>
   </header>
+  <section class="overview" aria-labelledby="overview-heading">
+    <div class="section-head"><h2 id="overview-heading">使用准备</h2><span id="readiness-summary" class="hint" role="status">正在读取配置…</span></div>
+    <ol id="readiness-steps" class="readiness-steps"></ol>
+    <div id="reload-notice" class="reload-notice" hidden><p id="reload-message"></p><button id="acknowledge-reload" type="button" class="secondary">我已手动重启 Codex</button></div>
+  </section>
   <div class="settings-grid">
     <section aria-labelledby="routing-heading">
       <div class="section-title"><h2 id="routing-heading">Codex 接入</h2><button type="button" class="help-trigger" aria-label="Codex 接入说明" aria-expanded="false" data-help="开启后通过 Codex Hybrid 调用模型；关闭后恢复接入前的路由与模型列表配置。切换前会展示确认提示。管理服务保持运行，Codex 需手动完全退出并重新打开。">?</button></div>
       <div class="routing-control"><div><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><p class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
+      <label for="routing-default-model">切换后的会话默认模型（可选）</label>
+      <input id="routing-default-model" type="text" placeholder="填写模型 key；留空使用预设默认或列表首项" autocomplete="off">
+      <p class="hint">会迁移全部本机会话（含归档）。建议结束任务并在独立浏览器操作；开启和关闭接入时，确认影响后均可继续，不因进程检测结果阻止。</p>
       <p id="routing-status" class="routing-status" role="status"></p>
+      <p id="activity-status" class="hint" role="status">活动检测：等待网关状态 · Codex 任务状态未知</p>
       <p class="hint section-footnote">切换仅保存配置。请手动完全退出并重新打开 Codex；关闭接入后请选择官方模型。</p>
     </section>
     <section class="source" aria-labelledby="source-heading">
@@ -32,7 +41,15 @@
   <section class="providers-section" aria-labelledby="providers-heading">
     <div class="section-head"><div class="section-title"><h2 id="providers-heading">厂商与模型</h2><span id="model-count" class="count-badge">0 个模型</span></div><div class="toolbar"><button id="publish" class="secondary" type="button">更新客户端模型列表</button><button id="refresh" class="secondary" type="button">刷新</button><button id="add-provider" type="button">＋ 添加厂商</button></div></div>
     <div class="catalog-notes"><span id="source-note" class="source-label"></span><span id="catalog-status" class="hint" role="status"></span><button type="button" class="help-trigger" aria-label="模型列表更新说明" aria-expanded="false" data-help="新增、删除模型或修改显示名称、上下文窗口后，请更新客户端模型列表并重启客户端。仅修改 Key 或 API 地址时，下一轮调用即生效。">?</button><span id="sync-status" class="hint" aria-live="off"></span></div>
+    <div class="provider-filters"><label for="model-search">查找厂商或模型<input id="model-search" type="search" placeholder="厂商、模型名称或 ID" autocomplete="off"></label><label for="model-filter">显示范围<select id="model-filter"><option value="all">全部</option><option value="enabled">已启用</option><option value="disabled">含未启用模型</option></select></label><span id="unsaved-status" class="hint" role="status"></span></div>
+    <p id="search-empty" class="hint" hidden>没有匹配的厂商或模型。</p>
     <div id="providers"></div>
+  </section>
+  <section class="diagnostics-section" aria-labelledby="diagnostics-heading">
+    <div class="section-head"><h2 id="diagnostics-heading">运行与诊断</h2><div class="toolbar"><button id="refresh-diagnostics" class="secondary" type="button">刷新状态</button><button id="export-diagnostics" class="secondary" type="button">下载脱敏诊断</button></div></div>
+    <p id="service-status" class="hint" role="status">正在读取服务运行状态…</p>
+    <p class="hint">仅展示日志尾部最近 20 条错误摘要；不包含聊天内容、Key 或完整日志。诊断文件仅下载到本机，由你自行决定是否分享。</p>
+    <details><summary>最近错误摘要</summary><ul id="diagnostic-errors"><li>尚未读取</li></ul></details>
   </section>
 </main>
 <div id="notifications" class="notifications" aria-label="操作提示"><div id="message" role="status" aria-live="polite" aria-atomic="true"></div><button id="dismiss-message" type="button" class="dismiss-message" aria-label="关闭提示" hidden>×</button></div>

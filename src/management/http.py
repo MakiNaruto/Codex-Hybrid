@@ -47,6 +47,11 @@ def handle(handler, gateway, method):
         reply(403, {'code': 'LOCAL_AUTH_REQUIRED'}); return True
     try:
         manager = gateway.manager
+        if method == 'GET' and handler.path == '/manage/api/diagnostics':
+            from management.diagnostics import report
+            reply(200, report(manager)); return True
+        if method == 'GET' and handler.path == '/manage/api/activity':
+            reply(200, manager.activity_state()); return True
         if method == 'GET' and handler.path == '/manage/api/state':
             reply(200, manager.view()); return True
         if method != 'POST':
@@ -60,9 +65,12 @@ def handle(handler, gateway, method):
         if not isinstance(body, dict):
             raise ConfigError('INVALID_BODY')
         if handler.path == '/manage/api/routing/preview':
-            result = manager.preview_routing(body['mode'])
+            result = manager.preview_routing(body['mode'], body.get('default_model'))
+        elif handler.path == '/manage/api/reload/acknowledge':
+            result = manager.acknowledge_reload(body.get('revision'))
         elif handler.path == '/manage/api/routing':
-            result = manager.set_routing(body['mode'], body.get('revision'))
+            result = manager.set_routing(body['mode'], body.get('revision'), body.get('default_model'),
+                                         body.get('confirm_activity', False))
         elif handler.path == '/manage/api/source':
             result = manager.set_source(body['mode'], body.get('cc_db_path'))
         elif handler.path == '/manage/api/provider':

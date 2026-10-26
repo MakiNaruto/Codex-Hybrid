@@ -64,11 +64,13 @@ The launcher creates `.venv`, installs dependencies, and opens the install wizar
 
 ### 3. Configure and restart Codex
 
-1. Choose **Manual API setup** or **Local CC Switch** and follow the prompts.
+1. Choose **Manual API setup**, **Local CC Switch**, or defer model setup to the web page and follow the prompts.
 2. Choose whether to start the local service now. Installation does not enable client routing automatically.
 3. After the service starts, enable **Client routing** in the management page, then **fully quit and reopen Codex**.
 
-Turning the switch on backs up and updates Codex's `config.toml`: it sets `model_provider` to `codex-hybrid` and writes the local model catalog and gateway connection settings. Turning it off switches `model_provider` back to `openai` and removes the local model catalog setting while keeping the `codex-hybrid` provider table for a later switch back. The local service keeps running.
+Turning the switch on backs up and updates Codex routing configuration. Turning it off restores the fields changed by this tool while preserving unrelated edits; the local service continues running. Switching also migrates local session routing metadata. Fully quit Codex and use an independent browser before confirming; see the [session migration guide (Chinese)](docs/zh-CN/session-migration.md).
+
+The web UI includes setup readiness, unsaved draft warnings, provider/model filtering, activity status, error summaries and local sanitized diagnostics. See the [web trial checklist (Chinese)](docs/zh-CN/web-trial.md).
 
 Private data is stored in `~/.codex-hybrid/` by default. Use the [local management page](http://127.0.0.1:18891/manage/) to add providers and models or update API keys. For a custom port or private access link, run `manage-url` to get the address.
 

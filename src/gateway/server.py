@@ -246,11 +246,15 @@ def retry_payload_after_unknown_tool(payload, error):
 
 class Gateway:
     def __init__(self, settings, settings_path=None):
+        self.started_at = time.monotonic()
+        self.record = lambda observation: print(json.dumps(observation), flush=True)
         self.settings = settings
         self.deepseek = None if 'source' in settings else load_config(settings['env_file'])
         if self.deepseek and self.deepseek['DEEPSEEK_MODEL'] != settings['deepseek_model']:
             raise ValueError('DeepSeek model changed; prepare a matching catalog first')
         self.slots = threading.BoundedSemaphore(settings['max_concurrent_requests'])
+        from gateway.activity import Activity
+        self.activity = Activity()
         # No redirects: credentials can only go to the fixed official endpoints.
         self.opener = FreshProxyOpener()
         self.manager = None
@@ -345,6 +349,7 @@ class Gateway:
                 event = None
                 current_request = None
                 settings = owner.settings
+                owner.activity.begin()
                 try:
                     size = int(self.headers.get('Content-Length', '0'))
                     if size <= 0 or size > MAX_BODY or self.headers.get('Transfer-Encoding'):
@@ -530,12 +535,13 @@ class Gateway:
                     else:
                         self.stream_failure('UPSTREAM_CONNECTION_FAILED', detail, sequence=sequence)
                 finally:
+                    owner.activity.end()
                     if current_request is not None and hasattr(current_request, 'connected_proxy_configured'):
                         observation['proxy_configured'] = current_request.connected_proxy_configured
                     observation['elapsed_ms'] = round((time.monotonic() - began) * 1000)
                     owner.slots.release()
                     # Only metadata; no prompts, messages, tool inputs, headers or tokens.
-                    print(json.dumps(observation), flush=True)
+                    owner.record(observation)
 
         return Handler
 
@@ -554,10 +560,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--settings', type=Path, required=True)
     args = parser.parse_args()
+    from gateway.runtime_log import RuntimeLog
+    import sys
+    runtime_log = RuntimeLog(args.settings.resolve().parent)
+    sys.stderr = runtime_log.stderr
     settings = json.loads(args.settings.read_text())
     gateway = Gateway(settings, args.settings)
+    gateway.record = runtime_log.emit
     with Server(('127.0.0.1', settings['port']), gateway.handler()) as server:
-        print(json.dumps({'status': 'listening', 'port': settings['port']}), flush=True)
+        runtime_log.emit({'status': 'listening', 'port': settings['port'], 'time': int(time.time())})
         server.serve_forever()
 
 

@@ -116,6 +116,9 @@ class RoutingTests(unittest.TestCase):
         gateway.settings.update(management_auth_required=True, management_token='local-test-token')
 
         class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                handle(self, gateway, 'GET')
+
             def do_POST(self):
                 handle(self, gateway, 'POST')
 
@@ -142,6 +145,21 @@ class RoutingTests(unittest.TestCase):
                 return json.load(response)
 
         before = self.path.read_bytes()
+        for authenticated in (False, True):
+            headers = {'Authorization': 'Bearer local-test-token'} if authenticated else {}
+            request = urllib.request.Request(
+                f'http://127.0.0.1:{server.server_port}/manage/api/diagnostics', headers=headers)
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            if authenticated:
+                with opener.open(request, timeout=3) as response:
+                    diagnostic = json.load(response)
+                self.assertEqual(diagnostic['schema_version'], 1)
+                self.assertNotIn('test-token', json.dumps(diagnostic))
+            else:
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    opener.open(request, timeout=3)
+                self.assertEqual(error.exception.code, 403)
+                error.exception.close()
         for options in [{'authenticated': False}, {'origin': 'https://example.com'}]:
             with self.assertRaises(urllib.error.HTTPError) as error:
                 post('routing/preview', {'mode': 'project'}, **options)

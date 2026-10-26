@@ -31,6 +31,6 @@ def report_error(error, context='操作失败'):
     elif isinstance(error, StopIteration):
         print('  未找到所需条目，请检查模型和运行状态。', file=sys.stderr)
     print(f'  数据目录：{desktop.RUNTIME}', file=sys.stderr)
-    for name in ('service.stderr', 'service.jsonl'):
+    for name in ('service.stderr', 'service.jsonl', 'service.startup.stderr'):
         path = desktop.RUNTIME / name
         print(f'  日志：{path}' + ('' if path.exists() else '（尚未创建）'), file=sys.stderr)

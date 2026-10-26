@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 import secrets
 import threading
+import time
 import urllib.request
 
 import yaml
@@ -50,44 +51,79 @@ class Management:
         except (OSError, ValueError, KeyError):
             return 'unavailable'
 
-    def routing_plan(self, mode):
+    def routing_plan(self, mode, default_model=None):
         from management.routing import prepare
         state, path, current, baseline, result = prepare(self.directory, self.gateway.settings, mode)
+        from desktop.session_migration import plan, config_model
+        provider = 'codex-hybrid' if mode == 'project' else 'openai'
+        migration = plan(path.parent, self.gateway.settings, provider, default_model)
+        result = config_model(result, migration['model'])
         revision = hmac.new(self.revision_secret,
-            json.dumps([mode, str(path), state, current, baseline, result]).encode(), hashlib.sha256).hexdigest()
-        return state, path, current, baseline, result, revision
+            json.dumps([mode, str(path), state, current, baseline, result, migration['revision']]).encode(),
+            hashlib.sha256).hexdigest()
+        return state, path, current, baseline, result, migration, revision
 
-    def preview_routing(self, mode):
+    def preview_routing(self, mode, default_model=None):
         with self.lock:
-            *_, revision = self.routing_plan(mode)
+            *_, migration, revision = self.routing_plan(mode, default_model)
+            from desktop.process_state import codex_process_state
+            process = codex_process_state(migration['home'])
             return {'mode': mode, 'revision': revision,
-                    'changes': ['启用 Codex Hybrid 路由和模型列表' if mode == 'project' else '恢复接入前的路由和模型列表配置'],
-                    'restart_client': True}
+                    'session_count': migration['count'], 'default_model': migration['model'],
+                    'missing_rollouts': migration['missing_rollouts'],
+                    'changes': [('启用 Codex Hybrid 路由和模型列表' if mode == 'project' else '恢复接入前的路由和模型列表配置'),
+                                f"迁移 {migration['count']} 份本机会话记录（含归档和历史片段）；默认模型：{migration['model'] or '无会话'}",
+                                f"其中 {migration['missing_rollouts']} 条索引缺少历史文件，仅更新其索引",
+                                '建议先结束任务并退出 Codex；确认影响后仍可继续切换，迁移前自动备份'],
+                    'restart_client': True, 'activity': self.activity_state(), 'codex_process': process}
 
-    def set_routing(self, mode, revision=None):
+    def activity_state(self):
+        activity = getattr(self.gateway, 'activity', None)
+        return activity.snapshot() if activity is not None else {
+            'active_requests': None, 'observed_at': None,
+            'gateway_status': 'unknown', 'codex_status': 'unknown'}
+
+    def set_routing(self, mode, revision=None, default_model=None, confirm_activity=False):
         with self.lock:
+            if type(confirm_activity) is not bool:
+                raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
             from desktop.service import digest
-            state, path, current, baseline, result, expected = self.routing_plan(mode)
+            controls = {self.directory/name: ((self.directory/name).read_bytes()
+                        if (self.directory/name).exists() else None)
+                        for name in ('state.json', 'original-config.toml', 'desktop-config.toml', 'web-reload.json')}
+            state, path, current, baseline, result, migration, expected = self.routing_plan(mode, default_model)
             if not isinstance(revision, str) or not hmac.compare_digest(revision, expected):
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
             if path.read_bytes().decode('utf-8') != current:
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
-            # Keep the native baseline across retries; never capture bridge routing as native.
+            from desktop.session_migration import apply
+            updates = {}
+
+            def update(file, value):
+                file = Path(file)
+                updates[file] = (controls[file], value.encode())
+
+            # Config, recovery metadata, sessions and DB form one recoverable operation.
             if mode == 'project':
-                private_write(self.directory/'original-config.toml', baseline)
+                update(self.directory/'original-config.toml', baseline)
                 state['original_sha256'] = digest(baseline.encode())
-                private_write(self.directory/'desktop-config.toml', result)
+                update(self.directory/'desktop-config.toml', result)
                 state['candidate_sha256'] = digest(result.encode())
             else:
-                private_write(self.directory/'original-config.toml', result)
+                update(self.directory/'original-config.toml', result)
                 state['original_sha256'] = digest(result.encode())
             state['activated'] = mode == 'project'
-            # Record recovery metadata before replacing config, so an interrupted write remains recoverable.
-            private_write(self.directory/'state.json', json.dumps(state))
-            if path.read_bytes().decode('utf-8') != current:
-                raise ConfigError('CLIENT_CONFIG_CHANGED')
-            private_write(path, result)
-            return {'saved': True, 'routing_mode': mode, 'restart_client': True}
+            from management.reload_state import status
+            reload = status(self)
+            if not (self.directory/'web-reload.json').exists() and reload['available']:
+                update(self.directory/'web-reload.json', json.dumps({'acknowledged_revision': reload['revision']}))
+            update(self.directory/'state.json', json.dumps(state))
+            updates[path] = (current.encode(), result.encode())
+            backup = apply(migration, self.directory, updates,
+                           allow_running=confirm_activity)
+            return {'saved': True, 'routing_mode': mode, 'restart_client': True,
+                    'session_count': migration['count'], 'default_model': migration['model'],
+                    'session_backup': backup}
 
     def official(self):
         settings = self.gateway.settings
@@ -107,6 +143,10 @@ class Management:
             keys = [key for key, value in external.models.items() if value['enabled']]
             if keys:
                 settings['deepseek_model'] = keys[0]  # Historical smoke alias only.
+            else:
+                settings.pop('deepseek_model', None)
+            from management.reload_state import remember_before_change
+            remember_before_change(self)
             private_write(settings['catalog'], json.dumps(merged, ensure_ascii=False))
             private_write(self.settings_path, json.dumps(settings, ensure_ascii=False))
             self.gateway.settings = settings  # Replace one snapshot; never mutate an in-flight request.
@@ -121,10 +161,20 @@ class Management:
             result = {'routing_mode': self.routing_state(), 'mode': mode, 'cc_db_path': source['path'] if mode == 'cc_switch' else cc_path,
                       'config': {'version': 1, 'providers': {}}, 'inventory': [], 'models': [],
                       'source_error': None, 'sync_revision': None, 'catalog_pending': False,
-                      'native_routing': True, 'official_model_count': len(settings['official_models'])}
+                      'native_routing': True, 'official_model_count': len(settings['official_models']),
+                      'credential_status': {}}
+            from management.reload_state import status
+            result['reload'] = status(self)
             try:
                 catalog = load_source(settings)
                 result['models'] = catalog.listing(True)
+                from model_catalog.catalog import resolve_api_key
+                for provider_id, provider in catalog.providers.items():
+                    try:
+                        resolve_api_key(provider)
+                        result['credential_status'][provider_id] = 'available'
+                    except (OSError, ValueError, TypeError):
+                        result['credential_status'][provider_id] = 'missing'
                 if mode == 'independent':
                     result['config'] = read_yaml(source['path'])
                     for provider in result['config']['providers'].values():
@@ -142,6 +192,11 @@ class Management:
             except Exception as error:
                 result['source_error'] = error.code if isinstance(error, ConfigError) else 'SOURCE_UNAVAILABLE'
             return result
+
+    def acknowledge_reload(self, revision):
+        from management.reload_state import acknowledge
+        with self.lock:
+            return acknowledge(self, revision)
 
     def set_source(self, mode, cc_db_path=None):
         with self.lock:
@@ -206,6 +261,7 @@ class Management:
                                 extra={'standalone_source': {'type': 'yaml', 'path': str(target)}})
 
     def test_connection(self, key):
+        began = time.monotonic()
         settings = self.gateway.settings
         if key in settings['official_models']:
             raise ConfigError('EXTERNAL_MODEL_REQUIRED')
@@ -233,7 +289,8 @@ class Management:
                                               else 'UPSTREAM_INCOMPLETE')
                         if item.get('type') == 'response.completed':
                             # Do not return arbitrary upstream content or errors to the browser.
-                            return {'status': 'completed', 'model_key': key, 'model_id': model['model_id']}
+                            return {'status': 'completed', 'model_key': key, 'model_id': model['model_id'],
+                                    'elapsed_ms': round((time.monotonic() - began) * 1000)}
             raise ConfigError('UPSTREAM_STREAM_ENDED_EARLY')
         finally:
             self.gateway.slots.release()

@@ -50,7 +50,7 @@ def main():
         desktop.official_cache(home)
         desktop.candidate_config((home / 'config.toml').read_text(),
                                  {'catalog': str(runtime / 'models.json'), 'port': args.port, 'local_token': 'preflight'})
-        print('1. 配置来源：1 = 手动填写 API，2 = 本机 CC Switch（只读）')
+        print('1. 配置来源：1 = 手动填写 API，2 = 本机 CC Switch（只读），3 = 稍后在网页配置')
         choice = ask('选择', '1')
         if choice == '2':
             source = {'type': 'cc-switch', 'path': str(Path(ask('CC Switch 数据库', str(Path.home() / '.cc-switch/cc-switch.db'))).expanduser().resolve())}
@@ -80,6 +80,12 @@ def main():
             except BaseException:
                 config_path.unlink(missing_ok=True)
                 raise
+            source = {'type': 'yaml', 'path': str(config_path)}
+        elif choice == '3':
+            config_path = runtime / 'setup-models.yaml'
+            if config_path.exists():
+                raise ValueError(f'存在未完成的配置，请先检查 {config_path}')
+            desktop.private_write(config_path, yaml.safe_dump({'version': 1, 'providers': {}}))
             source = {'type': 'yaml', 'path': str(config_path)}
         else:
             raise ValueError('配置来源选择无效')

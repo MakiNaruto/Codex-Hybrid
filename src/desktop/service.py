@@ -177,9 +177,9 @@ def prepare(port, codex_home, source=None):
     external = load_source(settings)
     merged = merged_catalog(models, external)
     external_keys = [key for key, value in external.models.items() if value['enabled']]
-    if not external_keys:
-        raise ValueError('No enabled external models')
-    settings.update(models=[m['slug'] for m in merged['models']], deepseek_model=external_keys[0])
+    settings.update(models=[m['slug'] for m in merged['models']])
+    if external_keys:
+        settings['deepseek_model'] = external_keys[0]
     candidate = candidate_config(original.decode(), settings).encode()
     RUNTIME.mkdir(parents=True, exist_ok=True, mode=0o700)
     private_write(RUNTIME / 'models.json', json.dumps(merged, ensure_ascii=False))
@@ -216,17 +216,19 @@ def start_service(settings):
             else:
                 raise ValueError('Port is serving a gateway not owned by this runtime')
         return print('本机服务已在运行')
-    with (RUNTIME / 'service.jsonl').open('ab') as out, (RUNTIME / 'service.stderr').open('ab') as err:
+    # Keep inherited startup stderr separate: Windows cannot rotate an inherited open file.
+    with (RUNTIME / 'service.startup.stderr').open('wb') as err:
         options = ({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
                    if WINDOWS else {'start_new_session': True})
         entry = ([str(ROOT / 'scripts/gateway.py')] if (ROOT / 'scripts/gateway.py').is_file()
                  else ['-m', 'gateway.server'])
         process = subprocess.Popen([sys.executable, *entry,
             '--settings', str(RUNTIME / 'settings.json')], cwd=ROOT, stdin=subprocess.DEVNULL,
-            stdout=out, stderr=err, **options)
+            stdout=subprocess.DEVNULL, stderr=err, **options)
     for _ in range(30):
         if process.poll() is not None:
-            raise ValueError(f'网关在就绪前退出（退出码 {process.returncode}）；请检查 {RUNTIME / "service.stderr"}')
+            raise ValueError(f'网关在就绪前退出（退出码 {process.returncode}）；请检查 '
+                             f'{RUNTIME / "service.stderr"} 和 {RUNTIME / "service.startup.stderr"}')
         try:
             health(settings)
             break
@@ -329,8 +331,36 @@ def stop_service(missing_ok=False):
     pid_path.unlink(missing_ok=True)
 
 
+def migrate_routing(config_path, settings, state, data, activating, default_model=None, expected_current=None):
+    """Commit CLI routing changes together with offline session metadata."""
+    from desktop.session_migration import plan, apply, config_model
+    provider = tomllib.loads(data.decode()).get('model_provider', 'openai')
+    if provider not in ('openai', PROVIDER):
+        raise ValueError('会话迁移只支持原生 OpenAI 与 Codex Hybrid 路由。')
+    name = 'desktop-config.toml' if activating else 'original-config.toml'
+    paths = (config_path, RUNTIME / name, RUNTIME / 'state.json')
+    before = {path: path.read_bytes() if path.exists() else None for path in paths}
+    if expected_current is not None and before[config_path] != expected_current:
+        raise ValueError('Codex 配置在迁移前发生变化，未应用切换。')
+    if json.loads(before[RUNTIME / 'state.json']) != state:
+        raise ValueError('实例配置在迁移前发生变化，未应用切换。')
+    migration = plan(config_path.parent, settings, provider, default_model)
+    data = config_model(data.decode(), migration['model']).encode()
+    state = dict(state, activated=activating)
+    name = 'desktop-config.toml' if activating else 'original-config.toml'
+    state['candidate_sha256' if activating else 'original_sha256'] = digest(data)
+    updates = {}
+    for path, after in [(config_path, data), (RUNTIME / name, data),
+                        (RUNTIME / 'state.json', json.dumps(state).encode())]:
+        updates[path] = (before[path], after)
+    backup = apply(migration, RUNTIME, updates)
+    if migration['count']:
+        print(f"已迁移 {migration['count']} 个本机会话；默认模型：{migration['model']}；备份：{backup}")
+    return state
+
+
 ACTIONS = ('prepare', 'refresh-models', 'start', 'restart', 'stop', 'status',
-           'activate', 'rollback', 'uninstall', 'manage-url')
+           'activate', 'rollback', 'uninstall', 'manage-url', 'recover-sessions')
 
 
 def common_arguments(parser, defaults):
@@ -338,6 +368,8 @@ def common_arguments(parser, defaults):
     value = (lambda item: item) if defaults else (lambda item: argparse.SUPPRESS)
     parser.add_argument('--data-dir', type=Path, default=value(None),
                         help='Private data directory (or CODEX_HYBRID_DATA_DIR)')
+    parser.add_argument('--default-model', default=value(None),
+                        help='Target session model; otherwise use the first target model')
     parser.add_argument('--port', type=int, default=value(18891))
     parser.add_argument('--codex-home', type=Path,
                         default=value(Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))))
@@ -354,6 +386,8 @@ def build_parser():
     commands = parser.add_subparsers(dest='action', required=True)
     for action in ACTIONS:
         command = commands.add_parser(action, parents=[common])
+        if action == 'recover-sessions':
+            command.add_argument('--backup', type=Path, required=True)
         if action == 'manage-url':
             command.add_argument('--management-auth', choices=['on', 'off'],
                 help='Set management-link authentication on or off')
@@ -366,6 +400,12 @@ def main():
     if args.data_dir is not None or environment_value('DATA_DIR'):
         RUNTIME = data_directory(args.data_dir)
     check_legacy_installation(RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
+    if args.action == 'recover-sessions':
+        from desktop.session_migration import recover
+        if not args.backup.resolve().is_relative_to((RUNTIME / 'session-migrations').resolve()):
+            raise ValueError('请指定本实例 session-migrations 下的备份目录。')
+        recover(args.backup)
+        return print('已恢复中断前的配置和会话。')
     args.models_config = args.models_config or RUNTIME / 'models.yaml'
     if args.action == 'prepare':
         if not 1024 <= args.port <= 65535:
@@ -378,6 +418,8 @@ def main():
     settings = json.loads((RUNTIME / 'settings.json').read_text())
     uninstalling = args.action == 'uninstall'
     if uninstalling:
+        from desktop.session_migration import assert_stopped
+        assert_stopped(Path(state['config_path']).parent)
         stop_service(missing_ok=True)
         print('Codex Hybrid 本机服务已停止。')
         config_path = Path(state['config_path'])
@@ -400,12 +442,10 @@ def main():
                 if digest(original) != state['original_sha256']:
                     print('确认期间 Codex 配置再次变化，已取消卸载。请检查后重试。')
                     return
-                cleaned_bytes = cleaned.encode()
-                private_write(config_path, cleaned_bytes)
-                private_write(RUNTIME / 'original-config.toml', cleaned_bytes)
-                state['original_sha256'] = digest(cleaned_bytes)
-                private_write(RUNTIME / 'state.json', json.dumps(state))
+                migrate_routing(config_path, settings, state, cleaned.encode(), False, args.default_model, original)
                 print('已从 Codex 配置中移除本地 provider 表。')
+            else:
+                migrate_routing(config_path, settings, state, config_path.read_bytes(), False, args.default_model)
             print('Codex 配置已是安装前状态，无需回滚。')
             print('卸载完成。配置文件和凭据仍保留在数据目录中：' + str(RUNTIME))
             return
@@ -525,7 +565,8 @@ def main():
         expected = state['original_sha256'] if activating else state['candidate_sha256']
         target = state['candidate_sha256'] if activating else state['original_sha256']
         if current == target:
-            return print('Configuration already in the requested state')
+            migrate_routing(config_path, settings, state, current_data, activating, args.default_model, current_data)
+            return print('Configuration and sessions are in the requested state')
         if current != expected and activating:
             raise ValueError('Configuration changed since preparation; refusing to overwrite newer edits')
         if activating:
@@ -559,12 +600,8 @@ def main():
             recovery = RUNTIME / ('pre-rollback-' + secrets.token_hex(6) + '.toml')
             private_write(recovery, current_data)
             print('已在回滚前备份当前配置：' + str(recovery))
-        if uninstalling and removed_bridge:
-            private_write(RUNTIME / 'original-config.toml', data)
-            state['original_sha256'] = digest(data)
-        private_write(config_path, data)
-        state['activated'] = activating
-        private_write(RUNTIME / 'state.json', json.dumps(state))
+        # Hashes describe the generated default model as well as the routing keys.
+        migrate_routing(config_path, settings, state, data, activating, args.default_model, current_data)
         if uninstalling:
             print('已恢复安装前的 Codex 配置。请完全退出并重新打开 Codex。')
             print('卸载完成。配置文件和凭据仍保留在数据目录中：' + str(RUNTIME))
