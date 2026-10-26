@@ -225,8 +225,8 @@ class Management:
         if key not in settings['models']:
             # A one-off connection test may precede publishing a newly discovered CC model.
             settings = dict(settings, models=[*settings['models'], key])
-        body = {'model': key, 'stream': True, 'max_output_tokens': min(model['max_output_tokens'] or 32, 32),
-                'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': 'Reply exactly OK.'}]}]}
+        body = {'model': key, 'stream': True, 'max_output_tokens': min(model['max_output_tokens'] or 8192, 8192),
+                'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': 'Reply with exactly hello and nothing else.'}]}]}
         if not self.gateway.slots.acquire(blocking=False):
             raise ConfigError('CONCURRENCY_LIMIT')
         try:
@@ -238,6 +238,10 @@ class Management:
                     if not isinstance(events, list):
                         events = [] if events is None else [events]
                     for item in events:
+                        if item.get('type') == 'response.incomplete':
+                            reason = item.get('response', {}).get('incomplete_details', {}).get('reason')
+                            raise ConfigError('UPSTREAM_OUTPUT_BUDGET_EXHAUSTED' if reason == 'max_output_tokens'
+                                              else 'UPSTREAM_INCOMPLETE')
                         if item.get('type') == 'response.completed':
                             # Do not return arbitrary upstream content or errors to the browser.
                             return {'status': 'completed', 'model_key': key, 'model_id': model['model_id']}

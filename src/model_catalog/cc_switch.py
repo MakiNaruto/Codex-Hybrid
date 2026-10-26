@@ -12,13 +12,17 @@ except ImportError:
 from model_catalog.catalog import Catalog, ConfigError
 
 
+def configuration_digest(raw, meta):
+    return hashlib.sha256(json.dumps([raw, meta]).encode()).hexdigest()
+
+
 def connect(path):
     connection = sqlite3.connect(Path(path).expanduser().resolve().as_uri() + '?mode=ro', uri=True, timeout=3)
     connection.execute('PRAGMA query_only=ON')
     return connection
 
 
-def decode(app, raw):
+def decode(app, raw, meta=None):
     settings = json.loads(raw)
     if app != 'codex':
         raise ConfigError('CC_PROTOCOL_NOT_SUPPORTED')
@@ -58,6 +62,13 @@ def decode(app, raw):
                 value = fallback
             model[key_name] = value if type(value) is int and value > 0 else None
         model.setdefault('display_name', model['model_id'])
+    metadata = json.loads(meta) if isinstance(meta, str) else (meta or {})
+    api_format = metadata.get('apiFormat')
+    if api_format is not None:
+        protocol = {'openai_chat': 'openai_chat_completions',
+                    'openai_responses': 'openai_responses'}.get(api_format)
+        if protocol is None:
+            raise ConfigError('CC_PROTOCOL_NOT_SUPPORTED')
     return {'protocol': protocol, 'base_url': provider.get('base_url'), 'model_id': configured,
             'models': list(models.values()), 'key': key}
 
@@ -66,15 +77,15 @@ def inventory(path):
     result = []
     try:
         with closing(connect(path)) as db:
-            rows = db.execute("SELECT id,app_type,name,settings_config FROM providers WHERE app_type='codex' ORDER BY sort_index,created_at,id").fetchall()
+            rows = db.execute("SELECT id,app_type,name,settings_config,meta FROM providers WHERE app_type='codex' ORDER BY sort_index,created_at,id").fetchall()
     except sqlite3.Error:
         raise ConfigError('CC_DATABASE_UNAVAILABLE') from None
-    for identifier, app, name, raw in rows:
+    for identifier, app, name, raw, meta in rows:
         ref = app + '/' + identifier
         entry = {'ref': ref, 'provider_key': 'cc_' + hashlib.sha256(ref.encode()).hexdigest()[:16],
                  'name': name, 'app_type': app, 'supported': False, 'reason': None}
         try:
-            parsed = decode(app, raw)
+            parsed = decode(app, raw, meta)
             entry.update(protocol=parsed['protocol'], base_url=parsed['base_url'], model_id=parsed['model_id'], models=parsed['models'])
             # Reuse endpoint/model validation without exposing the credential.
             Catalog(Path(path).parent / 'cc-validation.yaml', data={'version': 1, 'providers': {
@@ -85,7 +96,7 @@ def inventory(path):
             entry['reason'] = error.code
         except Exception:
             entry['reason'] = 'CC_CONFIG_INVALID'
-        entry['_digest'] = hashlib.sha256(raw.encode()).hexdigest()
+        entry['_digest'] = configuration_digest(raw, meta)
         # Never show even an invalid URL to a client: it might contain a token query.
         if not entry['supported']:
             continue
@@ -97,12 +108,12 @@ def selected_key(path, entry):
     app, identifier = entry['ref'].split('/', 1)
     try:
         with closing(connect(path)) as db:
-            row = db.execute('SELECT settings_config FROM providers WHERE id=? AND app_type=?', (identifier, app)).fetchone()
+            row = db.execute('SELECT settings_config,meta FROM providers WHERE id=? AND app_type=?', (identifier, app)).fetchone()
     except sqlite3.Error:
         raise ConfigError('CC_DATABASE_UNAVAILABLE') from None
-    if not row or hashlib.sha256(row[0].encode()).hexdigest() != entry['_digest']:
+    if not row or configuration_digest(*row) != entry['_digest']:
         raise ConfigError('CC_CONFIG_CHANGED_RELOAD')
-    return decode(app, row[0])['key']
+    return decode(app, *row)['key']
 
 
 def make_catalog(path, default_model=None):

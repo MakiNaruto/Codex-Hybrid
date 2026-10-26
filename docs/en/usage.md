@@ -6,9 +6,9 @@
 
 ## Test a model connection
 
-Open the management page, save and enable a model, then click **Test connection**. The test sends `Reply exactly OK.` with an output budget of at most 32 tokens, or the model's lower configured limit.
+Open the management page, save and enable a model, then click **Test connection**. The test sends `Reply with exactly hello and nothing else.` with an output budget of at most 8192 tokens, or the model's lower configured limit.
 
-Success means this basic request completed. Full Codex sessions and tool calls need separate verification. The 32-token limit is an output budget, not a guarantee of total usage or cost.
+Success means this basic request completed. Full Codex sessions and tool calls need separate verification. The 8192-token limit is an output budget, not a guarantee of total usage or cost.
 
 ## Use a third-party model in a main chat
 
