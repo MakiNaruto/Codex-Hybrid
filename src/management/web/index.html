@@ -22,14 +22,17 @@
   </section>
   <div class="settings-grid">
     <section aria-labelledby="routing-heading">
-      <div class="section-title"><h2 id="routing-heading">Codex 接入</h2><button type="button" class="help-trigger" aria-label="Codex 接入说明" aria-expanded="false" data-help="开启后通过 Codex Hybrid 调用模型；关闭后恢复接入前的路由与模型列表配置。切换前会展示确认提示。管理服务保持运行，Codex 需手动完全退出并重新打开。">?</button></div>
-      <div class="routing-control"><div><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><p class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
-      <label for="routing-default-model">切换后的会话默认模型（可选）</label>
-      <input id="routing-default-model" type="text" placeholder="填写模型 key；留空使用预设默认或列表首项" autocomplete="off">
-      <p class="hint">会迁移全部本机会话（含归档）。建议结束任务并在独立浏览器操作；开启和关闭接入时，确认影响后均可继续，不因进程检测结果阻止。</p>
+      <h2 id="routing-heading">Codex 接入</h2>
+      <div class="routing-control"><div><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><p id="routing-description" class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
       <p id="routing-status" class="routing-status" role="status"></p>
-      <p id="activity-status" class="hint" role="status">活动检测：等待网关状态 · Codex 任务状态未知</p>
-      <p class="hint section-footnote">切换仅保存配置。请手动完全退出并重新打开 Codex；关闭接入后请选择官方模型。</p>
+      <details class="routing-details"><summary>查看详情与高级选项</summary>
+        <p id="activity-status" class="hint" role="status">正在读取活动状态…</p>
+        <label for="routing-default-model">切换后的会话默认模型（可选）</label>
+        <input id="routing-default-model" type="text" placeholder="模型 key；留空使用默认模型" autocomplete="off">
+        <p class="hint">切换会备份并迁移本机会话（含归档）的线路和模型。进程检测仅供参考，确认后仍可继续。</p>
+        <p class="hint">切换后请重启需要使用新配置的 Codex；关闭接入后请选择官方模型。本地网关保持运行。</p>
+        <p class="hint">“我已重启”仅记录你的确认，无法验证客户端是否已加载新配置。</p>
+      </details>
     </section>
     <section class="source" aria-labelledby="source-heading">
       <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>
@@ -52,6 +55,16 @@
     <details><summary>最近错误摘要</summary><ul id="diagnostic-errors"><li>尚未读取</li></ul></details>
   </section>
 </main>
+<dialog id="routing-dialog" aria-labelledby="routing-dialog-title" aria-describedby="routing-dialog-description">
+  <form method="dialog">
+    <h2 id="routing-dialog-title"></h2>
+    <p id="routing-dialog-description"></p>
+    <p id="routing-dialog-warning" class="routing-warning" hidden></p>
+    <p class="hint">切换后请重启需要使用新配置的 Codex。</p>
+    <details class="routing-details"><summary>查看影响详情</summary><p id="routing-dialog-details" class="hint"></p></details>
+    <div class="dialog-actions"><button type="submit" value="cancel" class="secondary" autofocus>取消</button><button id="routing-dialog-confirm" type="submit" value="confirm">确认</button></div>
+  </form>
+</dialog>
 <div id="notifications" class="notifications" aria-label="操作提示"><div id="message" role="status" aria-live="polite" aria-atomic="true"></div><button id="dismiss-message" type="button" class="dismiss-message" aria-label="关闭提示" hidden>×</button></div>
 </body>
 </html>

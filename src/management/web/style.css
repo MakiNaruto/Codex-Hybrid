@@ -151,3 +151,14 @@ button.help-trigger:hover, button.help-trigger[aria-expanded="true"] { backgroun
 @media (max-width: 720px) { main { padding: 24px 18px 90px; } header { margin-bottom: 28px; } .page-heading { margin-top: 28px; } .page-label { display: none; } .settings-grid { grid-template-columns: 1fr; gap: 14px; margin-bottom: 28px; } section { padding: 20px; border-radius: 14px; } .section-head { gap: 16px; } .toolbar { width: 100%; } .provider-layout { grid-template-columns: 1fr; } .provider-sidebar { border-right: 0; border-bottom: 1px solid var(--border); border-radius: 16px 16px 0 0; } .fields { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; } .model-editor { padding: 16px; } .notifications { bottom: 18px; } .catalog-notes { gap: 6px 8px; } #sync-status { flex-basis: 100%; } }
 @media (max-width: 420px) { .fields { grid-template-columns: 1fr; } .mode-buttons button { padding: 14px 10px; } .toolbar button { padding: 9px 11px; } .path-control { flex-wrap: wrap; } .provider-sidebar,.provider-content { padding: 18px; } .provider-footer { align-items: flex-start; } .model-card-head { align-items: flex-start; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+.routing-details { margin-top: 18px; font-size: 12px; }
+.routing-details summary { cursor: pointer; color: var(--accent); padding: 8px 0; }
+.routing-details[open] summary { margin-bottom: 8px; }
+#routing-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; padding: 26px; border: 1px solid var(--border); border-radius: 18px; color: inherit; background: #fffefa; box-shadow: 0 24px 80px #0003; }
+#routing-dialog::backdrop { background: #20282066; }
+#routing-dialog h2 { font-size: 20px; }
+#routing-dialog-details { white-space: pre-line; }
+.routing-warning { padding: 12px 14px; border-radius: 10px; background: #fff5df; color: #77561e; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+body:has(#routing-dialog[open]) { overflow: hidden; }

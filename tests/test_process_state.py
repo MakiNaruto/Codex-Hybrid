@@ -10,6 +10,29 @@ from desktop.process_state import codex_process_state
 
 
 class ProcessStateTests(unittest.TestCase):
+    def test_client_sources_and_unidentified_app_server(self):
+        cases = [
+            (['/Applications/Codex.app/Contents/Resources/codex', 'app-server'], 'desktop'),
+            (['/home/user/.vscode/extensions/openai.chatgpt-1/bin/codex', 'app-server'], 'vscode'),
+            (['/usr/local/bin/codex'], 'cli'),
+            (['/usr/local/bin/codex', 'app-server'], 'unknown'),
+        ]
+        for command, expected in cases:
+            with self.subTest(expected=expected):
+                process = self.process('codex')
+                process.info['cmdline'] = command
+                with patch('psutil.process_iter', return_value=[process]):
+                    result = codex_process_state(Path.home()/'.codex')
+                self.assertEqual(result['clients'][expected], 1)
+                self.assertEqual(sum(result['clients'].values()), 1)
+
+    def test_parent_desktop_identifies_shared_server(self):
+        process = self.process('codex')
+        process.info['cmdline'] = ['codex', 'app-server']
+        process.parents = lambda: [SimpleNamespace(name=lambda: 'Codex', cmdline=lambda: ['/Applications/Codex.app/Contents/MacOS/Codex'])]
+        with patch('psutil.process_iter', return_value=[process]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
+
     def process(self, name, home=None, status='sleeping'):
         return SimpleNamespace(pid=-1, info={'name': name, 'status': status, 'cmdline': [name]},
                                environ=lambda: {'CODEX_HOME': str(home)} if home else {})

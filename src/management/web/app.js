@@ -238,7 +238,7 @@ function renderReadiness(){
     const item=el('li');item.append(el('strong',title),document.createTextNode(text));steps.append(item);
   }
   $('reload-notice').hidden=!state.reload?.required;
-  $('reload-message').textContent='接入配置或模型目录已变化，请手动完全退出并重新打开 Codex。确认按钮仅记录你的操作，页面无法验证 Codex 是否已重新加载。';
+  $('reload-message').textContent='配置已更新，请重启需要使用新配置的 Codex。';
   $('acknowledge-reload').disabled=!!state.catalog_pending;
 }
 $('acknowledge-reload').onclick=()=>action(async()=>{
@@ -291,10 +291,31 @@ function renderRouting(){
   toggle.setAttribute('aria-checked',String(state?.routing_mode==='project'));
   toggle.disabled=routingSaving||!['project','openai'].includes(state?.routing_mode);
   toggle.setAttribute('aria-busy',String(routingSaving));
-  $('routing-status').textContent=routingSaving?'正在切换接入配置…':routingError||(
-    state?.routing_mode==='project'?'接入配置已开启'+(state.reload?.required?' · 需手动重启 Codex 生效':' · 手动重启已确认，仍需在 Codex 验证'):
-    state?.routing_mode==='openai'?'接入配置已关闭 · 使用原生路由'+(state.reload?.required?' · 需手动重启 Codex':''):
-    '无法切换：Codex 配置不可用，或使用了其他厂商／配置档案');
+  $('routing-description').textContent=state?.routing_mode==='project'?'新启动的 Codex 将使用混合路由。':'开启后可通过 Codex Hybrid 调用第三方模型。';
+  $('routing-status').textContent=routingSaving?'正在准备或切换…':routingError||(
+    state?.routing_mode==='project'?'已开启':state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置');
+}
+function confirmRouting(mode,preview){
+  const dialog=$('routing-dialog'),verb=mode==='project'?'开启':'关闭';
+  $('routing-dialog-title').textContent=verb+' Codex 接入？';
+  $('routing-dialog-description').textContent=(mode==='project'?'将启用混合路由':'将恢复接入前的路由配置')+'，并备份、更新本地会话的线路和模型。';
+  const activity=preview.activity,process=preview.codex_process;
+  const names={desktop:'桌面端',vscode:'VS Code 插件',cli:'CLI',unknown:'来源未知的客户端'};
+  const clients=Object.entries(process?.clients||{}).filter(([,count])=>count>0).map(([kind])=>names[kind]||names.unknown);
+  const warnings=[];
+  if(activity?.active_requests>0)warnings.push('网关有 '+activity.active_requests+' 个未结束请求。');
+  if(process?.status==='running')warnings.push('检测到'+(clients.length?clients.join('、'):'Codex 客户端')+'，建议任务结束后操作。');
+  else if(process?.status!=='not_detected')warnings.push('无法完整检测客户端状态，请自行确认当前任务。');
+  $('routing-dialog-warning').hidden=!warnings.length;
+  $('routing-dialog-warning').textContent=warnings.join(' ');
+  $('routing-dialog-details').textContent=[...(preview.changes||[]),activityText(activity),processText(process),'切换可能影响请求、工具调用或未保存状态；已打开的客户端可能继续使用旧配置。本地网关保持运行。',mode==='openai'?'关闭后请选择官方模型。':''].filter(Boolean).join('\n\n');
+  dialog.querySelector('details').open=false;
+  $('routing-dialog-confirm').textContent='确认'+verb;
+  dialog.returnValue='cancel';
+  return new Promise(resolve=>{
+    dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});
+    dialog.showModal();
+  });
 }
 $('routing-toggle').onclick=async()=>{
   if(routingSaving)return;
@@ -303,10 +324,7 @@ $('routing-toggle').onclick=async()=>{
   try{
     const default_model=$('routing-default-model').value.trim()||null;
     const preview=await api('routing/preview',{mode,default_model});
-    if(!confirm((mode==='project'?'开启':'关闭')+' Codex 接入？\n\n'+preview.changes.join('\n')+
-      '\n\n'+activityText(preview.activity)+'\n'+processText(preview.codex_process)+
-      (mode==='openai'?'\n\n关闭将恢复原生路由，并备份、迁移本机会话的线路和模型。正在执行的请求、工具调用或未保存状态可能受影响；已打开的 Codex 窗口可能仍使用旧配置。建议先结束任务并退出，但即使检测到运行或状态未知，你也可以确认继续关闭。本地网关保持运行，关闭后请手动重启 Codex。':'\n\n开启将写入接入配置，并备份、迁移本机会话的线路和模型。正在执行的请求、工具调用或未保存状态可能受影响；已打开的 Codex 窗口可能仍使用旧配置。建议先结束任务并退出，但即使检测到运行或状态未知，你也可以确认继续开启。本地网关保持运行，开启后请手动重启 Codex。')+
-      (mode==='openai'?'\n关闭后请选择官方模型。':'')+'\n\n确定后保存配置，取消则保持原状态。'))return;
+    if(!await confirmRouting(mode,preview))return;
     const saved=await api('routing',{mode,revision:preview.revision,default_model,confirm_activity:true});
     state.routing_mode=saved.routing_mode;
     message('接入配置和会话已迁移，可以重新打开 Codex。备份：'+(saved.session_backup||'无需迁移'));
@@ -327,7 +345,10 @@ let syncTicks=0;
 setInterval(()=>{syncTicks++;if(!document.hidden&&(state?.mode==='cc_switch'||syncTicks%5===0))action(()=>refresh(true));},1000);
 
 function processText(process){
-  return process?.status==='running'?'Codex 进程检测：发现 '+process.process_count+' 个相关进程（不代表正在执行任务）':process?.status==='not_detected'?'Codex 进程检测：未发现相关进程（不保证已退出）':'Codex 进程检测：状态未知，无法完整读取进程信息';
+  const summary=process?.status==='running'?'Codex 进程检测：发现 '+process.process_count+' 个相关进程（不代表正在执行任务）':process?.status==='not_detected'?'Codex 进程检测：未发现相关进程（不保证已退出）':'Codex 进程检测：状态未知，无法完整读取进程信息';
+  const names={desktop:'桌面端',vscode:'VS Code 插件',cli:'CLI',unknown:'来源未知'};
+  const clients=Object.entries(process?.clients||{}).filter(([,count])=>count>0).map(([kind,count])=>(names[kind]||'来源未知')+' '+count+' 个进程');
+  return summary+(clients.length?'\n来源参考：'+clients.join('；')+'。基于进程路径和父进程推测，数量不等于客户端实例数。':'')+'\n进程检测仅供排查，确认后仍可继续开启或关闭。';
 }
 function activityText(activity){
   const gateway=activity?.gateway_status==='busy'?'检测到忙碌：网关有 '+activity.active_requests+' 个未结束请求':
