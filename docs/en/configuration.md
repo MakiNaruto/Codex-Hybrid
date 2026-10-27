@@ -40,6 +40,14 @@ The wizard generates `setup-models.yaml` and `provider.env`, then asks whether t
 
 ## CC Switch
 
+Each Codex model entry binds to the CC Switch provider record ID and exact model ID. Its `slug` is the original `provider-record-id/model-id`, without hashing, escaping, or splitting on slashes. The binding separately stores `provider_record_id`, `app_type`, and `model_id`. Display names are labels only. The imported catalog has no default model: calls require an explicit selection, and a model list can be imported without a configured default. CC Switch's `config.model`, when present, is included as an exact model entry.
+
+The gateway checks CC Switch every second, even with the management page closed. The directory, complete bindings, and source revision are stored together in `settings.json` under `cc_snapshot`; the client directory file is generated from that snapshot. Each sync replaces the entire CC directory, removes deleted entries and bindings, and preserves official models. Read or validation failures retain the previous snapshot and retry without publishing partial results. Deleting all supported provider records clears external models.
+
+Renaming a provider or model, or changing the CC Switch default model, does not change an existing entry's identity. Addresses and credentials are reread for each request. Deleted models or provider records fail instead of falling back to another model. Bindings do not store raw credential-bearing configuration.
+
+After upgrading and restarting the gateway, the new directory is published automatically. Legacy hashed `cc_…/default` and `cc_…/model_…` selections are no longer accepted. Restart Codex and reselect models in chats using old identifiers. Subsequent directory changes synchronize automatically, but a running Codex client may cache its old directory; management still prompts for a manual restart. Synchronization does not confirm client reload.
+
 Choose **2 = Local CC Switch**, confirm the database path (default `~/.cc-switch/cc-switch.db`), and confirm activation.
 
 The bridge only reads third-party static API configuration in the OpenAI / Codex section. It does not write the database or change another tool's selected provider. Edit models and keys in CC Switch. A source failure does not trigger fallback to another key.

@@ -1,4 +1,5 @@
 import json
+from contextlib import closing
 import sqlite3
 import sys
 from pathlib import Path
@@ -77,12 +78,13 @@ class WebWorkflowTests(unittest.TestCase):
                 'models': {'test': {'model_id': 'example'}}}
         self.manager.save_provider('example', spec, 'private-key')
         database = self.root/'cc.db'
-        with sqlite3.connect(database) as db:
+        with closing(sqlite3.connect(database)) as db:
             db.execute('CREATE TABLE providers (id, app_type, name, settings_config, meta, sort_index, created_at)')
             raw = json.dumps({'auth': {'OPENAI_API_KEY': 'cc-test-key'}, 'config': {
                 'model_provider': 'custom', 'model': 'cc-model', 'model_providers': {
                     'custom': {'base_url': 'https://example.invalid/v1', 'wire_api': 'responses'}}}})
             db.execute('INSERT INTO providers VALUES (?,?,?,?,?,0,0)', ('cc', 'codex', 'CC demo', raw, '{}'))
+            db.commit()
         before = database.read_bytes()
         self.manager.set_source('cc_switch', str(database))
         self.assertEqual(self.manager.view()['mode'], 'cc_switch')

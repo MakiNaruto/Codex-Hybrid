@@ -42,7 +42,9 @@ def expose_spawn_catalog(original, settings):
     for item in original.get('input', []):
         if item.get('type') in {'additional_tools', 'tool_search_output'}:
             visit(item.get('tools', []))
-    catalog = json.loads(Path(settings['catalog']).read_text())['models']
+    catalog = settings.get('cc_snapshot', {}).get('models')
+    if catalog is None:
+        catalog = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']
     allowed = set(settings['models'])
     models = [model for model in catalog
               if model.get('visibility') == 'list' and model['slug'] in allowed]

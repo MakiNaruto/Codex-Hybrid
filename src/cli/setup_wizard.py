@@ -99,7 +99,7 @@ def main():
     service_started = start_now == 'y'
     if service_started:
         run('start')
-    settings = json.loads((runtime / 'settings.json').read_text())
+    settings = json.loads((runtime / 'settings.json').read_text(encoding='utf-8'))
     token = settings.get('management_token') if settings.get('management_auth_required', False) else ''
     print('\n配置完成')
     print(f'  数据目录：{runtime}')

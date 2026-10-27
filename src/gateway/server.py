@@ -24,7 +24,7 @@ from gateway.transport import FreshProxyOpener
 from adapters.responses import (ResponsesAdapter, UnregisteredToolError,
                                  plaintext_collaboration_schema, NativeCoordinationAdapter)
 from model_catalog.sources import load_source
-from model_catalog.catalog import resolve_api_key
+from model_catalog.catalog import ConfigError, resolve_api_key
 from adapters.chat import ChatAdapter
 from adapters.request_compat import normalize_history, external_context, upstream_error
 from model_catalog.agent_catalog import expose_spawn_catalog
@@ -118,7 +118,7 @@ def route(body, headers, settings, deepseek=None):
     """Build each request with fresh, vendor-specific headers and adapter state."""
     model = body.get('model')
     if model not in settings['models']:
-        raise ValueError('MODEL_NOT_ALLOWED')
+        raise ConfigError('MODEL_NOT_ALLOWED')
     auth = headers.get('Authorization', '')
     if not auth.startswith('Bearer ') or len(auth) < 16:
         raise ValueError('SUBSCRIPTION_AUTH_REQUIRED')
@@ -127,6 +127,10 @@ def route(body, headers, settings, deepseek=None):
     body = expose_spawn_catalog(body, settings)
     if 'source' in settings and model not in settings['official_models']:
         catalog = load_source(settings)  # Fresh address, model and credentials every request.
+        if settings['source']['type'] == 'cc-switch':
+            binding = settings.get('cc_snapshot', {}).get('bindings', {}).get(model)
+            if binding is None or catalog.bindings.get(model) != binding:
+                raise ConfigError('MODEL_NOT_CONFIGURED')
         selected, provider = catalog.select(model)
         coordination = NativeCoordinationAdapter(
             set(settings['models']) - set(settings['official_models']))
@@ -327,7 +331,11 @@ class Gateway:
                 if not self.authorized():
                     return self.reply(401, {'error': {'message': 'LOCAL_AUTH_REQUIRED'}})
                 if self.path.split('?', 1)[0] == '/models':
-                    return self.reply(200, json.loads(Path(owner.settings['catalog']).read_text()))
+                    settings = owner.settings
+                    models = settings.get('cc_snapshot', {}).get('models')
+                    directory = ({'models': models} if models is not None else
+                                 json.loads(Path(settings['catalog']).read_text(encoding='utf-8')))
+                    return self.reply(200, directory)
                 self.reply(404, {'error': {'message': 'UNSUPPORTED_ENDPOINT'}})
 
             def do_POST(self):
@@ -564,12 +572,18 @@ def main():
     import sys
     runtime_log = RuntimeLog(args.settings.resolve().parent)
     sys.stderr = runtime_log.stderr
-    settings = json.loads(args.settings.read_text())
+    settings = json.loads(args.settings.read_text(encoding='utf-8'))
     gateway = Gateway(settings, args.settings)
     gateway.record = runtime_log.emit
-    with Server(('127.0.0.1', settings['port']), gateway.handler()) as server:
-        runtime_log.emit({'status': 'listening', 'port': settings['port'], 'time': int(time.time())})
-        server.serve_forever()
+    if gateway.manager is not None:
+        gateway.manager.start_sync()
+    try:
+        with Server(('127.0.0.1', settings['port']), gateway.handler()) as server:
+            runtime_log.emit({'status': 'listening', 'port': settings['port'], 'time': int(time.time())})
+            server.serve_forever()
+    finally:
+        if gateway.manager is not None:
+            gateway.manager.stop_sync()
 
 
 if __name__ == '__main__':

@@ -69,11 +69,11 @@ def decode(app, raw, meta=None):
                     'openai_responses': 'openai_responses'}.get(api_format)
         if protocol is None:
             raise ConfigError('CC_PROTOCOL_NOT_SUPPORTED')
-    return {'protocol': protocol, 'base_url': provider.get('base_url'), 'model_id': configured,
+    return {'protocol': protocol, 'base_url': provider.get('base_url'),
             'models': list(models.values()), 'key': key}
 
 
-def inventory(path):
+def inventory(path, *, strict=False):
     result = []
     try:
         with closing(connect(path)) as db:
@@ -82,19 +82,29 @@ def inventory(path):
         raise ConfigError('CC_DATABASE_UNAVAILABLE') from None
     for identifier, app, name, raw, meta in rows:
         ref = app + '/' + identifier
-        entry = {'ref': ref, 'provider_key': 'cc_' + hashlib.sha256(ref.encode()).hexdigest()[:16],
+        entry = {'ref': ref, 'provider_record_id': identifier, 'provider_key': identifier,
                  'name': name, 'app_type': app, 'supported': False, 'reason': None}
         try:
             parsed = decode(app, raw, meta)
-            entry.update(protocol=parsed['protocol'], base_url=parsed['base_url'], model_id=parsed['model_id'], models=parsed['models'])
+            if not parsed['models']:
+                continue
+            entry.update(protocol=parsed['protocol'], base_url=parsed['base_url'], models=parsed['models'])
             # Reuse endpoint/model validation without exposing the credential.
             Catalog(Path(path).parent / 'cc-validation.yaml', data={'version': 1, 'providers': {
                 'check': {'protocol': parsed['protocol'], 'base_url': parsed['base_url'],
-                    'credentials': {'api_key_env': 'UNUSED'}, 'models': {'default': {'model_id': parsed['model_id']}}}}})
+                    'credentials': {'api_key_env': 'UNUSED'}, 'models': {
+                        model['model_id']: {'model_id': model['model_id']}
+                        for model in parsed['models']}}}}, source_identifiers=True)
             entry['supported'] = True
         except ConfigError as error:
+            if strict and error.code not in {
+                    'CC_OFFICIAL_LOGIN_NOT_SUPPORTED', 'CC_CUSTOM_HEADERS_NOT_SUPPORTED',
+                    'CC_PROTOCOL_NOT_SUPPORTED'}:
+                raise
             entry['reason'] = error.code
         except Exception:
+            if strict:
+                raise ConfigError('CC_CONFIG_INVALID') from None
             entry['reason'] = 'CC_CONFIG_INVALID'
         entry['_digest'] = configuration_digest(raw, meta)
         # Never show even an invalid URL to a client: it might contain a token query.
@@ -116,8 +126,8 @@ def selected_key(path, entry):
     return decode(app, *row)['key']
 
 
-def make_catalog(path, default_model=None):
-    entries = inventory(path)
+def make_catalog(path):
+    entries = inventory(path, strict=True)
     providers, refs = {}, {}
     for entry in entries:
         if not entry['supported']:
@@ -125,8 +135,7 @@ def make_catalog(path, default_model=None):
         key = entry['provider_key']
         models = {}
         for source_model in entry['models']:
-            alias = ('default' if source_model['model_id']==entry['model_id'] else
-                     'model_'+hashlib.sha256(source_model['model_id'].encode()).hexdigest()[:16])
+            alias = source_model['model_id']
             models[alias] = {'model_id': source_model['model_id'],
                 'display_name': entry['name']+' · '+source_model['display_name'],
                 'max_output_tokens': source_model['max_output_tokens'], 'enabled': True}
@@ -135,12 +144,15 @@ def make_catalog(path, default_model=None):
         providers[key] = {'protocol': entry['protocol'], 'base_url': entry['base_url'],
                          'credentials': {'api_key_env': 'CC_READONLY_KEY'}, 'models': models}
         refs[key] = entry
-    if not providers:
-        raise ConfigError('CC_NO_SUPPORTED_PROVIDERS')
     data = {'version': 1, 'providers': providers}
-    if default_model in {p+'/'+alias for p,spec in providers.items() for alias in spec['models']}:
-        data['default_model'] = default_model
-    catalog = Catalog(Path(path).parent / 'cc-readonly.yaml', data=data)
+    catalog = Catalog(Path(path).parent / 'cc-readonly.yaml', data=data, source_identifiers=True)
+    catalog.bindings = {
+        slug: {'provider_record_id': model['provider'], 'app_type': refs[model['provider']]['app_type'],
+               'model_id': model['model_id']}
+        for slug, model in catalog.models.items()}
+    catalog.inventory = entries
+    catalog.source_revision = configuration_digest(
+        str(Path(path).expanduser().resolve()), [(entry['ref'], entry['name'], entry['_digest']) for entry in entries])
     for key, provider in catalog.providers.items():
         entry = refs[key]
         provider['key_resolver'] = lambda entry=entry: selected_key(path, entry)

@@ -13,7 +13,7 @@ import urllib.request
 
 import yaml
 
-from model_catalog.sources import Catalog, ConfigError, load_source, merged_catalog
+from model_catalog.sources import Catalog, ConfigError, load_source, merged_catalog, update_cc_snapshot
 from model_catalog.catalog import identifier, read_yaml, string
 
 
@@ -38,6 +38,54 @@ class Management:
         self.sse_events = sse_events
         self.lock = threading.RLock()
         self.revision_secret = secrets.token_bytes(32)
+        self.sync_error = None
+        self.sync_stop = threading.Event()
+        self.sync_thread = None
+
+    def sync_cc(self):
+        """Replace the entire CC snapshot; a failed read never removes old entries."""
+        with self.lock:
+            settings = self.gateway.settings
+            if settings['source']['type'] != 'cc-switch':
+                self.sync_error = None
+                return False
+            try:
+                external = load_source(settings)
+                snapshot = settings.get('cc_snapshot', {})
+                try:
+                    directory = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    directory = {}
+                if (snapshot.get('revision') == external.source_revision
+                        and snapshot.get('bindings') == external.bindings
+                        and settings['models'] == [model['slug'] for model in snapshot.get('models', [])]
+                        and directory.get('models') == snapshot.get('models')):
+                    self.sync_error = None
+                    return False
+                self.publish(catalog=external)
+                self.sync_error = None
+                return True
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                self.sync_error = error.code if isinstance(error, ConfigError) else 'CC_SYNC_FAILED'
+                return False
+
+    def start_sync(self, interval=1):
+        if self.sync_thread is not None and self.sync_thread.is_alive():
+            return
+        self.sync_stop.clear()
+        self.sync_cc()
+
+        def watch():
+            while not self.sync_stop.wait(interval):
+                self.sync_cc()
+
+        self.sync_thread = threading.Thread(target=watch, name='cc-switch-sync', daemon=True)
+        self.sync_thread.start()
+
+    def stop_sync(self):
+        self.sync_stop.set()
+        if self.sync_thread is not None:
+            self.sync_thread.join(timeout=5)
 
     def routing_state(self):
         try:
@@ -127,7 +175,10 @@ class Management:
 
     def official(self):
         settings = self.gateway.settings
-        return [model for model in json.loads(Path(settings['catalog']).read_text())['models']
+        models = settings.get('cc_snapshot', {}).get('models')
+        if models is None:
+            models = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']
+        return [model for model in models
                 if model['slug'] in settings['official_models']]
 
     def publish(self, source=None, catalog=None, extra=None):
@@ -140,6 +191,7 @@ class Management:
             external = catalog if catalog is not None else load_source(settings)
             merged = merged_catalog(self.official(), external)
             settings['models'] = [m['slug'] for m in merged['models']]
+            update_cc_snapshot(settings, merged, external)
             keys = [key for key, value in external.models.items() if value['enabled']]
             if keys:
                 settings['deepseek_model'] = keys[0]  # Historical smoke alias only.
@@ -147,20 +199,29 @@ class Management:
                 settings.pop('deepseek_model', None)
             from management.reload_state import remember_before_change
             remember_before_change(self)
-            private_write(settings['catalog'], json.dumps(merged, ensure_ascii=False))
-            private_write(self.settings_path, json.dumps(settings, ensure_ascii=False))
+            catalog_path = Path(settings['catalog'])
+            previous_catalog = (catalog_path.read_text(encoding='utf-8') if catalog_path.exists()
+                                else json.dumps({'models': self.official()}, ensure_ascii=False))
+            private_write(catalog_path, json.dumps(merged, ensure_ascii=False))
+            try:
+                # The directory and its explicit bindings share one durable snapshot.
+                private_write(self.settings_path, json.dumps(settings, ensure_ascii=False))
+            except OSError:
+                private_write(catalog_path, previous_catalog)
+                raise
             self.gateway.settings = settings  # Replace one snapshot; never mutate an in-flight request.
             return {'saved': True, 'restart_client_for_model_list': True}
 
     def view(self):
         with self.lock:
+            self.sync_cc()
             settings = self.gateway.settings
             source = settings['source']
             cc_path = settings.get('cc_db_path', str(Path.home()/'.cc-switch/cc-switch.db'))
             mode = 'cc_switch' if source['type'] == 'cc-switch' else 'independent'
             result = {'routing_mode': self.routing_state(), 'mode': mode, 'cc_db_path': source['path'] if mode == 'cc_switch' else cc_path,
                       'config': {'version': 1, 'providers': {}}, 'inventory': [], 'models': [],
-                      'source_error': None, 'sync_revision': None, 'catalog_pending': False,
+                      'source_error': self.sync_error, 'sync_revision': None, 'catalog_pending': False,
                       'native_routing': True, 'official_model_count': len(settings['official_models']),
                       'credential_status': {}}
             from management.reload_state import status
@@ -180,15 +241,14 @@ class Management:
                     for provider in result['config']['providers'].values():
                         provider['credentials'].pop('api_key', None)
                 else:
-                    from model_catalog.cc_switch import inventory
-                    entries = inventory(source['path'])
+                    entries = catalog.inventory
                     result['inventory'] = [{k: v for k, v in entry.items() if not k.startswith('_')}
                                            for entry in entries]
                     versions = [(e['ref'], e['_digest']) for e in entries]
                     result['sync_revision'] = hmac.new(self.revision_secret,
                         json.dumps(versions).encode(), hashlib.sha256).hexdigest()
                 result['catalog_pending'] = merged_catalog(self.official(), catalog) != json.loads(
-                    Path(settings['catalog']).read_text())
+                    Path(settings['catalog']).read_text(encoding='utf-8'))
             except Exception as error:
                 result['source_error'] = error.code if isinstance(error, ConfigError) else 'SOURCE_UNAVAILABLE'
             return result
@@ -266,6 +326,10 @@ class Management:
         if key in settings['official_models']:
             raise ConfigError('EXTERNAL_MODEL_REQUIRED')
         catalog = load_source(settings)
+        if settings['source']['type'] == 'cc-switch':
+            settings = copy.deepcopy(settings)
+            # Test the selected live configuration without publishing a partial directory.
+            settings['cc_snapshot'] = {'bindings': catalog.bindings}
         model, _ = catalog.select(key)
         if key not in settings['models']:
             # A one-off connection test may precede publishing a newly discovered CC model.

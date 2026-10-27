@@ -16,7 +16,7 @@ import time
 import tomllib
 import urllib.request
 
-from model_catalog.sources import load_source, merged_catalog
+from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
 
 from desktop.paths import ROOT, RUNTIME, default_models_path, data_directory, environment_value, check_legacy_installation
 
@@ -152,7 +152,7 @@ def candidate_config(original, settings):
 
 
 def official_cache(codex_home, settings=None):
-    models = json.loads((codex_home / 'models_cache.json').read_text())['models']
+    models = json.loads((codex_home / 'models_cache.json').read_text(encoding='utf-8'))['models']
     if settings:
         external = set(settings['models']) - set(settings['official_models'])
         models = [model for model in models if model['slug'] not in external]
@@ -178,6 +178,7 @@ def prepare(port, codex_home, source=None):
     merged = merged_catalog(models, external)
     external_keys = [key for key, value in external.models.items() if value['enabled']]
     settings.update(models=[m['slug'] for m in merged['models']])
+    update_cc_snapshot(settings, merged, external)
     if external_keys:
         settings['deepseek_model'] = external_keys[0]
     candidate = candidate_config(original.decode(), settings).encode()
@@ -415,7 +416,7 @@ def main():
     if not (RUNTIME / 'state.json').is_file():
         raise ValueError(f'No initialized router in {RUNTIME}; run install or prepare with the same --data-dir')
     state = json.loads((RUNTIME / 'state.json').read_text())
-    settings = json.loads((RUNTIME / 'settings.json').read_text())
+    settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
     uninstalling = args.action == 'uninstall'
     if uninstalling:
         from desktop.session_migration import assert_stopped
@@ -464,7 +465,7 @@ def main():
             private_write(RUNTIME / 'settings.json', json.dumps(settings))
             start_service(settings)
             # Gateway startup may have generated the management token.
-            settings = json.loads((RUNTIME / 'settings.json').read_text())
+            settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
         health(settings)
         token = settings.get('management_token') if settings.get('management_auth_required', False) else ''
         if settings.get('management_auth_required', False) and not token:
@@ -481,6 +482,7 @@ def main():
         merged = merged_catalog(original_models, external)
         settings['official_models'] = [m['slug'] for m in original_models]
         settings['models'] = [m['slug'] for m in merged['models']]
+        update_cc_snapshot(settings, merged, external)
         keys = [key for key, model in external.models.items() if model['enabled']]
         if keys:
             settings['deepseek_model'] = keys[0]
@@ -509,7 +511,7 @@ def main():
         catalog_models = []
         if catalog_path.is_file():
             try:
-                catalog_models = json.loads(catalog_path.read_text()).get('models', [])
+                catalog_models = json.loads(catalog_path.read_text(encoding='utf-8')).get('models', [])
             except (OSError, ValueError, TypeError):
                 catalog_models = []
         # Show human-facing model names while retaining stable keys for selection.

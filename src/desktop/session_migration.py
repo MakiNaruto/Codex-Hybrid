@@ -53,7 +53,7 @@ def select_model(home, settings, provider, requested=None):
     models = []
     catalog_path = Path(settings.get('catalog', Path(home) / 'models_cache.json'))
     if catalog_path.is_file():
-        catalog = json.loads(catalog_path.read_text())['models']
+        catalog = json.loads(catalog_path.read_text(encoding='utf-8'))['models']
         allowed = settings.get('official_models') if provider == 'openai' else settings.get('models')
         models = [m['slug'] for m in catalog if m.get('visibility') != 'hide'
                   and (allowed is None or m['slug'] in allowed)]

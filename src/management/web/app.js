@@ -8,8 +8,24 @@ let routingError='';
 const $ = id => document.getElementById(id);
 function el(tag, text, cls) { const node=document.createElement(tag); if(text!==undefined)node.textContent=text; if(cls)node.className=cls; return node; }
 async function copyText(value){
-  try{await navigator.clipboard.writeText(value);message('已复制到剪贴板。');}
-  catch(error){message('无法访问剪贴板，请手动复制：'+value,true);}
+  try{
+    await navigator.clipboard.writeText(value);
+    message('已复制到剪贴板。');return;
+  }catch(error){/* Some browsers deny or do not expose the Clipboard API. */}
+  const previousFocus=document.activeElement;
+  const input=el('textarea');input.value=value;input.readOnly=true;input.className='clipboard-fallback';
+  document.body.append(input);
+  let copied=false;
+  try{
+    input.focus();input.select();input.setSelectionRange(0,input.value.length);
+    copied=document.execCommand('copy');
+  }catch(error){/* Offer manual copying if the compatibility path is also blocked. */}
+  finally{input.remove();previousFocus?.focus({preventScroll:true});}
+  if(copied)message('已复制到剪贴板。');
+  else{
+    message('无法自动复制，请在弹出的文本框中手动复制模型 key。',true);
+    window.prompt('请复制模型 key（Ctrl+C / ⌘C）：',value);
+  }
 }
 let messageTimer, fadeTimer;
 function message(text,error=false){
@@ -98,7 +114,6 @@ function modelEditor(alias,model={},cc=false,savedModel){
   limit.input.min='1';limit.input.max='1048576';limit.input.step='1';
   for(const f of [id,a,name,windowSize,limit])fields.append(f.label);
   const actions=el('div',undefined,'model-actions');
-  if(savedModel)actions.append(button('复制模型 key',()=>copyText(savedModel.key)));
   actions.append(testButton(savedModel),button('移除',()=>{markDirty(row.closest('.card'));row.remove();applyFilters();},'text-danger'));
   row.append(head,fields,actions);
   name.input.addEventListener('input',()=>{heading.textContent=name.input.value||a.input.value||'新模型';});
@@ -179,8 +194,6 @@ function ccCard(entry){
       ['上下文窗口',model.context_window?model.context_window.toLocaleString():'131,072',model.context_window?'单位为 tokens。':'CC Switch 未配置，使用默认 131,072 tokens。'],
       ['输出上限',model.max_output_tokens?model.max_output_tokens.toLocaleString():'不设上限',model.max_output_tokens?'单位为 tokens。':'CC Switch 未配置，实际输出受厂商限制。']
     ]){const stat=el('div'),caption=el('div',undefined,'field-caption');caption.append(el('span',title),help(description,title+'说明'));stat.append(caption,el('span',value,'stat-value'));stats.append(stat);}
-    const modelKey=state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id)?.key;
-    if(modelKey)item.append(button('复制模型 key',()=>copyText(modelKey)));
     item.append(stats,testButton(state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id)));rows.append(item);
   }
   if(!entry.models.length)rows.append(el('p','暂无可同步的模型','hint'));return card;

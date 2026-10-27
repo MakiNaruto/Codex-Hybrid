@@ -14,6 +14,15 @@ def load_source(settings):
     raise ConfigError('SOURCE_NOT_SUPPORTED')
 
 
+def update_cc_snapshot(settings, merged, external):
+    """Persist identity bindings with the exact directory that advertised them."""
+    if settings['source']['type'] == 'cc-switch':
+        settings['cc_snapshot'] = {'models': merged['models'], 'bindings': external.bindings,
+                                   'revision': external.source_revision}
+    else:
+        settings.pop('cc_snapshot', None)
+
+
 def merged_catalog(official, external):
     """Official entries remain byte-for-byte equivalent; external entries sort last."""
     merged = copy.deepcopy(official)

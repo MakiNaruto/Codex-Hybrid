@@ -115,7 +115,7 @@ def parameters(value):
 
 
 class Catalog:
-    def __init__(self, path, data=None):
+    def __init__(self, path, data=None, *, source_identifiers=False):
         self.path = Path(path).resolve()
         raw = mapping(read_yaml(self.path) if data is None else data, {'version', 'default_model', 'providers'},
                       {'version', 'providers'})
@@ -126,7 +126,7 @@ class Catalog:
             fail('CONFIG_PROVIDERS_REQUIRED')
         self.providers, self.models = {}, {}
         for provider_id, spec in providers.items():
-            identifier(provider_id)
+            (string if source_identifiers else identifier)(provider_id)
             mapping(spec, {'protocol', 'base_url', 'credentials', 'models', 'enabled',
                            'timeout_seconds', 'token_limit_field', 'parameters'},
                     {'protocol', 'base_url', 'credentials', 'models'})
@@ -172,10 +172,12 @@ class Catalog:
             if not isinstance(spec['models'], dict) or not spec['models']:
                 fail('CONFIG_MODELS_REQUIRED')
             for alias, model in spec['models'].items():
-                identifier(alias)
+                (string if source_identifiers else identifier)(alias)
                 mapping(model, {'model_id', 'display_name', 'max_output_tokens', 'context_window', 'enabled', 'parameters'},
                         {'model_id'})
                 key = provider_id + '/' + alias
+                if key in self.models:
+                    fail('CONFIG_DUPLICATE_MODEL_KEY')
                 model_enabled = enabled(model.get('enabled', True))
                 output_limit = optional_positive(model.get('max_output_tokens'), MAX_OUTPUT_TOKENS)
                 self.models[key] = {'key': key, 'provider': provider_id,

@@ -7,6 +7,7 @@
   --border: #e5e5dc;
   --accent: #38634e;
 }
+.clipboard-fallback { position: fixed; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
 .diagnostics-section { margin-top: 28px; }
 .overview { margin-bottom: 20px; }
 .connection-indicator { color: var(--accent); font-size: 11px; letter-spacing: 0; }
