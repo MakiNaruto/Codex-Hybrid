@@ -65,6 +65,65 @@ class CCSyncTests(unittest.TestCase):
         self.assertFalse(self.manager.sync_cc())
         self.assertEqual(self.gateway.settings['models'], ['official'])
 
+    def test_first_switch_to_independent_initializes_empty_config_and_replaces_cc_directory(self):
+        standalone = self.fixture.root / 'models.yaml'
+        self.gateway.settings['standalone_source'] = {'type': 'yaml', 'path': str(standalone)}
+        self.assertFalse(standalone.exists())
+        self.assertTrue(self.manager.set_source('independent')['saved'])
+        self.assertTrue(standalone.is_file())
+        self.assertEqual(self.gateway.settings['source']['path'], str(standalone))
+        self.assertEqual(self.gateway.settings['models'], ['official'])
+        self.assertNotIn('cc_snapshot', self.gateway.settings)
+        self.assertEqual(self.manager.view()['models'], [])
+        self.assertIsNone(self.manager.view()['source_error'])
+        self.manager.set_source('cc_switch', str(self.fixture.database))
+        self.assertEqual(set(self.gateway.settings['models']),
+                         {'official', 'record-a/model-a', 'record-a/model-b'})
+
+    def test_repeated_current_source_selection_does_not_publish_or_write_files(self):
+        before = self.path.read_bytes()
+        with patch.object(self.manager, 'publish', side_effect=AssertionError('unexpected publication')):
+            self.assertTrue(self.manager.set_source('cc_switch')['unchanged'])
+            self.assertTrue(self.manager.set_source('cc_switch', str(self.fixture.database))['unchanged'])
+        self.assertEqual(self.path.read_bytes(), before)
+        self.manager.set_source('independent')
+        before = self.path.read_bytes()
+        with patch.object(self.manager, 'publish', side_effect=AssertionError('unexpected publication')):
+            self.assertTrue(self.manager.set_source('independent')['unchanged'])
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_changing_cc_database_path_while_cc_is_selected_still_replaces_the_source(self):
+        database = self.fixture.root / 'other.db'
+        with closing(sqlite3.connect(self.fixture.database)) as original, closing(sqlite3.connect(database)) as other:
+            original.backup(other)
+            other.execute('UPDATE providers SET id=?', ('record-b',))
+            other.commit()
+        self.assertTrue(self.manager.set_source('cc_switch', str(database))['saved'])
+        self.assertEqual(self.gateway.settings['source']['path'], str(database))
+        self.assertEqual(set(self.gateway.settings['models']),
+                         {'official', 'record-b/model-a', 'record-b/model-b'})
+
+    def test_placeholder_missing_config_recovers_existing_managed_models(self):
+        managed = self.fixture.root / 'managed-models.yaml'
+        private_write(managed, json.dumps({'version': 1, 'providers': {'saved': {
+            'base_url': 'https://saved.invalid/v1', 'protocol': 'openai_responses',
+            'credentials': {'api_key': 'saved-key'}, 'models': {'exact': {'model_id': 'saved-model'}}}}}))
+        self.gateway.settings['standalone_source'] = {
+            'type': 'yaml', 'path': str(self.fixture.root/'models.yaml')}
+        self.manager.set_source('independent')
+        self.assertEqual(self.gateway.settings['source']['path'], str(managed))
+        self.assertEqual(self.gateway.settings['models'], ['official', 'saved/exact'])
+        self.assertEqual(self.manager.view()['credential_status'], {'saved': 'available'})
+
+    def test_missing_explicit_independent_file_does_not_get_replaced_with_empty_config(self):
+        missing = self.fixture.root / 'custom.yaml'
+        self.gateway.settings['standalone_source'] = {'type': 'yaml', 'path': str(missing)}
+        previous = self.gateway.settings
+        with self.assertRaises(FileNotFoundError):
+            self.manager.set_source('independent')
+        self.assertIs(self.gateway.settings, previous)
+        self.assertFalse(missing.exists())
+
     def test_deleting_all_records_clears_external_entries_and_keeps_official(self):
         with closing(sqlite3.connect(self.fixture.database)) as db:
             db.execute('DELETE FROM providers')

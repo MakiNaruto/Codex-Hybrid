@@ -232,7 +232,7 @@ function applyFilters(){
 $('model-search').addEventListener('input',applyFilters);$('model-filter').addEventListener('change',applyFilters);
 let sourceSaving=false;
 function changeSource(mode,path){return action(async()=>{
-  if(sourceSaving)return;
+  if(sourceSaving||(state?.mode===mode&&path===undefined))return;
   if(dirtyCards().length&&!confirm('切换来源会放弃未保存的厂商修改，确定继续？'))return;
   sourceSaving=true;
   const buttons=[$('independent'),$('cc_switch'),$('save-path')];buttons.forEach(button=>button.disabled=true);

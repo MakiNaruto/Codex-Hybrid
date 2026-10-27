@@ -261,17 +261,32 @@ class Management:
     def set_source(self, mode, cc_db_path=None):
         with self.lock:
             settings = self.gateway.settings
+            if mode not in {'independent', 'cc_switch'}:
+                raise ConfigError('INVALID_SOURCE_MODE')
+            current = settings['source']
+            if mode == 'independent' and current['type'] == 'yaml':
+                return {'saved': False, 'unchanged': True}
+            db = None
+            if mode == 'cc_switch':
+                db = (cc_db_path or (current['path'] if current['type'] == 'cc-switch' else None)
+                      or settings.get('cc_db_path') or str(Path.home()/'.cc-switch/cc-switch.db'))
+                db = str(Path(string(db)).expanduser().resolve())
+                if current['type'] == 'cc-switch' and Path(current['path']).resolve() == Path(db):
+                    return {'saved': False, 'unchanged': True}
             standalone = settings.get('standalone_source')
-            if settings['source']['type'] == 'yaml':
-                standalone = settings['source']
+            if current['type'] == 'yaml':
+                standalone = current
             if standalone is None:
                 standalone = {'type': 'yaml', 'path': str(self.directory / 'models.yaml')}
             if mode == 'independent':
-                return self.publish(standalone)
-            if mode != 'cc_switch':
-                raise ConfigError('INVALID_SOURCE_MODE')
-            db = cc_db_path or settings.get('cc_db_path') or str(Path.home()/'.cc-switch/cc-switch.db')
-            db = str(Path(string(db)).expanduser().resolve())
+                path = Path(standalone['path'])
+                if not path.exists() and path.resolve() == (self.directory/'models.yaml').resolve():
+                    managed = self.directory/'managed-models.yaml'
+                    if managed.exists():
+                        standalone = {'type': 'yaml', 'path': str(managed)}
+                    else:
+                        private_write(path, yaml.safe_dump({'version': 1, 'providers': {}}, sort_keys=False))
+                return self.publish(standalone, extra={'standalone_source': standalone})
             return self.publish({'type': 'cc-switch', 'path': db}, extra={
                 'cc_db_path': db, 'standalone_source': standalone})
 
