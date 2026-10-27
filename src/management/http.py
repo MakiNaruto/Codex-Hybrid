@@ -67,11 +67,11 @@ def handle(handler, gateway, method):
         if not isinstance(body, dict):
             raise ConfigError('INVALID_BODY')
         if handler.path == '/manage/api/routing/preview':
-            result = manager.preview_routing(body['mode'], body.get('default_model'))
+            result = manager.preview_routing(body['mode'])
         elif handler.path == '/manage/api/reload/acknowledge':
             result = manager.acknowledge_reload(body.get('revision'))
         elif handler.path == '/manage/api/routing':
-            result = manager.set_routing(body['mode'], body.get('revision'), body.get('default_model'),
+            result = manager.set_routing(body['mode'], body.get('revision'),
                                          body.get('confirm_activity', False))
         elif handler.path == '/manage/api/source':
             result = manager.set_source(body['mode'], body.get('cc_db_path'))

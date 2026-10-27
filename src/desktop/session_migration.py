@@ -1,4 +1,4 @@
-"""Offline, recoverable migration of local Codex session routing metadata."""
+"""Recoverable index-only migration, preserving rollout bytes and config models."""
 import contextlib
 import hashlib
 import json
@@ -8,7 +8,6 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
-import tomllib
 import time
 
 from model_catalog.catalog import ConfigError
@@ -16,7 +15,7 @@ from model_catalog.catalog import ConfigError
 
 def _zstd():
     # Python 3.14 includes Zstandard; older supported Python versions use the
-    # dependency with the same frame format. Keep offsets in decompressed bytes.
+    # dependency, only when a nonstandard compressed filename needs metadata.
     try:
         from compression import zstd
         return zstd
@@ -25,34 +24,46 @@ def _zstd():
         return zstandard
 
 
-def _decode_rollout(path, data):
-    if path.name.endswith('.jsonl.zst'):
-        codec = _zstd()
-        try:
-            # Accept concatenated/unknown-size frames, but reject truncated
-            # streams even when they happen to end at a valid JSONL boundary.
-            chunks = []
-            while data:
-                decoder = codec.ZstdDecompressor()
-                if hasattr(decoder, 'decompressobj'):
-                    decoder = decoder.decompressobj()
-                chunks.append(decoder.decompress(data))
-                if not decoder.eof:
-                    raise ValueError()
-                data = decoder.unused_data
-            if not chunks:
-                raise ValueError()
-            return b''.join(chunks)
-        except (ValueError, EOFError, codec.ZstdError):
-            raise ConfigError('SESSION_HISTORY_INVALID') from None
-    return data
+def _session_id(path):
+    """Read only metadata for unindexed nonstandard filenames, never history."""
+    try:
+        if path.name.endswith('.zst'):
+            codec = _zstd()
+            try:
+                with codec.open(path, 'rb') as stream:
+                    line = stream.readline(8 * 1024 * 1024)
+            except codec.ZstdError:
+                raise ConfigError('SESSION_HISTORY_INVALID') from None
+        else:
+            with path.open('rb') as stream:
+                line = stream.readline(8 * 1024 * 1024)
+        header = json.loads(line)
+        identifier = header['payload']['id']
+        if header['type'] != 'session_meta' or not isinstance(identifier, str) or not identifier:
+            raise ValueError()
+        return identifier
+    except (OSError, ValueError, KeyError, EOFError):
+        raise ConfigError('SESSION_HISTORY_INVALID') from None
 
 
-def _encode_rollout(path, data):
-    if path.name.endswith('.jsonl.zst'):
-        codec = _zstd()
-        return codec.compress(data)
-    return data
+def _inventory(paths):
+    result = []
+    for path in sorted(paths):
+        status = path.stat()
+        result.append((str(path), status.st_size, status.st_mtime_ns))
+    return result
+
+
+def _resolved(path):
+    """Compare Windows extended-length and ordinary paths as the same location."""
+    def strip_prefix(value):
+        if os.name == 'nt':
+            if value[:8].lower() == '\\\\?\\unc\\':
+                return '\\\\' + value[8:]
+            if value.startswith('\\\\?\\'):
+                return value[4:]
+        return value
+    return Path(strip_prefix(str(Path(strip_prefix(str(path))).resolve())))
 
 
 def _row_path(row):
@@ -65,11 +76,11 @@ def _row_path(row):
 
 
 def _rollout_paths(home, rows=()):
-    paths = {p.resolve() for folder in ('sessions', 'archived_sessions')
+    paths = {_resolved(p) for folder in ('sessions', 'archived_sessions')
              for p in (home / folder).rglob('*.jsonl*')
              if p.name.endswith(('.jsonl', '.jsonl.zst'))}
-    paths |= {_row_path(row).resolve() for row in rows
-              if row[1] and Path(row[1]).resolve().is_relative_to(home) and _row_path(row).is_file()}
+    paths |= {_resolved(_row_path(row)) for row in rows
+              if row[1] and _resolved(row[1]).is_relative_to(home) and _row_path(row).is_file()}
     if any(not p.is_relative_to(home) for p in paths):
         raise ConfigError('SESSION_PATH_UNSAFE')
     return paths
@@ -108,39 +119,17 @@ def assert_stopped(home):
         raise ConfigError('SESSION_MIGRATION_PROCESS_CHECK_FAILED') from None
 
 
-def select_model(home, settings, provider, requested=None):
-    """Preserve catalog order; explicit defaults must belong to the target list."""
-    requested = requested if requested is not None else settings.get('session_default_models', {}).get(provider)
-    if requested is not None and (not isinstance(requested, str) or not requested.strip()):
-        raise ConfigError('SESSION_DEFAULT_MODEL_INVALID')
-    models = []
-    catalog_path = Path(settings.get('catalog', Path(home) / 'models_cache.json'))
-    if catalog_path.is_file():
-        catalog = json.loads(catalog_path.read_text(encoding='utf-8'))['models']
-        allowed = settings.get('official_models') if provider == 'openai' else settings.get('models')
-        models = [m['slug'] for m in catalog if m.get('visibility') != 'hide'
-                  and (allowed is None or m['slug'] in allowed)]
-    if not catalog_path.is_file():
-        models = list(settings.get('official_models' if provider == 'openai' else 'models', []))
-    if not models:
+def _official_models(home, settings):
+    official = settings.get('official_models')
+    if not isinstance(official, list) or not official:
         raise ConfigError('SESSION_MODEL_LIST_EMPTY')
-    if requested is not None and requested not in models:
-        raise ConfigError('SESSION_DEFAULT_MODEL_INVALID')
-    return requested if requested is not None else models[0]
-
-
-def config_model(text, model):
-    if model is None:
-        return text
-    boundary = re.search(r'^\s*\[', text, re.MULTILINE)
-    root, tables = (text[:boundary.start()], text[boundary.start():]) if boundary else (text, '')
-    root = re.sub(r'^model\s*=.*(?:\n|$)', '', root, flags=re.MULTILINE)
-    result = 'model = ' + json.dumps(model) + '\n' + root + tables
-    before, after = tomllib.loads(text), tomllib.loads(result)
-    before['model'] = model
-    if before != after:
-        raise ConfigError('CLIENT_CONFIG_REWRITE_UNSAFE')
-    return result
+    catalog = Path(settings.get('catalog', Path(home) / 'models_cache.json'))
+    if catalog.is_file():
+        entries = json.loads(catalog.read_text(encoding='utf-8'))['models']
+        visible = [m['slug'] for m in entries if m['slug'] in official and m.get('visibility') != 'hide']
+    else:
+        visible = list(official)
+    return set(official), visible
 
 
 def _database(home):
@@ -159,34 +148,29 @@ def _rows(connection):
     return list(connection.execute('SELECT id, rollout_path, model_provider, model FROM threads ORDER BY id'))
 
 
-def plan(home, settings, provider, requested=None, *, best_effort=False):
-    """Optionally leave all history untouched when its preflight is unsafe.
-
-    Never suppress model selection, config validation or commit failures. History
-    segments share byte offsets, so a failed plan must be skipped as a whole.
-    """
+def plan(home, settings, provider, *, best_effort=False):
+    """Preview index changes only. Codex repairs missing indexes after confirmation."""
     try:
-        migration = _plan(home, settings, provider, requested)
+        migration = _plan(home, settings, provider)
         migration['warnings'] = []
         return migration
     except ConfigError as error:
         if not best_effort or error.code not in {
-            'SESSION_HISTORY_SOURCE_MISSING', 'SESSION_HISTORY_INVALID',
-            'SESSION_HISTORY_CYCLE', 'SESSION_HISTORY_OFFSET_INVALID',
+            'SESSION_HISTORY_INVALID',
             'SESSION_ID_AMBIGUOUS', 'SESSION_DATABASE_AMBIGUOUS',
             'SESSION_DATABASE_UNSUPPORTED', 'SESSION_PATH_UNSAFE',
         }:
             raise
         reason = error.code
         details = getattr(error, 'details', {})
-    home = Path(home).resolve()
-    model = select_model(home, settings, provider, requested)
+    home = _resolved(home)
     warning = {'code': reason, 'action': 'sessions_unchanged', **details,
                'message': '会话迁移预检失败，已跳过全部旧会话迁移；接入配置仍可切换。旧会话保留原线路和模型。'}
-    revision = sha(json.dumps([str(home), provider, model, warning], sort_keys=True).encode())
-    return {'home': home, 'provider': provider, 'model': model, 'database': None,
+    revision = sha(json.dumps([str(home), provider, warning], sort_keys=True).encode())
+    return {'home': home, 'provider': provider, 'fallback_model': None, 'database': None,
             'rows': [], 'local_rows': [], 'originals': {}, 'changes': {},
-            'revision': revision, 'count': 0, 'missing_rollouts': 0,
+            'revision': revision, 'count': 0, 'missing_rollouts': 0, 'unindexed': [],
+            'model_change_count': 0, 'index_repair_count': 0, 'settings': dict(settings),
             'skip_sessions': True, 'warnings': [warning]}
 
 
@@ -216,99 +200,77 @@ def log_warnings(migration, directory):
     return str(path)
 
 
-def _plan(home, settings, provider, requested=None):
-    home = Path(home).resolve()
+def _plan(home, settings, provider):
+    home = _resolved(home)
     database = _database(home)
     rows = []
     if database:
         with contextlib.closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
             rows = _rows(db)
-    # Cloud sessions have no local rollout and are deliberately outside this migration.
-    local_rows = [row for row in rows if row[1] and Path(row[1]).resolve().is_relative_to(home)]
-    missing = [r for r in local_rows if not _row_path(r).is_file()]
-    paths = sorted(_rollout_paths(home, local_rows))
-    needs_model = paths or local_rows or requested is not None or settings.get('models') or settings.get('official_models')
-    model = select_model(home, settings, provider, requested) if needs_model else None
-    originals = {p: p.read_bytes() for p in paths}
-    decoded = {p: _decode_rollout(p, data) for p, data in originals.items()}
-    records, ids = {}, {}
-    for p, data in decoded.items():
-        try:
-            lines = data.splitlines(keepends=True)
-            header = json.loads(lines[0])
-            if header['type'] != 'session_meta':
-                raise ValueError()
-            # Newer Codex stores multiple immutable rollout segments for one
-            # logical thread. history_base refers to the filename's segment ID,
-            # not necessarily session_meta.id or threads.id.
-            segment = re.search(r'([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\.jsonl(?:\.zst)?$', p.name)
-            segment_id = segment[1] if segment else header['payload']['id']
-            if segment_id in ids and ids[segment_id] != p:
-                raise ConfigError('SESSION_ID_AMBIGUOUS')
-            ids[segment_id] = p
-            records[p] = [(line, json.loads(line)) for line in lines]
-        except ConfigError:
-            raise
-        except (ValueError, KeyError, IndexError):
-            raise ConfigError('SESSION_HISTORY_INVALID') from None
-    rendered, boundaries, visiting = {}, {}, set()
+    # Cloud/other-home entries do not participate in this local migration.
+    local_rows = [row for row in rows if row[1] and _resolved(row[1]).is_relative_to(home)]
+    paths = _rollout_paths(home, local_rows)
+    indexed_paths = {_resolved(_row_path(row)): row[0] for row in local_rows}
+    identifiers = set()
+    for path in paths:
+        identifier = indexed_paths.get(path)
+        if identifier is None:
+            match = re.search(r'[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}', path.name)
+            identifier = match[0] if match else _session_id(path)
+        identifiers.add(identifier)
+    local_ids = {row[0] for row in local_rows}
+    if (identifiers - local_ids) & {row[0] for row in rows}:
+        raise ConfigError('SESSION_ID_AMBIGUOUS')
+    unindexed = sorted(identifiers - local_ids)
+    fallback = None
+    official, visible = set(), []
+    if provider == 'openai' and (unindexed or any(row[3] for row in local_rows)):
+        official, visible = _official_models(home, settings)
+    needs_fallback = provider == 'openai' and any(row[3] and row[3] not in official for row in local_rows)
+    if needs_fallback or (provider == 'openai' and unindexed):
+        if not visible:
+            raise ConfigError('SESSION_MODEL_LIST_EMPTY')
+        fallback = visible[0]
+    after = []
+    for row in rows:
+        if row[0] in local_ids:
+            model = fallback if provider == 'openai' and row[3] and row[3] not in official else row[3]
+            after.append((row[0], row[1], provider, model))
+        else:
+            after.append(row)
+    inventory = _inventory(paths)
+    revision = sha(json.dumps([provider, rows, after, unindexed, inventory, sorted(official), visible],
+                              sort_keys=True).encode())
+    return {'home': home, 'provider': provider, 'fallback_model': fallback, 'database': database,
+            'rows': rows, 'rows_after': after, 'local_rows': local_rows, 'unindexed': unindexed,
+            'originals': {}, 'changes': {}, 'inventory': inventory, 'settings': dict(settings),
+            'revision': revision, 'count': len(local_rows) + len(unindexed),
+            'model_change_count': sum(a[3] != b[3] for a, b in zip(rows, after)),
+            'index_repair_count': 0,
+            'missing_rollouts': sum(not _row_path(row).is_file() for row in local_rows)}
 
-    def render(p):
-        if p in rendered:
-            return
-        if p in visiting:
-            raise ConfigError('SESSION_HISTORY_CYCLE')
-        visiting.add(p)
-        old_offset = new_offset = 0
-        offsets = {0: 0}
-        output = []
-        for raw, record in records[p]:
-            changed = False
-            payload = record.get('payload', {})
-            if record.get('type') == 'session_meta':
-                if payload.get('model_provider') != provider:
-                    payload['model_provider'] = provider
-                    changed = True
-                base = payload.get('history_base')
-                if base is not None:
-                    source = ids.get(base.get('thread_id'))
-                    if source is None:
-                        error = ConfigError('SESSION_HISTORY_SOURCE_MISSING')
-                        error.details = {'file': str(p), 'source_id': base.get('thread_id')}
-                        raise error
-                    render(source)
-                    old_end = base['end_byte_offset']
-                    if old_end not in boundaries[source]:
-                        raise ConfigError('SESSION_HISTORY_OFFSET_INVALID')
-                    end = boundaries[source][old_end]
-                    if end != old_end:
-                        base['end_byte_offset'] = end
-                        changed = True
-            elif record.get('type') == 'turn_context' and payload.get('model') != model:
-                payload['model'] = model
-                changed = True
-            if changed:
-                ending = b'\r\n' if raw.endswith(b'\r\n') else b'\n' if raw.endswith(b'\n') else b''
-                raw_new = json.dumps(record, ensure_ascii=False, separators=(',', ':')).encode() + ending
-            else:
-                raw_new = raw
-            output.append(raw_new)
-            old_offset += len(raw)
-            new_offset += len(raw_new)
-            offsets[old_offset] = new_offset
-        rendered[p] = b''.join(output)
-        boundaries[p] = offsets
-        visiting.remove(p)
 
-    for p in paths:
-        render(p)
-    changes = {p: _encode_rollout(p, data) for p, data in rendered.items() if data != decoded[p]}
-    fingerprint = sha(json.dumps([provider, model, rows, [(str(p), sha(originals[p])) for p in paths]],
-                                sort_keys=True).encode())
-    return {'home': home, 'provider': provider, 'model': model, 'database': database,
-            'rows': rows, 'local_rows': local_rows, 'originals': originals,
-            'changes': changes, 'revision': fingerprint, 'count': len(paths) + len(missing),
-            'missing_rollouts': len(missing)}
+def _complete_indexes(migration):
+    if migration.get('skip_sessions'):
+        return
+    current = _plan(migration['home'], migration['settings'], migration['provider'])
+    if current['revision'] != migration['revision']:
+        raise ConfigError('SESSION_MIGRATION_CHANGED')
+    if not migration['unindexed']:
+        return
+    from desktop.codex_index import repair_index
+    repair_index(migration['home'], migration['unindexed'], migration['settings'].get('codex_executable'))
+    complete = _plan(migration['home'], migration['settings'], migration['provider'])
+    before = {row[0]: row for row in migration['rows']}
+    after = {row[0]: row for row in complete['rows']}
+    if (complete['unindexed'] or not set(migration['unindexed']) <= {row[0] for row in complete['local_rows']}):
+        raise ConfigError('SESSION_INDEX_REPAIR_INCOMPLETE')
+    if (complete['inventory'] != migration['inventory'] or any(after.get(key) != row for key, row in before.items())
+            or set(after) - set(before) != set(migration['unindexed'])):
+        raise ConfigError('SESSION_MIGRATION_CHANGED')
+    complete['warnings'] = migration['warnings']
+    complete['index_repair_count'] = len(migration['unindexed'])
+    migration.update(complete)
 
 
 def apply(migration, directory, extra_files, *, allow_running=False):
@@ -321,19 +283,17 @@ def apply(migration, directory, extra_files, *, allow_running=False):
         originals[path] = before
         if before != after:
             changes[path] = after
-    if not changes and not migration['local_rows']:
-        return None
     if migration['count'] and not allow_running:
         assert_stopped(home)
     root = Path(directory) / 'session-migrations'
     if root.exists():
         for manifest in root.glob('*/manifest.json'):
-            if json.loads(manifest.read_text()).get('status') == 'applying':
+            if json.loads(manifest.read_text(encoding='utf-8')).get('status') == 'applying':
                 raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED')
-    if not migration.get('skip_sessions'):
-        current_paths = _rollout_paths(home, migration['local_rows'])
-        if current_paths != set(migration['originals']) or _database(home) != migration['database']:
-            raise ConfigError('SESSION_MIGRATION_CHANGED')
+    _complete_indexes(migration)
+    row_changes = [after for before, after in zip(migration['rows'], migration.get('rows_after', [])) if before != after]
+    if not changes and not row_changes:
+        return None
     backup = root / secrets.token_hex(12)
     backup.mkdir(parents=True, mode=0o700)
     db = None
@@ -343,11 +303,11 @@ def apply(migration, directory, extra_files, *, allow_running=False):
     manifest = {'status': 'preparing', 'home': str(home), 'database': str(database) if database else None,
                 'skip_sessions': migration.get('skip_sessions', False),
                 'warnings': migration.get('warnings', []),
-                'provider': migration['provider'], 'model': migration['model'], 'files': [],
-                'rollout_paths': sorted(str(p) for p in migration['originals']),
+                'index_only': True, 'provider': migration['provider'], 'files': [],
+                'rollout_paths': [entry[0] for entry in migration.get('inventory', [])],
+                'rollout_inventory': migration.get('inventory', []),
                 'rows_before': migration['rows'],
-                'rows_after': [(r[0], r[1], migration['provider'], migration['model'])
-                               if r in migration['local_rows'] else r for r in migration['rows']]}
+                'rows_after': migration.get('rows_after', [])}
     try:
         if database:
             db = sqlite3.connect(database, timeout=2)
@@ -380,7 +340,7 @@ def apply(migration, directory, extra_files, *, allow_running=False):
             written.append(p)
         if db:
             db.executemany('UPDATE threads SET model_provider=?, model=? WHERE id=?',
-                           [(migration['provider'], migration['model'], row[0]) for row in migration['local_rows']])
+                           [(row[2], row[3], row[0]) for row in row_changes])
             db.commit()
             committed = True
         manifest['status'] = 'complete'
@@ -413,7 +373,7 @@ def apply(migration, directory, extra_files, *, allow_running=False):
 def recover(backup):
     """Recover an interrupted transaction, before opening Codex again."""
     backup = Path(backup).resolve()
-    manifest = json.loads((backup / 'manifest.json').read_text())
+    manifest = json.loads((backup / 'manifest.json').read_text(encoding='utf-8'))
     if manifest['status'] != 'applying':
         raise ConfigError('SESSION_MIGRATION_NOT_INTERRUPTED')
     assert_stopped(Path(manifest['home']))
@@ -421,6 +381,9 @@ def recover(backup):
     paths = _rollout_paths(home, manifest['rows_before'])
     if not manifest.get('skip_sessions') and sorted(str(p) for p in paths) != manifest['rollout_paths']:
         raise ConfigError('SESSION_MIGRATION_CHANGED')
+    if manifest.get('index_only') and not manifest.get('skip_sessions'):
+        if [list(entry) for entry in _inventory(paths)] != manifest['rollout_inventory']:
+            raise ConfigError('SESSION_MIGRATION_CHANGED')
     if manifest['database']:
         with contextlib.closing(sqlite3.connect(Path(manifest['database']).as_uri() + '?mode=ro', uri=True)) as db:
             rows = [list(r) for r in _rows(db)]

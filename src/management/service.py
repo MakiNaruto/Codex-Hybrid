@@ -139,31 +139,29 @@ class Management:
         except (OSError, ValueError, KeyError):
             return 'unavailable'
 
-    def routing_plan(self, mode, default_model=None):
+    def routing_plan(self, mode):
         from management.routing import prepare
         state, path, current, baseline, result = prepare(self.directory, self.gateway.settings, mode)
-        from desktop.session_migration import plan, config_model
+        from desktop.session_migration import plan
         provider = 'codex-hybrid' if mode == 'project' else 'openai'
-        migration = plan(path.parent, self.gateway.settings, provider, default_model, best_effort=True)
-        result = config_model(result, migration['model'])
+        migration = plan(path.parent, self.gateway.settings, provider, best_effort=True)
         revision = hmac.new(self.revision_secret,
             json.dumps([mode, str(path), state, current, baseline, result, migration['revision']]).encode(),
             hashlib.sha256).hexdigest()
         return state, path, current, baseline, result, migration, revision
 
-    def preview_routing(self, mode, default_model=None):
+    def preview_routing(self, mode):
         with self.lock:
-            *_, migration, revision = self.routing_plan(mode, default_model)
+            *_, migration, revision = self.routing_plan(mode)
             from desktop.process_state import codex_process_state
             process = codex_process_state(migration['home'])
             return {'mode': mode, 'revision': revision,
-                    'session_count': migration['count'], 'default_model': migration['model'],
+                    'session_count': migration['count'], 'model_change_count': migration['model_change_count'],
+                    'index_repair_count': len(migration['unindexed']) or migration['index_repair_count'],
                     'missing_rollouts': migration['missing_rollouts'],
                     'warnings': migration['warnings'],
-                    'changes': [('启用 Codex Hybrid 路由和模型列表' if mode == 'project' else '恢复接入前的路由和模型列表配置'),
-                                f"迁移 {migration['count']} 份本机会话记录（含归档和历史片段）；默认模型：{migration['model'] or '无会话'}",
-                                f"其中 {migration['missing_rollouts']} 条索引缺少历史文件，仅更新其索引",
-                                '建议先结束任务并退出 Codex；确认影响后仍可继续切换，迁移前自动备份'],
+                    'changes': [f"迁移 {migration['count']} 个本机会话索引",
+                                f"需由 Codex 补齐 {len(migration['unindexed'])} 个索引；缺少历史文件的已有索引 {migration['missing_rollouts']} 条"],
                     'restart_client': True, 'activity': self.activity_state(), 'codex_process': process}
 
     def process_state(self):
@@ -181,7 +179,7 @@ class Management:
             'active_requests': None, 'observed_at': None,
             'gateway_status': 'unknown', 'codex_status': 'unknown'}
 
-    def set_routing(self, mode, revision=None, default_model=None, confirm_activity=False):
+    def set_routing(self, mode, revision=None, confirm_activity=False):
         with self.lock:
             if type(confirm_activity) is not bool:
                 raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
@@ -189,7 +187,7 @@ class Management:
             controls = {self.directory/name: ((self.directory/name).read_bytes()
                         if (self.directory/name).exists() else None)
                         for name in ('state.json', 'original-config.toml', 'desktop-config.toml', 'web-reload.json')}
-            state, path, current, baseline, result, migration, expected = self.routing_plan(mode, default_model)
+            state, path, current, baseline, result, migration, expected = self.routing_plan(mode)
             if not isinstance(revision, str) or not hmac.compare_digest(revision, expected):
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
             if path.read_bytes().decode('utf-8') != current:
@@ -201,7 +199,7 @@ class Management:
                 file = Path(file)
                 updates[file] = (controls[file], value.encode())
 
-            # Config, recovery metadata, sessions and DB form one recoverable operation.
+            # Routing config, recovery metadata and thread indexes form one recoverable operation.
             if mode == 'project':
                 update(self.directory/'original-config.toml', baseline)
                 state['original_sha256'] = digest(baseline.encode())
@@ -221,7 +219,8 @@ class Management:
             backup = apply(migration, self.directory, updates,
                            allow_running=confirm_activity)
             return {'saved': True, 'routing_mode': mode, 'restart_client': True,
-                    'session_count': migration['count'], 'default_model': migration['model'],
+                    'session_count': migration['count'], 'model_change_count': migration['model_change_count'],
+                    'index_repair_count': len(migration['unindexed']) or migration['index_repair_count'],
                     'session_backup': backup, 'warnings': migration['warnings'],
                     'warning_log': warning_log}
 

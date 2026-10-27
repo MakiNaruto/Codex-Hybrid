@@ -24,7 +24,8 @@ class DataDirectoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / 'cli-config.json').write_text('invalid legacy JSON')
-            with patch.dict(os.environ, {'CODEX_HYBRID_HOME': temp}, clear=True):
+            with patch.dict(os.environ, {'CODEX_HYBRID_HOME': temp}, clear=True), \
+                    patch('pathlib.Path.home', return_value=root):
                 with self.assertRaisesRegex(ValueError, '--data-dir'):
                     check_legacy_installation(root / 'new')
                 check_legacy_installation(root / 'new', explicit=True)

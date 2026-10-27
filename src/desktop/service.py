@@ -332,9 +332,29 @@ def stop_service(missing_ok=False):
     pid_path.unlink(missing_ok=True)
 
 
-def migrate_routing(config_path, settings, state, data, activating, default_model=None, expected_current=None):
+def retain_config_model(target, current):
+    """CLI snapshots may be old; retain the user's current root model/absence."""
+    before = tomllib.loads(current.decode('utf-8'))
+    expected = tomllib.loads(target.decode('utf-8'))
+    if ('model' in before) == ('model' in expected) and before.get('model') == expected.get('model'):
+        return target
+    text = target.decode('utf-8')
+    boundary = re.search(r'^\s*\[', text, re.MULTILINE)
+    root, tables = (text[:boundary.start()], text[boundary.start():]) if boundary else (text, '')
+    root = re.sub(r'''^[ \t]*(?:model|"model"|'model')[ \t]*=.*(?:\n|$)''', '', root, flags=re.MULTILINE)
+    expected.pop('model', None)
+    if 'model' in before:
+        root = 'model = ' + json.dumps(before['model']) + '\n' + root
+        expected['model'] = before['model']
+    result = root + tables
+    if tomllib.loads(result) != expected:
+        raise ValueError('无法安全保留当前模型配置，未切换接入。')
+    return result.encode('utf-8')
+
+
+def migrate_routing(config_path, settings, state, data, activating, expected_current=None):
     """Commit CLI routing changes together with offline session metadata."""
-    from desktop.session_migration import plan, apply, config_model
+    from desktop.session_migration import plan, apply
     provider = tomllib.loads(data.decode()).get('model_provider', 'openai')
     if provider not in ('openai', PROVIDER):
         raise ValueError('会话迁移只支持原生 OpenAI 与 Codex Hybrid 路由。')
@@ -345,8 +365,8 @@ def migrate_routing(config_path, settings, state, data, activating, default_mode
         raise ValueError('Codex 配置在迁移前发生变化，未应用切换。')
     if json.loads(before[RUNTIME / 'state.json']) != state:
         raise ValueError('实例配置在迁移前发生变化，未应用切换。')
-    migration = plan(config_path.parent, settings, provider, default_model)
-    data = config_model(data.decode(), migration['model']).encode()
+    data = retain_config_model(data, before[config_path])
+    migration = plan(config_path.parent, settings, provider)
     state = dict(state, activated=activating)
     name = 'desktop-config.toml' if activating else 'original-config.toml'
     state['candidate_sha256' if activating else 'original_sha256'] = digest(data)
@@ -356,7 +376,7 @@ def migrate_routing(config_path, settings, state, data, activating, default_mode
         updates[path] = (before[path], after)
     backup = apply(migration, RUNTIME, updates)
     if migration['count']:
-        print(f"已迁移 {migration['count']} 个本机会话；默认模型：{migration['model']}；备份：{backup}")
+        print(f"已迁移 {migration['count']} 个本机会话；备份：{backup}")
     return state
 
 
@@ -369,8 +389,6 @@ def common_arguments(parser, defaults):
     value = (lambda item: item) if defaults else (lambda item: argparse.SUPPRESS)
     parser.add_argument('--data-dir', type=Path, default=value(None),
                         help='Private data directory (or CODEX_HYBRID_DATA_DIR)')
-    parser.add_argument('--default-model', default=value(None),
-                        help='Target session model; otherwise use the first target model')
     parser.add_argument('--port', type=int, default=value(18891))
     parser.add_argument('--codex-home', type=Path,
                         default=value(Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))))
@@ -443,10 +461,10 @@ def main():
                 if digest(original) != state['original_sha256']:
                     print('确认期间 Codex 配置再次变化，已取消卸载。请检查后重试。')
                     return
-                migrate_routing(config_path, settings, state, cleaned.encode(), False, args.default_model, original)
+                migrate_routing(config_path, settings, state, cleaned.encode(), False, original)
                 print('已从 Codex 配置中移除本地 provider 表。')
             else:
-                migrate_routing(config_path, settings, state, config_path.read_bytes(), False, args.default_model)
+                migrate_routing(config_path, settings, state, config_path.read_bytes(), False)
             print('Codex 配置已是安装前状态，无需回滚。')
             print('卸载完成。配置文件和凭据仍保留在数据目录中：' + str(RUNTIME))
             return
@@ -567,7 +585,7 @@ def main():
         expected = state['original_sha256'] if activating else state['candidate_sha256']
         target = state['candidate_sha256'] if activating else state['original_sha256']
         if current == target:
-            migrate_routing(config_path, settings, state, current_data, activating, args.default_model, current_data)
+            migrate_routing(config_path, settings, state, current_data, activating, current_data)
             return print('Configuration and sessions are in the requested state')
         if current != expected and activating:
             raise ValueError('Configuration changed since preparation; refusing to overwrite newer edits')
@@ -602,8 +620,8 @@ def main():
             recovery = RUNTIME / ('pre-rollback-' + secrets.token_hex(6) + '.toml')
             private_write(recovery, current_data)
             print('已在回滚前备份当前配置：' + str(recovery))
-        # Hashes describe the generated default model as well as the routing keys.
-        migrate_routing(config_path, settings, state, data, activating, args.default_model, current_data)
+        # Commit routing and index changes while retaining the current model setting.
+        migrate_routing(config_path, settings, state, data, activating, current_data)
         if uninstalling:
             print('已恢复安装前的 Codex 配置。请完全退出并重新打开 Codex。')
             print('卸载完成。配置文件和凭据仍保留在数据目录中：' + str(RUNTIME))
