@@ -9,8 +9,35 @@ CODEX_EXECUTABLES = {'codex', 'codex.exe', 'codex-app-server', 'codex-app-server
                      'codex app', 'codex desktop'}
 
 
+def _macos_client_type(process, command, executable):
+    """Recognize macOS app bundles, including the desktop's embedded CLI."""
+    import psutil
+    entries = [(process.info.get('name') or '', [executable] if executable else command)]
+    try:
+        for parent in process.parents()[:8]:
+            entries.append((parent.name(), parent.cmdline()))
+    except (AttributeError, OSError, psutil.Error):
+        pass
+    paths = [str(args[0] if args else name).replace('\\', '/').lower()
+             for name, args in entries]
+    # Both app-server and interactive-looking codex processes are embedded in
+    # the desktop app. Their argv alone cannot distinguish them from a CLI.
+    if any('/codex.app/' in path or
+           '/chatgpt.app/contents/resources/codex-cli/' in path or
+           path.endswith('/chatgpt.app/contents/macos/chatgpt') for path in paths):
+        return 'desktop'
+    if any('/.vscode' in path or '/extensions/openai.chatgpt-' in path for path in paths):
+        return 'vscode'
+    if command and 'app-server' not in command[1:]:
+        if str(command[0]).rsplit('/', 1)[-1].lower() == 'codex':
+            return 'cli'
+    return 'unknown'
+
+
 def _client_type(process, command, executable, windows):
     """Classify by executable ancestry; never return paths or command arguments."""
+    if sys.platform == 'darwin':
+        return _macos_client_type(process, command, executable)
     import psutil
     entries = [(process.info.get('name') or '', [executable] if executable else command)]
     try:
@@ -69,7 +96,7 @@ def codex_process_state(home):
                 except (AttributeError, OSError, psutil.AccessDenied):
                     command = []
                 # Electron renderer/GPU/utility processes are not client instances.
-                if windows and any(arg.startswith('--type=') for arg in command[1:]):
+                if (windows or sys.platform == 'darwin') and any(arg.startswith('--type=') for arg in command[1:]):
                     continue
                 try:
                     configured = process.environ().get('CODEX_HOME')

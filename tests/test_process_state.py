@@ -47,6 +47,44 @@ class ProcessStateTests(unittest.TestCase):
         with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[process]):
             self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
 
+    def test_macos_embedded_cli_processes_belong_to_desktop(self):
+        executable = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'
+        desktop = []
+        for arguments in ([], ['app-server']):
+            process = self.process('codex')
+            process.exe = lambda: executable
+            process.info['cmdline'] = ['codex', *arguments]
+            desktop.append(process)
+        vscode = self.process('codex')
+        vscode.info['cmdline'] = ['/Users/test/.vscode/extensions/openai.chatgpt-26/bin/codex', 'app-server']
+        with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[*desktop, vscode]):
+            result = codex_process_state(Path.home()/'.codex')
+        self.assertEqual(result['clients'], {'desktop': 2, 'vscode': 1, 'cli': 0, 'unknown': 0})
+
+    def test_macos_chatgpt_ancestry_identifies_shared_server(self):
+        process = self.process('codex-app-server')
+        process.info['cmdline'] = ['/usr/local/bin/codex-app-server', 'app-server']
+        process.parents = lambda: [SimpleNamespace(name=lambda: 'ChatGPT', cmdline=lambda: [
+            '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT'])]
+        with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[process]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
+
+    def test_macos_desktop_executable_with_inaccessible_command_line(self):
+        process = self.process('Codex')
+        process.info.pop('cmdline')
+        process.exe = lambda: '/Applications/Codex.app/Contents/MacOS/Codex'
+        def denied():
+            raise psutil.AccessDenied()
+        process.cmdline = denied
+        with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[process]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
+
+    def test_macos_renderer_is_not_a_client_instance(self):
+        process = self.process('Codex')
+        process.info['cmdline'] = ['/Applications/Codex.app/Contents/MacOS/Codex', '--type=renderer']
+        with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[process]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['process_count'], 0)
+
     def test_windows_client_sources(self):
         cases = [
             (r'C:\Users\user\AppData\Local\OpenAI\Codex\bin\version\codex.exe', ['app-server'], 'desktop'),
