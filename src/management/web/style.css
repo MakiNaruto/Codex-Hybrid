@@ -52,6 +52,13 @@ button.routing-toggle[aria-checked="true"] { background: var(--accent); }
 .routing-toggle[aria-checked="true"] .routing-thumb { transform: translateX(20px); }
 .routing-status { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; color: var(--accent); margin: 14px 0 0; }
 .routing-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+.client-processes { margin-top: 14px; }
+.client-process-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.client-process-clients { display: contents; }
+.client-process { padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 11px; color: var(--muted); }
+.client-process.detected { background: #f0f4ed; border-color: #b8c9b2; color: var(--accent); }
+.client-process.unknown { order: 1; }
+.client-processes p { margin: 8px 0 0; font-size: 11px; }
 .mode-buttons { display: flex; gap: 10px; margin-top: 24px; }
 .mode-buttons button { position: relative; flex: 1; text-align: left; background: #fafaf6; color: #77786d; border: 1px solid var(--border); padding: 16px; font-size: 13px; font-weight: 600; }
 .mode-buttons button.active { background: #f0f4ed; border-color: #9aaf96; color: #34503b; }

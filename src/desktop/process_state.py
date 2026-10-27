@@ -1,6 +1,7 @@
 """Best-effort process presence, separate from unknowable Codex task activity."""
 import os
 from pathlib import Path
+import sys
 import time
 
 
@@ -8,10 +9,10 @@ CODEX_EXECUTABLES = {'codex', 'codex.exe', 'codex-app-server', 'codex-app-server
                      'codex app', 'codex desktop'}
 
 
-def _client_type(process, command):
+def _client_type(process, command, executable, windows):
     """Classify by executable ancestry; never return paths or command arguments."""
     import psutil
-    entries = [(process.info.get('name') or '', command)]
+    entries = [(process.info.get('name') or '', [executable] if executable else command)]
     try:
         for parent in process.parents()[:8]:
             entries.append((parent.name(), parent.cmdline()))
@@ -23,7 +24,11 @@ def _client_type(process, command):
             return 'vscode'
     for name, args in entries:
         executable = str(args[0] if args else name).replace('\\', '/').lower()
-        if '/codex.app/' in executable or name.lower() in {'codex app', 'codex desktop'}:
+        desktop = (
+            '/openai/codex/' in executable
+            or '/windowsapps/openai.codex_' in executable
+        ) if windows else '/codex.app/' in executable
+        if desktop or name.lower() in {'codex app', 'codex desktop'}:
             return 'desktop'
     # An app-server without identifiable ancestry may belong to any client.
     if 'app-server' not in command[1:] and command:
@@ -39,8 +44,11 @@ def codex_process_state(home):
     native_home = (Path.home() / '.codex').resolve()
     matching, unknown = [], False
     clients = {'desktop': 0, 'vscode': 0, 'cli': 0, 'unknown': 0}
+    windows = sys.platform == 'win32'
     try:
-        for process in psutil.process_iter(('pid', 'name', 'cmdline', 'status')):
+        # Windows command-line reads can be slow or denied for unrelated apps.
+        # Read expensive process details only after filtering by executable name.
+        for process in psutil.process_iter(('pid', 'name', 'status')):
             if process.pid == os.getpid():
                 continue
             try:
@@ -50,12 +58,18 @@ def codex_process_state(home):
                 # Helpers/updaters, the gateway and similarly named third-party
                 # programs are not a running Codex instance.
                 name = (info.get('name') or '').lower()
-                command = info.get('cmdline') or []
-                executable = str(command[0]).replace('\\', '/').rsplit('/', 1)[-1].lower() if command else ''
-                if not name and not executable:
-                    unknown = True
+                if name not in CODEX_EXECUTABLES:
                     continue
-                if name not in CODEX_EXECUTABLES and executable not in CODEX_EXECUTABLES:
+                try:
+                    executable = process.exe() if hasattr(process, 'exe') else ''
+                except (OSError, psutil.AccessDenied):
+                    executable = ''
+                try:
+                    command = info.get('cmdline') or process.cmdline()
+                except (AttributeError, OSError, psutil.AccessDenied):
+                    command = []
+                # Electron renderer/GPU/utility processes are not client instances.
+                if windows and any(arg.startswith('--type=') for arg in command[1:]):
                     continue
                 try:
                     configured = process.environ().get('CODEX_HOME')
@@ -65,7 +79,7 @@ def codex_process_state(home):
                 uses_home = Path(configured).expanduser().resolve() == home if configured else home == native_home
                 if uses_home:
                     matching.append(process.pid)
-                    clients[_client_type(process, command)] += 1
+                    clients[_client_type(process, command, executable, windows)] += 1
             except psutil.NoSuchProcess:
                 continue
             except (OSError, ValueError, psutil.Error):

@@ -108,6 +108,52 @@ class SessionMigrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, 'SESSION_HISTORY_SOURCE_MISSING'):
             plan(self.home, self.settings, 'openai')
 
+    def test_web_missing_history_switches_config_warns_and_preserves_all_sessions(self):
+        child = self.session('child', base={'thread_id': 'missing', 'end_byte_offset': 0})
+        healthy = self.session('healthy')
+        manager = self.management()
+        before = (child.read_bytes(), healthy.read_bytes(), self.database.read_bytes())
+        preview = manager.preview_routing('project')
+        self.assertEqual(preview['warnings'][0]['code'], 'SESSION_HISTORY_SOURCE_MISSING')
+        self.assertFalse((self.runtime/'session-migration-warnings.jsonl').exists())
+        result = manager.set_routing('project', preview['revision'], confirm_activity=True)
+        self.assertEqual(manager.routing_state(), 'project')
+        self.assertEqual(before, (child.read_bytes(), healthy.read_bytes(), self.database.read_bytes()))
+        log = json.loads(Path(result['warning_log']).read_text(encoding='utf-8'))
+        self.assertEqual(log['source_id'], 'missing')
+        self.assertEqual(log['file'], str(child.resolve()))
+        self.assertEqual(log['action'], 'sessions_unchanged')
+        manifest = Path(result['session_backup'])/'manifest.json'
+        saved = json.loads(manifest.read_text())
+        self.assertTrue(saved['skip_sessions'])
+        self.assertEqual(saved['warnings'], result['warnings'])
+        # Config-only recovery must not require an empty session directory.
+        saved['status'] = 'applying'
+        manifest.write_text(json.dumps(saved))
+        recover(manifest.parent)
+        self.assertEqual(manager.routing_state(), 'openai')
+
+    def test_best_effort_does_not_hide_model_validation_or_config_write_failures(self):
+        self.session('child', base={'thread_id': 'missing', 'end_byte_offset': 0})
+        with self.assertRaisesRegex(ConfigError, 'SESSION_DEFAULT_MODEL_INVALID'):
+            plan(self.home, self.settings, 'openai', 'absent', best_effort=True)
+        manager = self.management()
+        preview = manager.preview_routing('project')
+        with patch('desktop.session_migration.write', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                manager.set_routing('project', preview['revision'], confirm_activity=True)
+        self.assertEqual(manager.routing_state(), 'openai')
+
+    def test_warning_log_failure_does_not_block_config_switch(self):
+        self.session('child', base={'thread_id': 'missing', 'end_byte_offset': 0})
+        manager = self.management()
+        preview = manager.preview_routing('project')
+        with patch('gateway.runtime_log.handler', side_effect=OSError('unwritable log')):
+            result = manager.set_routing('project', preview['revision'], confirm_activity=True)
+        self.assertEqual(manager.routing_state(), 'project')
+        self.assertIsNone(result['warning_log'])
+        self.assertEqual(result['warnings'][0]['code'], 'SESSION_HISTORY_SOURCE_MISSING')
+
     def test_midwrite_failure_rolls_back_files_database_and_config(self):
         path = self.session('one')
         config = self.home / 'config.toml'

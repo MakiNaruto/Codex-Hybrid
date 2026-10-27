@@ -22,17 +22,16 @@
   </section>
   <div class="settings-grid">
     <section aria-labelledby="routing-heading">
-      <h2 id="routing-heading">Codex 接入</h2>
-      <div class="routing-control"><div><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><p id="routing-description" class="hint">通过 Codex Hybrid 调用第三方模型</p></div><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
+      <div class="section-head"><h2 id="routing-heading">Codex 接入</h2><button id="detect-processes" class="secondary" type="button">检测状态</button></div>
+      <div class="routing-control"><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
       <p id="routing-status" class="routing-status" role="status"></p>
-      <details class="routing-details"><summary>查看详情与高级选项</summary>
-        <p id="activity-status" class="hint" role="status">正在读取活动状态…</p>
-        <label for="routing-default-model">切换后的会话默认模型（可选）</label>
-        <input id="routing-default-model" type="text" placeholder="模型 key；留空使用默认模型" autocomplete="off">
-        <p class="hint">切换会备份并迁移本机会话（含归档）的线路和模型。进程检测仅供参考，确认后仍可继续。</p>
-        <p class="hint">切换后请重启需要使用新配置的 Codex；关闭接入后请选择官方模型。本地网关保持运行。</p>
-        <p class="hint">“我已重启”仅记录你的确认，无法验证客户端是否已加载新配置。</p>
-      </details>
+      <div class="client-processes" aria-label="Codex 与网关状态检测">
+        <div class="client-process-list">
+          <div id="client-process-list" class="client-process-clients"><span class="hint">尚未检测</span></div>
+          <span id="gateway-activity" class="client-process" role="status" title="仅统计网关请求；Codex 工具执行或等待审批可能仍在进行。" hidden></span>
+        </div>
+        <p id="client-process-note" class="hint" role="status">点击“检测状态”更新桌面端、VS Code 端、CLI 端和网关状态。</p>
+      </div>
     </section>
     <section class="source" aria-labelledby="source-heading">
       <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>

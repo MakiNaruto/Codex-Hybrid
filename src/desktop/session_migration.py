@@ -2,12 +2,14 @@
 import contextlib
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
 import secrets
 import sqlite3
 import tomllib
+import time
 
 from model_catalog.catalog import ConfigError
 
@@ -96,7 +98,64 @@ def _rows(connection):
     return list(connection.execute('SELECT id, rollout_path, model_provider, model FROM threads ORDER BY id'))
 
 
-def plan(home, settings, provider, requested=None):
+def plan(home, settings, provider, requested=None, *, best_effort=False):
+    """Optionally leave all history untouched when its preflight is unsafe.
+
+    Never suppress model selection, config validation or commit failures. History
+    segments share byte offsets, so a failed plan must be skipped as a whole.
+    """
+    try:
+        migration = _plan(home, settings, provider, requested)
+        migration['warnings'] = []
+        return migration
+    except ConfigError as error:
+        if not best_effort or error.code not in {
+            'SESSION_HISTORY_SOURCE_MISSING', 'SESSION_HISTORY_INVALID',
+            'SESSION_HISTORY_CYCLE', 'SESSION_HISTORY_OFFSET_INVALID',
+            'SESSION_ID_AMBIGUOUS', 'SESSION_DATABASE_AMBIGUOUS',
+            'SESSION_DATABASE_UNSUPPORTED', 'SESSION_PATH_UNSAFE',
+        }:
+            raise
+        reason = error.code
+        details = getattr(error, 'details', {})
+    home = Path(home).resolve()
+    model = select_model(home, settings, provider, requested)
+    warning = {'code': reason, 'action': 'sessions_unchanged', **details,
+               'message': '会话迁移预检失败，已跳过全部旧会话迁移；接入配置仍可切换。旧会话保留原线路和模型。'}
+    revision = sha(json.dumps([str(home), provider, model, warning], sort_keys=True).encode())
+    return {'home': home, 'provider': provider, 'model': model, 'database': None,
+            'rows': [], 'local_rows': [], 'originals': {}, 'changes': {},
+            'revision': revision, 'count': 0, 'missing_rollouts': 0,
+            'skip_sessions': True, 'warnings': [warning]}
+
+
+def log_warnings(migration, directory):
+    """Use the runtime log's bounded private handler; never include chat content."""
+    if not migration.get('warnings'):
+        return None
+    from gateway.runtime_log import handler
+    path = Path(directory) / 'session-migration-warnings.jsonl'
+    try:
+        output = handler(path)
+        failures = []
+        output.handleError = lambda record: failures.append(True)
+        try:
+            for warning in migration['warnings']:
+                record = dict(warning, time=int(time.time()), home=str(migration['home']),
+                              provider=migration['provider'])
+                output.handle(logging.makeLogRecord({
+                    'msg': json.dumps(record, ensure_ascii=False), 'levelno': logging.WARNING}))
+        finally:
+            output.close()
+        if failures:
+            return None
+    except OSError:
+        # The warning still reaches the caller when the log directory is unwritable.
+        return None
+    return str(path)
+
+
+def _plan(home, settings, provider, requested=None):
     home = Path(home).resolve()
     paths = sorted({p.resolve() for folder in ('sessions', 'archived_sessions')
                     for p in (home / folder).rglob('*.jsonl')})
@@ -156,7 +215,9 @@ def plan(home, settings, provider, requested=None):
                 if base is not None:
                     source = ids.get(base.get('thread_id'))
                     if source is None:
-                        raise ConfigError('SESSION_HISTORY_SOURCE_MISSING')
+                        error = ConfigError('SESSION_HISTORY_SOURCE_MISSING')
+                        error.details = {'file': str(p), 'source_id': base.get('thread_id')}
+                        raise error
                     render(source)
                     old_end = base['end_byte_offset']
                     if old_end not in boundaries[source]:
@@ -211,11 +272,12 @@ def apply(migration, directory, extra_files, *, allow_running=False):
         for manifest in root.glob('*/manifest.json'):
             if json.loads(manifest.read_text()).get('status') == 'applying':
                 raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED')
-    current_paths = {p.resolve() for folder in ('sessions', 'archived_sessions')
-                     for p in (home / folder).rglob('*.jsonl')}
-    current_paths |= {Path(r[1]).resolve() for r in migration['local_rows'] if Path(r[1]).is_file()}
-    if current_paths != set(migration['originals']) or _database(home) != migration['database']:
-        raise ConfigError('SESSION_MIGRATION_CHANGED')
+    if not migration.get('skip_sessions'):
+        current_paths = {p.resolve() for folder in ('sessions', 'archived_sessions')
+                         for p in (home / folder).rglob('*.jsonl')}
+        current_paths |= {Path(r[1]).resolve() for r in migration['local_rows'] if Path(r[1]).is_file()}
+        if current_paths != set(migration['originals']) or _database(home) != migration['database']:
+            raise ConfigError('SESSION_MIGRATION_CHANGED')
     backup = root / secrets.token_hex(12)
     backup.mkdir(parents=True, mode=0o700)
     db = None
@@ -223,6 +285,8 @@ def apply(migration, directory, extra_files, *, allow_running=False):
     written = []
     database = migration['database']
     manifest = {'status': 'preparing', 'home': str(home), 'database': str(database) if database else None,
+                'skip_sessions': migration.get('skip_sessions', False),
+                'warnings': migration.get('warnings', []),
                 'provider': migration['provider'], 'model': migration['model'], 'files': [],
                 'rollout_paths': sorted(str(p) for p in migration['originals']),
                 'rows_before': migration['rows'],
@@ -302,7 +366,7 @@ def recover(backup):
              for p in (home / folder).rglob('*.jsonl')}
     paths |= {Path(r[1]).resolve() for r in manifest['rows_before']
               if r[1] and Path(r[1]).is_file() and Path(r[1]).resolve().is_relative_to(home)}
-    if sorted(str(p) for p in paths) != manifest['rollout_paths']:
+    if not manifest.get('skip_sessions') and sorted(str(p) for p in paths) != manifest['rollout_paths']:
         raise ConfigError('SESSION_MIGRATION_CHANGED')
     if manifest['database']:
         with contextlib.closing(sqlite3.connect(Path(manifest['database']).as_uri() + '?mode=ro', uri=True)) as db:

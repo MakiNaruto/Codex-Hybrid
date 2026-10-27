@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -7,9 +8,22 @@ from unittest.mock import patch
 import psutil
 
 from desktop.process_state import codex_process_state
+from management.service import Management
 
 
 class ProcessStateTests(unittest.TestCase):
+    def test_management_process_detection_uses_configured_home(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root/'custom-codex'
+            (root/'state.json').write_text(json.dumps({'config_path': str(home/'config.toml')}))
+            manager = Management(SimpleNamespace(settings={}), root/'settings.json', None, None)
+            with patch('desktop.process_state.codex_process_state', return_value={'status': 'not_detected'}) as scan:
+                self.assertEqual(manager.process_state()['status'], 'not_detected')
+                scan.assert_called_once_with(home)
+            (root/'state.json').write_text('{}')
+            self.assertEqual(manager.process_state()['status'], 'unknown')
+
     def test_client_sources_and_unidentified_app_server(self):
         cases = [
             (['/Applications/Codex.app/Contents/Resources/codex', 'app-server'], 'desktop'),
@@ -21,7 +35,7 @@ class ProcessStateTests(unittest.TestCase):
             with self.subTest(expected=expected):
                 process = self.process('codex')
                 process.info['cmdline'] = command
-                with patch('psutil.process_iter', return_value=[process]):
+                with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[process]):
                     result = codex_process_state(Path.home()/'.codex')
                 self.assertEqual(result['clients'][expected], 1)
                 self.assertEqual(sum(result['clients'].values()), 1)
@@ -30,8 +44,54 @@ class ProcessStateTests(unittest.TestCase):
         process = self.process('codex')
         process.info['cmdline'] = ['codex', 'app-server']
         process.parents = lambda: [SimpleNamespace(name=lambda: 'Codex', cmdline=lambda: ['/Applications/Codex.app/Contents/MacOS/Codex'])]
-        with patch('psutil.process_iter', return_value=[process]):
+        with patch('sys.platform', 'darwin'), patch('psutil.process_iter', return_value=[process]):
             self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
+
+    def test_windows_client_sources(self):
+        cases = [
+            (r'C:\Users\user\AppData\Local\OpenAI\Codex\bin\version\codex.exe', ['app-server'], 'desktop'),
+            (r'C:\Program Files\WindowsApps\OpenAI.Codex_1_x64__id\app\Codex.exe', [], 'desktop'),
+            (r'C:\Users\user\.vscode\extensions\openai.chatgpt-1\bin\codex.exe', ['app-server'], 'vscode'),
+            (r'C:\Users\user\AppData\Roaming\npm\codex.exe', [], 'cli'),
+            (r'C:\tools\codex.exe', ['app-server'], 'unknown'),
+        ]
+        for executable, arguments, expected in cases:
+            with self.subTest(executable=executable):
+                process = self.process('codex.exe')
+                process.exe = lambda: executable
+                process.info['cmdline'] = [executable, *arguments]
+                with patch('sys.platform', 'win32'), patch('psutil.process_iter', return_value=[process]) as scan:
+                    result = codex_process_state(Path.home()/'.codex')
+                self.assertEqual(result['clients'][expected], 1)
+                scan.assert_called_once_with(('pid', 'name', 'status'))
+
+    def test_windows_parent_identifies_shared_server(self):
+        process = self.process('codex.exe')
+        process.info['cmdline'] = ['codex.exe', 'app-server']
+        process.parents = lambda: [SimpleNamespace(name=lambda: 'Codex.exe', cmdline=lambda: [
+            r'C:\Program Files\WindowsApps\OpenAI.Codex_1_x64__id\app\Codex.exe'])]
+        with patch('sys.platform', 'win32'), patch('psutil.process_iter', return_value=[process]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
+
+    def test_windows_executable_identifies_desktop_without_command_line_access(self):
+        process = self.process('codex.exe')
+        process.info.pop('cmdline')
+        process.exe = lambda: r'C:\Users\user\AppData\Local\OpenAI\Codex\bin\v1\codex.exe'
+        def denied():
+            raise psutil.AccessDenied()
+        process.cmdline = denied
+        with patch('sys.platform', 'win32'), patch('psutil.process_iter', return_value=[process]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['clients']['desktop'], 1)
+
+    def test_windows_renderer_and_unrelated_inaccessible_process_are_ignored(self):
+        renderer = self.process('codex.exe')
+        renderer.info['cmdline'] = ['Codex.exe', '--type=renderer']
+        inaccessible = self.process(None)
+        def denied():
+            self.fail('unrelated process details must not be read')
+        inaccessible.cmdline = denied
+        with patch('sys.platform', 'win32'), patch('psutil.process_iter', return_value=[renderer, inaccessible]):
+            self.assertEqual(codex_process_state(Path.home()/'.codex')['status'], 'not_detected')
 
     def process(self, name, home=None, status='sleeping'):
         return SimpleNamespace(pid=-1, info={'name': name, 'status': status, 'cmdline': [name]},

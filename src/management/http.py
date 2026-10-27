@@ -47,6 +47,8 @@ def handle(handler, gateway, method):
         reply(403, {'code': 'LOCAL_AUTH_REQUIRED'}); return True
     try:
         manager = gateway.manager
+        if method == 'GET' and handler.path == '/manage/api/processes':
+            reply(200, manager.process_state()); return True
         if method == 'GET' and handler.path == '/manage/api/diagnostics':
             from management.diagnostics import report
             reply(200, report(manager)); return True

@@ -104,7 +104,7 @@ class Management:
         state, path, current, baseline, result = prepare(self.directory, self.gateway.settings, mode)
         from desktop.session_migration import plan, config_model
         provider = 'codex-hybrid' if mode == 'project' else 'openai'
-        migration = plan(path.parent, self.gateway.settings, provider, default_model)
+        migration = plan(path.parent, self.gateway.settings, provider, default_model, best_effort=True)
         result = config_model(result, migration['model'])
         revision = hmac.new(self.revision_secret,
             json.dumps([mode, str(path), state, current, baseline, result, migration['revision']]).encode(),
@@ -119,11 +119,21 @@ class Management:
             return {'mode': mode, 'revision': revision,
                     'session_count': migration['count'], 'default_model': migration['model'],
                     'missing_rollouts': migration['missing_rollouts'],
+                    'warnings': migration['warnings'],
                     'changes': [('启用 Codex Hybrid 路由和模型列表' if mode == 'project' else '恢复接入前的路由和模型列表配置'),
                                 f"迁移 {migration['count']} 份本机会话记录（含归档和历史片段）；默认模型：{migration['model'] or '无会话'}",
                                 f"其中 {migration['missing_rollouts']} 条索引缺少历史文件，仅更新其索引",
                                 '建议先结束任务并退出 Codex；确认影响后仍可继续切换，迁移前自动备份'],
                     'restart_client': True, 'activity': self.activity_state(), 'codex_process': process}
+
+    def process_state(self):
+        from desktop.process_state import codex_process_state
+        try:
+            state = json.loads((self.directory/'state.json').read_text())
+            home = Path(state['config_path']).parent
+        except (OSError, ValueError, KeyError, TypeError):
+            return {'status': 'unknown', 'process_count': 0, 'clients': {}, 'observed_at': None}
+        return codex_process_state(home)
 
     def activity_state(self):
         activity = getattr(self.gateway, 'activity', None)
@@ -144,7 +154,7 @@ class Management:
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
             if path.read_bytes().decode('utf-8') != current:
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
-            from desktop.session_migration import apply
+            from desktop.session_migration import apply, log_warnings
             updates = {}
 
             def update(file, value):
@@ -167,11 +177,13 @@ class Management:
                 update(self.directory/'web-reload.json', json.dumps({'acknowledged_revision': reload['revision']}))
             update(self.directory/'state.json', json.dumps(state))
             updates[path] = (current.encode(), result.encode())
+            warning_log = log_warnings(migration, self.directory)
             backup = apply(migration, self.directory, updates,
                            allow_running=confirm_activity)
             return {'saved': True, 'routing_mode': mode, 'restart_client': True,
                     'session_count': migration['count'], 'default_model': migration['model'],
-                    'session_backup': backup}
+                    'session_backup': backup, 'warnings': migration['warnings'],
+                    'warning_log': warning_log}
 
     def official(self):
         settings = self.gateway.settings
