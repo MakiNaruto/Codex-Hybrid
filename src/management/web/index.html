@@ -36,8 +36,8 @@
       <details class="desktop-behavior">
         <summary>桌面端行为<span>启动与重启偏好</span></summary>
         <div class="desktop-preferences">
-          <label for="desktop-project">开启接入时</label><select id="desktop-project"><option value="ask">每次询问</option><option value="auto">自动启动或重启</option><option value="never">不操作桌面端</option></select>
-          <label for="desktop-openai">关闭接入时</label><select id="desktop-openai" aria-describedby="desktop-close-note"><option value="ask">每次询问</option><option value="auto">自动重启</option><option value="never">不操作桌面端</option></select>
+          <div class="desktop-preference-row"><label for="desktop-project">开启接入时</label><div class="desktop-select"><select id="desktop-project"><option value="ask">每次询问</option><option value="auto">自动启动或重启</option><option value="never">不操作桌面端</option></select></div></div>
+          <div class="desktop-preference-row"><label for="desktop-openai">关闭接入时</label><div class="desktop-select"><select id="desktop-openai" aria-describedby="desktop-close-note"><option value="ask">每次询问</option><option value="auto">自动重启</option><option value="never">不操作桌面端</option></select></div></div>
         </div>
         <p id="desktop-close-note" class="hint">关闭接入时，自动重启仅对已运行的桌面端生效。</p>
       </details>

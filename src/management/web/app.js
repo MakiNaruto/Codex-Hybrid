@@ -181,20 +181,24 @@ function providerCard(id,original={}){
   return card;
 }
 function ccCard(entry){
-  const {card,sidebar,rows}=providerLayout(entry.name,'同步自 CC Switch');
+  const {card,sidebar,content,rows}=providerLayout(entry.name,'同步自 CC Switch · '+entry.models.length+' 个模型');
+  card.classList.add('cc-provider');
   card.dataset.providerId=entry.provider_key;
   const badges=el('div',undefined,'provider-badges');badges.append(el('span',entry.protocol==='openai_responses'?'Responses':'Chat Completions','badge'),el('span','只读','badge'));sidebar.append(badges);
-  const address=el('div',undefined,'provider-address');address.append(el('span','API 地址','hint'),el('p',entry.base_url));sidebar.append(address);
-  const note=el('div',undefined,'readonly-note');note.append(el('span','在 CC Switch 中编辑'),help('仅同步 OpenAI / Codex 第三方配置，不回写数据库、不切换其他工具的当前厂商。每轮调用读取最新 Key。','CC Switch 同步说明'));sidebar.append(note);
+  const address=el('div',undefined,'provider-address');address.append(el('p',entry.base_url));sidebar.append(address);
+  const note=el('div',undefined,'readonly-note');note.append(el('span','在 CC Switch 中编辑配置'),help('仅同步 OpenAI / Codex 第三方配置，不回写数据库、不切换其他工具的当前厂商。每轮调用读取最新 Key。','CC Switch 同步说明'));content.append(note);
   for(const model of entry.models){
     const item=el('div',undefined,'cc-model');
-    item.append(el('strong',model.display_name),el('code',model.model_id));
+    const identity=el('div',undefined,'cc-model-identity');
+    const displayName=(model.display_name||model.model_id||'未命名模型').trim();
+    identity.append(el('strong',displayName));
+    if(model.model_id&&model.model_id.trim()!==displayName)identity.append(el('code',model.model_id));
     const stats=el('div',undefined,'model-stats');
     for(const [title,value,description]of[
       ['上下文窗口',model.context_window?model.context_window.toLocaleString():'131,072',model.context_window?'单位为 tokens。':'CC Switch 未配置，使用默认 131,072 tokens。'],
       ['输出上限',model.max_output_tokens?model.max_output_tokens.toLocaleString():'不设上限',model.max_output_tokens?'单位为 tokens。':'CC Switch 未配置，实际输出受厂商限制。']
     ]){const stat=el('div'),caption=el('div',undefined,'field-caption');caption.append(el('span',title),help(description,title+'说明'));stat.append(caption,el('span',value,'stat-value'));stats.append(stat);}
-    item.append(stats,testButton(state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id)));rows.append(item);
+    item.append(identity,testButton(state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id)),stats);rows.append(item);
   }
   if(!entry.models.length)rows.append(el('p','暂无可同步的模型','hint'));return card;
 }
