@@ -41,6 +41,13 @@ class Management:
         self.sync_error = None
         self.sync_stop = threading.Event()
         self.sync_thread = None
+        self.cc_catalog = None
+        self.last_synced_at = None
+        self.sync_mode = 'periodic'
+
+    def cache_cc(self, catalog):
+        self.cc_catalog = catalog
+        self.last_synced_at = time.time()
 
     def sync_cc(self):
         """Replace the entire CC snapshot; a failed read never removes old entries."""
@@ -61,6 +68,8 @@ class Management:
                         and settings['models'] == [model['slug'] for model in snapshot.get('models', [])]
                         and directory.get('models') == snapshot.get('models')):
                     self.sync_error = None
+                    if self.cc_catalog is None:
+                        self.cache_cc(external)
                     return False
                 self.publish(catalog=external)
                 self.sync_error = None
@@ -69,15 +78,46 @@ class Management:
                 self.sync_error = error.code if isinstance(error, ConfigError) else 'CC_SYNC_FAILED'
                 return False
 
-    def start_sync(self, interval=1):
+    def start_sync(self, interval=30):
         if self.sync_thread is not None and self.sync_thread.is_alive():
             return
         self.sync_stop.clear()
         self.sync_cc()
 
         def watch():
-            while not self.sync_stop.wait(interval):
-                self.sync_cc()
+            from management.cc_watch import CCWatch
+            watcher = None
+            watched_path = None
+            next_check = time.monotonic() + interval
+            try:
+                while not self.sync_stop.wait(min(0.1, interval)):
+                    with self.lock:
+                        source = self.gateway.settings['source']
+                        path = source['path'] if source['type'] == 'cc-switch' else None
+                    due = time.monotonic() >= next_check
+                    if path != watched_path or (path and watcher is None and due):
+                        if watcher is not None:
+                            watcher.stop()
+                        watcher = None
+                        watched_path = path
+                        self.sync_mode = 'periodic'
+                        if path:
+                            candidate = CCWatch(path)
+                            try:
+                                candidate.start()
+                            except (ImportError, OSError, RuntimeError):
+                                pass  # Keep the periodic safety net if notifications are unavailable.
+                            else:
+                                watcher = candidate
+                                self.sync_mode = 'watch'
+                        due = True  # Reconcile changes between startup/source switch and registration.
+                    if due or (watcher is not None and watcher.ready()):
+                        self.sync_cc()
+                        next_check = time.monotonic() + interval
+            finally:
+                if watcher is not None:
+                    watcher.stop()
+                self.sync_mode = 'periodic'
 
         self.sync_thread = threading.Thread(target=watch, name='cc-switch-sync', daemon=True)
         self.sync_thread.start()
@@ -222,11 +262,16 @@ class Management:
                 private_write(catalog_path, previous_catalog)
                 raise
             self.gateway.settings = settings  # Replace one snapshot; never mutate an in-flight request.
+            self.sync_error = None
+            if settings['source']['type'] == 'cc-switch':
+                self.cache_cc(external)
+            else:
+                self.cc_catalog = None
+                self.last_synced_at = None
             return {'saved': True, 'restart_client_for_model_list': True}
 
     def view(self):
         with self.lock:
-            self.sync_cc()
             settings = self.gateway.settings
             source = settings['source']
             cc_path = settings.get('cc_db_path', str(Path.home()/'.cc-switch/cc-switch.db'))
@@ -236,8 +281,20 @@ class Management:
                       'source_error': self.sync_error, 'sync_revision': None, 'catalog_pending': False,
                       'native_routing': True, 'official_model_count': len(settings['official_models']),
                       'credential_status': {}}
+            result['last_synced_at'] = self.last_synced_at
+            result['sync_mode'] = self.sync_mode
             from management.reload_state import status
             result['reload'] = status(self)
+            if mode == 'cc_switch':
+                catalog = self.cc_catalog
+                if catalog is not None:
+                    result['models'] = catalog.listing(True)
+                    result['inventory'] = [{k: v for k, v in entry.items() if not k.startswith('_')}
+                                           for entry in catalog.inventory]
+                    result['credential_status'] = {key: 'available' for key in catalog.providers}
+                    result['sync_revision'] = hmac.new(self.revision_secret,
+                        catalog.source_revision.encode(), hashlib.sha256).hexdigest()
+                return result
             try:
                 catalog = load_source(settings)
                 result['models'] = catalog.listing(True)
@@ -248,17 +305,9 @@ class Management:
                         result['credential_status'][provider_id] = 'available'
                     except (OSError, ValueError, TypeError):
                         result['credential_status'][provider_id] = 'missing'
-                if mode == 'independent':
-                    result['config'] = read_yaml(source['path'])
-                    for provider in result['config']['providers'].values():
-                        provider['credentials'].pop('api_key', None)
-                else:
-                    entries = catalog.inventory
-                    result['inventory'] = [{k: v for k, v in entry.items() if not k.startswith('_')}
-                                           for entry in entries]
-                    versions = [(e['ref'], e['_digest']) for e in entries]
-                    result['sync_revision'] = hmac.new(self.revision_secret,
-                        json.dumps(versions).encode(), hashlib.sha256).hexdigest()
+                result['config'] = read_yaml(source['path'])
+                for provider in result['config']['providers'].values():
+                    provider['credentials'].pop('api_key', None)
                 result['catalog_pending'] = merged_catalog(self.official(), catalog) != json.loads(
                     Path(settings['catalog']).read_text(encoding='utf-8'))
             except Exception as error:

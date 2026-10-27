@@ -261,6 +261,12 @@ $('acknowledge-reload').onclick=()=>action(async()=>{
   finally{$('acknowledge-reload').disabled=!!state?.catalog_pending;}
 });
 let refreshing=false;
+function renderSyncStatus(){
+  const time=state?.last_synced_at?new Date(state.last_synced_at*1000).toLocaleTimeString():null;
+  $('sync-status').textContent=state?.mode==='cc_switch'?
+    (state.sync_mode==='watch'?'正在监听配置变化':'每 30 秒检查更新')+
+    (time?' · 上次同步 '+time:' · 等待首次同步'):'';
+}
 async function refresh(automatic=false){
   if(refreshing||(automatic&&(testingConnections||routingSaving||sourceSaving)))return;
   refreshing=true;
@@ -269,7 +275,6 @@ async function refresh(automatic=false){
     const changed=state&&JSON.stringify(state.sync_revision)!==JSON.stringify(next.sync_revision);
     if(automatic&&document.querySelector('#providers input:focus,#providers textarea:focus,#providers .help-trigger:focus,#providers select:focus'))return;
     if(automatic&&state&&JSON.stringify(state)===JSON.stringify(next)){
-      if(state.mode==='cc_switch')$('sync-status').textContent='每 1 秒自动同步 · '+new Date().toLocaleTimeString();
       return;
     }
     state=next;renderRouting();renderReadiness();
@@ -295,7 +300,7 @@ async function refresh(automatic=false){
     if(state.source_error)message('配置来源提示：'+state.source_error,true);
     updateUnsaved();applyFilters();
     $('catalog-status').textContent=state.catalog_pending?'模型列表有变更 · 更新列表后请重启客户端':'客户端模型列表已更新';
-    $('sync-status').textContent=state.mode==='cc_switch'?'每 1 秒自动同步 · '+new Date().toLocaleTimeString():'';
+    renderSyncStatus();
   }finally{refreshing=false;}
 }
 for(const mode of ['independent','cc_switch'])$(mode).onclick=()=>changeSource(mode);

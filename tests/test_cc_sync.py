@@ -222,3 +222,59 @@ class CCSyncTests(unittest.TestCase):
         self.assertTrue(self.manager.sync_cc())
         self.assertEqual(self.gateway.settings['cc_snapshot']['bindings']['record-a/model-a'], {
             'provider_record_id': 'record-a', 'app_type': 'codex', 'model_id': 'model-a'})
+
+    def test_page_uses_cache_without_database_reads_and_keeps_actual_sync_time(self):
+        self.manager.sync_cc()
+        before = self.manager.view()
+        with patch('management.service.load_source', side_effect=AssertionError('page read database')), \
+                patch('model_catalog.cc_switch.connect', side_effect=AssertionError('page read credentials')):
+            self.assertEqual(self.manager.view(), before)
+        self.manager.sync_cc()
+        self.assertEqual(self.manager.last_synced_at, before['last_synced_at'])
+        self.fixture.write_provider(name='Changed name')
+        self.manager.sync_cc()
+        self.assertNotEqual(self.manager.view()['sync_revision'], before['sync_revision'])
+        self.assertGreaterEqual(self.manager.last_synced_at, before['last_synced_at'])
+
+    def test_wal_notification_syncs_without_periodic_reads(self):
+        with closing(sqlite3.connect(self.fixture.database)) as db:
+            self.assertEqual(db.execute('PRAGMA journal_mode=WAL').fetchone()[0], 'wal')
+            ready = threading.Event()
+            changed = threading.Event()
+            original = self.manager.sync_cc
+
+            def observe():
+                result = original()
+                if self.manager.sync_mode == 'watch':
+                    ready.set()
+                if result:
+                    changed.set()
+                return result
+
+            with patch.object(self.manager, 'sync_cc', side_effect=observe) as sync:
+                self.manager.start_sync(interval=30)
+                self.assertTrue(ready.wait(3), 'directory watcher did not start')
+                calls = sync.call_count
+                self.assertFalse(changed.wait(0.6))
+                self.assertEqual(sync.call_count, calls, 'idle watcher polled the database')
+                db.execute("UPDATE providers SET name='WAL update'")
+                db.commit()
+                self.assertTrue(changed.wait(3), 'WAL commit did not trigger synchronization')
+                self.manager.stop_sync()
+            self.assertTrue(self.manager.view()['inventory'][0]['name'].startswith('WAL update'))
+
+    def test_unavailable_watcher_uses_periodic_fallback(self):
+        changed = threading.Event()
+        original = self.manager.sync_cc
+
+        def observe():
+            if original():
+                changed.set()
+
+        with patch('management.cc_watch.CCWatch.start', side_effect=OSError('unavailable')), \
+                patch.object(self.manager, 'sync_cc', side_effect=observe):
+            self.manager.start_sync(interval=0.05)
+            self.fixture.write_provider(name='Fallback update')
+            self.assertTrue(changed.wait(3))
+            self.assertEqual(self.manager.sync_mode, 'periodic')
+            self.manager.stop_sync()
