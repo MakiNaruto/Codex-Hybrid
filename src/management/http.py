@@ -73,11 +73,12 @@ def handle(handler, gateway, method):
             raise ConfigError('INVALID_BODY')
         if handler.path == '/manage/api/routing/preview':
             result = manager.preview_routing(body['mode'])
-        elif handler.path == '/manage/api/reload/acknowledge':
-            result = manager.acknowledge_reload(body.get('revision'))
+        elif handler.path == '/manage/api/desktop/preferences':
+            result = manager.save_desktop_preferences(body.get('mode'), body.get('value'))
         elif handler.path == '/manage/api/routing':
             result = manager.set_routing(body['mode'], body.get('revision'),
-                                         body.get('confirm_activity', False))
+                                         body.get('confirm_activity', False), body.get('desktop_action', False),
+                                         body.get('desktop_was_running', False), body.get('desktop_ticket'))
         elif handler.path == '/manage/api/source':
             result = manager.set_source(body['mode'], body.get('cc_db_path'))
         elif handler.path == '/manage/api/provider':

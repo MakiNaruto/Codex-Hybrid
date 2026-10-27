@@ -8,7 +8,9 @@
 
 Use the connection switch on the existing local management page. Review the change and confirm to save routing and catalog settings; cancel leaves configuration untouched. Disabling restores the fields from before this connection, including absent fields, while retaining unrelated edits. Changes after preview, conflicting edits to managed fields, or an invalid backup stop the switch.
 
-The switch reports saved configuration; it cannot verify that Codex has reloaded it. Finish current tasks, fully exit Codex, and reopen it manually. Select an official model after disabling. The management page and gateway remain available, and closing the browser does not undo the connection. This version requires the existing installation and running local service; desktop packaging, tray integration, process control, task activity detection, and automatic restart are deferred.
+The switch reports saved configuration, without tracking client reload acknowledgements. Enabling and disabling have separate desktop-action preferences: ask each time (default, unchecked), automatic, or no desktop action. On Windows, enabling can start or gracefully restart the identified Codex Store desktop app; disabling only restarts an already-running app. CLI and VS Code clients must be restarted manually. Unknown installations, custom CODEX_HOME, and failed detection fall back to manual handling.
+
+Each confirmed operation attempts desktop control once. Graceful exit invokes the app's Ctrl+Q quit command only after verifying its window owns the foreground and no modifier keys are held, then waits up to 12 seconds without force termination; failed exit still allows configuration changes and shows a manual restart message. Configuration failure stops the operation without reopening the desktop. Launch waits up to 20 seconds to observe a visible desktop window, then reports an unconfirmed launch and asks the user to handle it manually. A background process alone is not considered a successful launch. Window presence does not prove configuration reload. Select an official model after disabling. The management page and gateway remain running.
 
 ## Test a model connection
 

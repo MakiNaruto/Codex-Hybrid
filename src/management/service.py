@@ -155,7 +155,17 @@ class Management:
             *_, migration, revision = self.routing_plan(mode)
             from desktop.process_state import codex_process_state
             process = codex_process_state(migration['home'])
-            return {'mode': mode, 'revision': revision,
+            from desktop import client as desktop_client
+            target = desktop_client.discover(migration['home'])
+            desktop = {'available': bool(target), 'running': False, 'status': 'unavailable'}
+            if target:
+                try:
+                    desktop.update(running=bool(desktop_client.processes(target)), status='known')
+                except Exception:
+                    desktop['status'] = 'unknown'
+            ticket = hmac.new(self.revision_secret,
+                              (revision + str(desktop['running'])).encode(), hashlib.sha256).hexdigest()
+            return {'mode': mode, 'revision': revision, 'desktop': desktop, 'desktop_ticket': ticket,
                     'session_count': migration['count'], 'model_change_count': migration['model_change_count'],
                     'index_repair_count': len(migration['unindexed']) or migration['index_repair_count'],
                     'missing_rollouts': migration['missing_rollouts'],
@@ -179,14 +189,91 @@ class Management:
             'active_requests': None, 'observed_at': None,
             'gateway_status': 'unknown', 'codex_status': 'unknown'}
 
-    def set_routing(self, mode, revision=None, confirm_activity=False):
+    def desktop_preferences(self):
+        try:
+            saved = json.loads((self.directory/'desktop-actions.json').read_text())
+        except (OSError, ValueError):
+            saved = {}
+        return {mode: saved.get(mode, 'ask') if saved.get(mode) in {'ask', 'auto', 'never'} else 'ask'
+                for mode in ('project', 'openai')}
+
+    def save_desktop_preferences(self, mode, value):
+        if mode not in {'project', 'openai'} or value not in {'ask', 'auto', 'never'}:
+            raise ConfigError('INVALID_DESKTOP_PREFERENCE')
+        with self.lock:
+            preferences = self.desktop_preferences()
+            preferences[mode] = value
+            private_write(self.directory/'desktop-actions.json', json.dumps(preferences))
+            return {'saved': True, 'desktop_preferences': preferences}
+
+    def set_routing(self, mode, revision=None, confirm_activity=False, desktop_action=False,
+                    desktop_was_running=False, desktop_ticket=None):
+        from desktop import client as desktop_client
+        if type(desktop_action) is not bool or type(desktop_was_running) is not bool:
+            raise ConfigError('INVALID_DESKTOP_ACTION')
+        if type(confirm_activity) is not bool:
+            raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
+        with self.lock:
+            before = self.routing_plan(mode)
+            if not isinstance(revision, str) or not hmac.compare_digest(revision, before[-1]):
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
+            target, outcome, should_launch = None, 'manual', False
+            desktop_error = None
+            if desktop_action:
+                ticket = hmac.new(self.revision_secret,
+                                  (revision + str(desktop_was_running)).encode(), hashlib.sha256).hexdigest()
+                if not isinstance(desktop_ticket, str) or not hmac.compare_digest(ticket, desktop_ticket):
+                    raise ConfigError('INVALID_DESKTOP_ACTION')
+                try:
+                    target = desktop_client.discover(before[-2]['home'])
+                    if target is None:
+                        outcome = 'unavailable'
+                    else:
+                        running = bool(desktop_client.processes(target))
+                        if running and not desktop_was_running:
+                            outcome = 'state_changed'
+                        elif running:
+                            closed = desktop_client.close(target)
+                            should_launch = bool(closed)
+                            desktop_error = getattr(closed, 'reason', None) or None
+                            outcome = 'closed' if should_launch else 'close_failed'
+                        else:
+                            should_launch = mode == 'project'
+                            outcome = 'manual' if should_launch else 'not_running'
+                except desktop_client.DesktopControlError as error:
+                    outcome, should_launch = 'close_failed', False
+                    desktop_error = str(error)
+                except Exception:
+                    outcome, should_launch = 'unknown', False
+            # Closing may flush sessions. Replan those indexes, but never accept external config edits.
+            after = self.routing_plan(mode)
+            if before[:5] != after[:5]:
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
+            result = self._apply_routing(mode, after[-1], confirm_activity)
+            if should_launch:
+                try:
+                    outcome = desktop_client.launch(target)
+                except Exception:
+                    outcome = 'launch_unconfirmed'
+            result['desktop_result'] = outcome
+            result['desktop_error'] = desktop_error
+            record = getattr(self.gateway, 'record', None)
+            if record and desktop_action:
+                try:
+                    record({'status': 'desktop_operation', 'phase': 'desktop_control',
+                            'routing_mode': mode, 'desktop_result': outcome, 'desktop_error': desktop_error})
+                except OSError:
+                    pass  # Logging failure must not turn an applied switch into an API failure.
+            return result
+
+    def _apply_routing(self, mode, revision=None, confirm_activity=False):
         with self.lock:
             if type(confirm_activity) is not bool:
                 raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
             from desktop.service import digest
             controls = {self.directory/name: ((self.directory/name).read_bytes()
                         if (self.directory/name).exists() else None)
-                        for name in ('state.json', 'original-config.toml', 'desktop-config.toml', 'web-reload.json')}
+                        for name in ('state.json', 'original-config.toml', 'desktop-config.toml')}
             state, path, current, baseline, result, migration, expected = self.routing_plan(mode)
             if not isinstance(revision, str) or not hmac.compare_digest(revision, expected):
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
@@ -209,10 +296,6 @@ class Management:
                 update(self.directory/'original-config.toml', result)
                 state['original_sha256'] = digest(result.encode())
             state['activated'] = mode == 'project'
-            from management.reload_state import status
-            reload = status(self)
-            if not (self.directory/'web-reload.json').exists() and reload['available']:
-                update(self.directory/'web-reload.json', json.dumps({'acknowledged_revision': reload['revision']}))
             update(self.directory/'state.json', json.dumps(state))
             updates[path] = (current.encode(), result.encode())
             warning_log = log_warnings(migration, self.directory)
@@ -248,8 +331,6 @@ class Management:
                 settings['deepseek_model'] = keys[0]  # Historical smoke alias only.
             else:
                 settings.pop('deepseek_model', None)
-            from management.reload_state import remember_before_change
-            remember_before_change(self)
             catalog_path = Path(settings['catalog'])
             previous_catalog = (catalog_path.read_text(encoding='utf-8') if catalog_path.exists()
                                 else json.dumps({'models': self.official()}, ensure_ascii=False))
@@ -282,8 +363,7 @@ class Management:
                       'credential_status': {}}
             result['last_synced_at'] = self.last_synced_at
             result['sync_mode'] = self.sync_mode
-            from management.reload_state import status
-            result['reload'] = status(self)
+            result['desktop_preferences'] = self.desktop_preferences()
             if mode == 'cc_switch':
                 catalog = self.cc_catalog
                 if catalog is not None:
@@ -312,11 +392,6 @@ class Management:
             except Exception as error:
                 result['source_error'] = error.code if isinstance(error, ConfigError) else 'SOURCE_UNAVAILABLE'
             return result
-
-    def acknowledge_reload(self, revision):
-        from management.reload_state import acknowledge
-        with self.lock:
-            return acknowledge(self, revision)
 
     def set_source(self, mode, cc_db_path=None):
         with self.lock:

@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from desktop import service
 from gateway.server import Gateway
-from management.reload_state import status
 from model_catalog.catalog import ConfigError
 
 
@@ -41,34 +40,139 @@ class WebWorkflowTests(unittest.TestCase):
         self.assertEqual(view['models'], [])
         self.assertIsNone(view['source_error'])
         self.assertEqual(view['routing_mode'], 'openai')
-        self.assertFalse(view['reload']['required'])
+        self.assertNotIn('reload', view)
+        self.assertEqual(view['desktop_preferences'], {'project': 'ask', 'openai': 'ask'})
         self.assertEqual((self.home/'config.toml').read_text(), 'model = "official"\n')
 
-    def test_reload_confirmation_persists_and_rejects_stale_confirmation(self):
-        self.switch('project')
-        active = status(self.manager)
-        self.assertTrue(active['required'])
-        self.manager.acknowledge_reload(active['revision'])
-        self.assertFalse(status(self.manager)['required'])
-        self.switch('openai')
-        self.assertTrue(status(self.manager)['required'])
-        with self.assertRaises(ConfigError):
-            self.manager.acknowledge_reload(active['revision'])
+    def test_desktop_preferences_persist_independently(self):
+        self.manager.save_desktop_preferences('project', 'auto')
+        self.manager.save_desktop_preferences('openai', 'never')
         settings_path = self.runtime/'settings.json'
         restarted = Gateway(json.loads(settings_path.read_text()), settings_path).manager
-        self.assertTrue(status(restarted)['required'])
+        self.assertEqual(restarted.desktop_preferences(), {'project': 'auto', 'openai': 'never'})
+        with self.assertRaises(ConfigError):
+            self.manager.save_desktop_preferences('project', 'invalid')
 
-    def test_provider_save_and_key_update_have_distinct_reload_behavior(self):
+    def desktop_switch(self, mode, running=False, close=True, launch='started', failure=False):
+        from desktop import client as desktop_client
+        target = {'executable': 'fixture', 'app_id': 'fixture!App'}
+        with patch.object(desktop_client, 'discover', return_value=target), \
+                patch.object(desktop_client, 'processes', return_value=[object()] if running else []), \
+                patch.object(desktop_client, 'close', return_value=close) as closer, \
+                patch.object(desktop_client, 'launch', return_value=launch) as launcher:
+            preview = self.manager.preview_routing(mode)
+            args = (mode, preview['revision'], True, True, running, preview['desktop_ticket'])
+            if failure:
+                with patch.object(self.manager, '_apply_routing', side_effect=ConfigError('FIXTURE_FAILED')):
+                    with self.assertRaises(ConfigError):
+                        self.manager.set_routing(*args)
+                launcher.assert_not_called()
+                return
+            result = self.manager.set_routing(*args)
+            self.assertEqual(closer.call_count, int(running))
+            self.assertEqual(launcher.call_count, int((running and close) or (not running and mode == 'project')))
+            return result
+
+    def test_enable_launches_once_and_disable_does_not_open_stopped_desktop(self):
+        self.assertEqual(self.desktop_switch('project')['desktop_result'], 'started')
+        self.assertEqual(self.desktop_switch('openai')['desktop_result'], 'not_running')
+
+    def test_close_failure_still_applies_configuration_without_launch(self):
+        result = self.desktop_switch('project', running=True, close=False)
+        self.assertEqual(result['desktop_result'], 'close_failed')
+        self.assertEqual(self.manager.routing_state(), 'project')
+
+    def test_specific_close_failure_survives_api_and_logging_failure(self):
+        from desktop.client import CloseResult
+        with patch.object(self.gateway, 'record', side_effect=OSError('log unavailable')):
+            result = self.desktop_switch('project', running=True,
+                                         close=CloseResult(False, 'foreground_denied'))
+        self.assertEqual(result['desktop_result'], 'close_failed')
+        self.assertEqual(result['desktop_error'], 'foreground_denied')
+        self.assertEqual(self.manager.routing_state(), 'project')
+
+    def test_config_failure_never_reopens_closed_desktop(self):
+        self.desktop_switch('project', running=True, failure=True)
+
+    def test_launch_timeout_preserves_applied_config(self):
+        result = self.desktop_switch('project', launch='launch_unconfirmed')
+        self.assertEqual(result['desktop_result'], 'launch_unconfirmed')
+        self.assertEqual(self.manager.routing_state(), 'project')
+
+    def test_disable_restarts_running_desktop_once(self):
+        self.switch('project')
+        self.assertEqual(self.desktop_switch('openai', running=True)['desktop_result'], 'started')
+        self.assertEqual(self.manager.routing_state(), 'openai')
+
+    def test_new_desktop_after_preview_is_not_closed(self):
+        from desktop import client as desktop_client
+        with patch.object(desktop_client, 'discover', return_value={'executable': 'fixture'}), \
+                patch.object(desktop_client, 'processes', side_effect=[[], [object()]]), \
+                patch.object(desktop_client, 'close') as closer, \
+                patch.object(desktop_client, 'launch') as launcher:
+            preview = self.manager.preview_routing('project')
+            result = self.manager.set_routing('project', preview['revision'], True, True,
+                                              False, preview['desktop_ticket'])
+            self.assertEqual(result['desktop_result'], 'state_changed')
+            closer.assert_not_called()
+            launcher.assert_not_called()
+            self.assertEqual(self.manager.routing_state(), 'project')
+
+    def test_missing_install_still_applies_and_invalid_ticket_never_closes(self):
+        from desktop import client as desktop_client
+        with patch.object(desktop_client, 'discover', return_value=None), \
+                patch.object(desktop_client, 'close') as closer:
+            preview = self.manager.preview_routing('project')
+            with self.assertRaises(ConfigError):
+                self.manager.set_routing('project', preview['revision'], True, True, False, 'invalid')
+            closer.assert_not_called()
+            result = self.manager.set_routing('project', preview['revision'], True, True,
+                                              False, preview['desktop_ticket'])
+            self.assertEqual(result['desktop_result'], 'unavailable')
+            self.assertEqual(self.manager.routing_state(), 'project')
+
+    def test_unknown_process_state_does_not_control_desktop(self):
+        from desktop import client as desktop_client
+        with patch.object(desktop_client, 'discover', return_value={'executable': 'fixture'}), \
+                patch.object(desktop_client, 'processes', side_effect=OSError('denied')), \
+                patch.object(desktop_client, 'close') as closer, \
+                patch.object(desktop_client, 'launch') as launcher:
+            preview = self.manager.preview_routing('project')
+            self.assertEqual(preview['desktop']['status'], 'unknown')
+            result = self.manager.set_routing('project', preview['revision'], True, True,
+                                              False, preview['desktop_ticket'])
+            self.assertEqual(result['desktop_result'], 'unknown')
+            closer.assert_not_called()
+            launcher.assert_not_called()
+
+    def test_external_config_edit_during_close_is_not_overwritten_or_reopened(self):
+        from desktop import client as desktop_client
+        def close(_):
+            path = self.home/'config.toml'
+            path.write_text(path.read_text() + '\n# external edit\n')
+            return True
+        with patch.object(desktop_client, 'discover', return_value={'executable': 'fixture'}), \
+                patch.object(desktop_client, 'processes', return_value=[object()]), \
+                patch.object(desktop_client, 'close', side_effect=close), \
+                patch.object(desktop_client, 'launch') as launcher:
+            preview = self.manager.preview_routing('project')
+            with self.assertRaises(ConfigError):
+                self.manager.set_routing('project', preview['revision'], True, True,
+                                         True, preview['desktop_ticket'])
+            launcher.assert_not_called()
+            self.assertIn('# external edit', (self.home/'config.toml').read_text())
+            self.assertEqual(self.manager.routing_state(), 'openai')
+
+    def test_provider_save_and_key_update_do_not_track_reload(self):
         spec = {'base_url': 'https://example.invalid/v1', 'protocol': 'openai_chat_completions',
                 'models': {'test': {'model_id': 'example'}}}
         self.manager.save_provider('example', spec, 'private-key')
         view = self.manager.view()
         self.assertEqual(view['credential_status'], {'example': 'available'})
         self.assertNotIn('private-key', json.dumps(view))
-        self.assertTrue(view['reload']['required'])
-        self.manager.acknowledge_reload(view['reload']['revision'])
+        self.assertNotIn('reload', view)
         self.manager.save_provider('example', spec, 'replacement-key')
-        self.assertFalse(self.manager.view()['reload']['required'])
+        self.assertNotIn('reload', self.manager.view())
         self.manager.save_provider('example', delete=True)
         self.assertEqual(self.manager.view()['models'], [])
         self.assertNotIn('deepseek_model', self.gateway.settings)

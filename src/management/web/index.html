@@ -18,12 +18,15 @@
   <section class="overview" aria-labelledby="overview-heading">
     <div class="section-head"><h2 id="overview-heading">使用准备</h2><span id="readiness-summary" class="hint" role="status">正在读取配置…</span></div>
     <ol id="readiness-steps" class="readiness-steps"></ol>
-    <div id="reload-notice" class="reload-notice" hidden><p id="reload-message"></p><button id="acknowledge-reload" type="button" class="secondary">我已手动重启 Codex</button></div>
   </section>
   <div class="settings-grid">
     <section aria-labelledby="routing-heading">
       <div class="section-head"><h2 id="routing-heading">Codex 接入</h2><button id="detect-processes" class="secondary" type="button">检测状态</button></div>
       <div class="routing-control"><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
+      <div class="desktop-preferences">
+        <label for="desktop-project">开启接入时的桌面端操作</label><select id="desktop-project"><option value="ask">每次询问</option><option value="auto">自动启动或重启</option><option value="never">不操作桌面端</option></select>
+        <label for="desktop-openai">关闭接入时的桌面端操作</label><select id="desktop-openai"><option value="ask">每次询问</option><option value="auto">自动重启（未运行则不启动）</option><option value="never">不操作桌面端</option></select>
+      </div>
       <p id="routing-status" class="routing-status" role="status"></p>
       <div class="client-processes" aria-label="Codex 与网关状态检测">
         <div class="client-process-list">
@@ -68,9 +71,9 @@
     <h2 id="routing-dialog-title"></h2>
     <p id="routing-dialog-description"></p>
     <p id="routing-dialog-warning" class="routing-warning" hidden></p>
-    <p class="hint">切换后请重启需要使用新配置的 Codex。</p>
+    <label id="desktop-action-row"><input id="desktop-action" type="checkbox"> <span id="desktop-action-label"></span></label>
     <details class="routing-details"><summary>查看影响详情</summary><p id="routing-dialog-details" class="hint"></p></details>
-    <div class="dialog-actions"><button type="submit" value="cancel" class="secondary" autofocus>取消</button><button id="routing-dialog-confirm" type="submit" value="confirm">确认</button></div>
+    <div class="dialog-actions"><button id="routing-dialog-cancel" type="submit" value="cancel" class="secondary" autofocus>取消</button><button id="routing-dialog-confirm" type="submit" value="confirm">确认</button></div>
   </form>
 </dialog>
 <div id="notifications" class="notifications" aria-label="操作提示"><div id="message" role="status" aria-live="polite" aria-atomic="true"></div><button id="dismiss-message" type="button" class="dismiss-message" aria-label="关闭提示" hidden>×</button></div>
