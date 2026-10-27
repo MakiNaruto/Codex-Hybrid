@@ -10,7 +10,7 @@ Use the connection switch on the existing local management page. Review the chan
 
 The switch reports saved configuration, without tracking client reload acknowledgements. Enabling and disabling have separate desktop-action preferences: ask each time (default, unchecked), automatic, or no desktop action. On Windows, enabling can start or gracefully restart the identified Codex Store desktop app; disabling only restarts an already-running app. CLI and VS Code clients must be restarted manually. Unknown installations, custom CODEX_HOME, and failed detection fall back to manual handling.
 
-Each confirmed operation attempts desktop control once. Graceful exit invokes the app's Ctrl+Q quit command only after verifying its window owns the foreground and no modifier keys are held, then waits up to 12 seconds without force termination; failed exit still allows configuration changes and shows a manual restart message. Configuration failure stops the operation without reopening the desktop. Launch waits up to 20 seconds to observe a visible desktop window, then reports an unconfirmed launch and asks the user to handle it manually. A background process alone is not considered a successful launch. Window presence does not prove configuration reload. Select an official model after disabling. The management page and gateway remain running.
+Each confirmed operation requests cooperative Windows background shutdown once through Restart Manager. It registers only exact desktop process identities (PID and native creation time), verifies the affected application list, and never enables force shutdown. No foreground activation, taskbar click or keyboard simulation is used. Windows manages the shutdown request; after it succeeds, the gateway waits up to another 12 seconds for process exit. A refused shutdown still allows configuration changes and reports manual restart. Configuration failure stops without reopening the app. Launch waits up to 20 seconds for a visible desktop window. This OS session-ending path may differ from the app's Quit menu and does not guarantee running tasks resume. Select an official model after disabling. The management page and gateway remain running.
 
 ## Test a model connection
 
@@ -59,3 +59,6 @@ See [common commands](../../README.md#common-commands) for starting, stopping, a
 After running `refresh-models`, restart the service and fully quit and reopen Codex. After adding or removing models, update the client catalog and restart Codex. API key or base URL updates take effect on the next request.
 
 See [configuration](configuration.md) and [commands](cli.md) for more detail.
+
+
+The Windows-only `scripts/probe-windows-restart-manager.py` creates isolated GUI fixtures, verifying background cooperative exit and respected shutdown refusal. It never operates on Codex. The real Codex background restart still needs separate validation. macOS retains an independent backend entry point and currently uses manual handling.

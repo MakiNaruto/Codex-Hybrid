@@ -364,10 +364,15 @@ $('routing-toggle').onclick=async()=>{
     $('routing-dialog-confirm').disabled=true;
     $('routing-dialog-confirm').textContent=choice.desktop_action?(choice.desktop_was_running?'正在切换并重启…':'正在切换并启动…'):'正在切换…';
     $('routing-dialog-cancel').hidden=true;$('desktop-action').disabled=true;
+    if(choice.desktop_action&&choice.desktop_was_running){
+      $('routing-dialog-description').textContent='正在通过 Windows 向 Codex 桌面端发送后台正常退出请求，无需切换到前台。退出完成后将应用配置并启动桌面端。';
+      $('routing-dialog-warning').hidden=false;
+      $('routing-dialog-warning').textContent='仅请求正常退出一次，不强制结束进程。若应用拒绝退出，将应用配置并提示手动处理。';
+    }
     const saved=await api('routing',{mode,revision:preview.revision,confirm_activity:true,...choice});
     state.routing_mode=saved.routing_mode;
     const outcomes={started:'桌面端已启动。',already_running:'已检测到桌面端运行。',launch_unconfirmed:'未能确认桌面端启动成功，请自行打开 Codex 重试。',close_failed:'桌面端未能自动退出，请手动完全退出并重新打开 Codex。',unavailable:'未找到可用的桌面端安装，请自行打开或重启 Codex。',unknown:'无法确认桌面端状态，请自行打开或重启 Codex。',state_changed:'桌面端运行状态已变化，请自行重启 Codex。',not_running:'桌面端未运行，未启动。',manual:'请自行打开或重启需要使用新配置的 Codex。'};
-    const reasons={no_visible_window:'未找到可控制的桌面窗口。',window_enumeration_failed:'Windows 未允许读取桌面窗口。',foreground_denied:'Windows 未允许将 Codex 切到前台，未发送退出快捷键。',foreground_changed:'发送前焦点已切换，未发送退出快捷键。',modifier_held:'检测到快捷键相关按键仍被按住，未发送退出快捷键。',input_blocked:'Windows 未接受完整的退出快捷键。',exit_timeout:'退出快捷键已发送，但桌面进程在 12 秒内仍未退出，请检查 Codex 是否弹出了退出确认。',process_reappeared:'原桌面进程退出后又检测到桌面进程，本次未重复操作。'};
+    const reasons={window_enumeration_failed:'Windows 未允许读取桌面窗口。',restart_manager_identity_failed:'无法验证桌面端进程身份，未发送关闭请求。',restart_manager_identity_changed:'桌面端进程身份发生变化，未发送关闭请求。',restart_manager_start_failed:'无法创建 Windows 后台退出会话。',restart_manager_registration_failed:'Windows 未接受桌面端退出注册。',restart_manager_scope_changed:'Windows 返回的退出范围不符合本次桌面端目标，未发送关闭请求。',restart_manager_shutdown_failed:'Windows 后台正常退出请求未完成，应用可能拒绝退出或权限不足；未强制结束进程。',exit_timeout:'Windows 退出请求已完成，但桌面进程在随后 12 秒内仍未退出。',process_reappeared:'原桌面进程退出后又检测到桌面进程，本次未重复操作。'};
     finishRouting((mode==='project'?'接入配置已开启。':'接入前配置已恢复。')+(outcomes[saved.desktop_result]||outcomes.manual)+(reasons[saved.desktop_error]||'')+' 其他客户端请自行重启。'+(saved.warnings||[]).map(w=>w.message).join(' ')+' 备份：'+(saved.session_backup||'无需迁移'));
   }catch(error){
     routingError=errorMessage(error);

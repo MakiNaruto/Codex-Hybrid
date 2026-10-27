@@ -86,9 +86,9 @@ class WebWorkflowTests(unittest.TestCase):
         from desktop.client import CloseResult
         with patch.object(self.gateway, 'record', side_effect=OSError('log unavailable')):
             result = self.desktop_switch('project', running=True,
-                                         close=CloseResult(False, 'foreground_denied'))
+                                         close=CloseResult(False, 'restart_manager_shutdown_failed'))
         self.assertEqual(result['desktop_result'], 'close_failed')
-        self.assertEqual(result['desktop_error'], 'foreground_denied')
+        self.assertEqual(result['desktop_error'], 'restart_manager_shutdown_failed')
         self.assertEqual(self.manager.routing_state(), 'project')
 
     def test_config_failure_never_reopens_closed_desktop(self):
