@@ -15,7 +15,7 @@ from model_catalog.catalog import ConfigError
 
 class SessionMigrationTests(unittest.TestCase):
     def setUp(self):
-        processes = patch('psutil.process_iter', return_value=[])
+        processes = patch('desktop.process_state._candidate_processes', return_value=[])
         processes.start()
         self.addCleanup(processes.stop)
         self.temp = TemporaryDirectory()
@@ -371,7 +371,7 @@ class SessionMigrationTests(unittest.TestCase):
     def test_process_detection_blocks_matching_home_only(self):
         process = SimpleNamespace(pid=-1, info={'name': 'codex', 'cmdline': ['codex', 'app-server']},
                                   environ=lambda: {'CODEX_HOME': str(self.home)})
-        with patch('psutil.process_iter', return_value=[process]):
+        with patch('desktop.process_state._candidate_processes', return_value=[process]):
             with self.assertRaisesRegex(ConfigError, 'SESSION_MIGRATION_CODEX_RUNNING'):
                 assert_stopped(self.home)
             assert_stopped(self.home/'different')

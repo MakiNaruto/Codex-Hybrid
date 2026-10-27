@@ -9,6 +9,24 @@ CODEX_EXECUTABLES = {'codex', 'codex.exe', 'codex-app-server', 'codex-app-server
                      'codex app', 'codex desktop'}
 
 
+def _candidate_processes():
+    import psutil
+    if sys.platform != 'win32':
+        yield from psutil.process_iter(('pid', 'name', 'status'))
+        return
+    from desktop.windows_processes import process_names
+    for pid, name in process_names():
+        if name.lower() not in CODEX_EXECUTABLES:
+            continue
+        try:
+            process = psutil.Process(pid)
+            # Re-read only candidates, guarding against PID reuse since the snapshot.
+            process.info = {'name': process.name()}
+            yield process
+        except psutil.NoSuchProcess:
+            continue
+
+
 def _macos_client_type(process, command, executable):
     """Recognize macOS app bundles, including the desktop's embedded CLI."""
     import psutil
@@ -75,7 +93,7 @@ def codex_process_state(home):
     try:
         # Windows command-line reads can be slow or denied for unrelated apps.
         # Read expensive process details only after filtering by executable name.
-        for process in psutil.process_iter(('pid', 'name', 'status')):
+        for process in _candidate_processes():
             if process.pid == os.getpid():
                 continue
             try:

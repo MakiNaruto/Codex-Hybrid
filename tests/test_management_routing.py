@@ -19,7 +19,7 @@ from model_catalog.catalog import ConfigError
 
 class RoutingTests(unittest.TestCase):
     def setUp(self):
-        processes = patch('psutil.process_iter', return_value=[])
+        processes = patch('desktop.process_state._candidate_processes', return_value=[])
         processes.start()
         self.addCleanup(processes.stop)
         self.temp = TemporaryDirectory()
