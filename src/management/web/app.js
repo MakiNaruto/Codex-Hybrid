@@ -55,7 +55,7 @@ async function api(path,body){
 function setConnection(connected){
   const indicator=$('connection-indicator');indicator.textContent=connected?'本地服务已连接':'本地服务连接中断';indicator.classList.toggle('offline',!connected);
 }
-function errorMessage(error){const common={OPERATION_TIMEOUT:'操作等待超时，结果尚未确认。请刷新状态后检查，不要连续重复提交。',SERVICE_UNREACHABLE:'无法连接本地服务，请确认服务已启动后重试。',INVALID_SERVICE_RESPONSE:'服务返回了无法读取的响应，请刷新页面或检查服务日志。',CONCURRENCY_LIMIT:'当前请求数已达上限，请等待现有请求结束后重试。',CREDENTIALS_NOT_FOUND:'未找到 API Key，请填写并保存，或检查凭据环境变量。',CONFIG_INVALID_IDENTIFIER:'厂商标识和模型别名仅支持字母、数字、点、下划线和连字符，且须以字母或数字开头。',CONFIG_INVALID_BASE_URL:'API 地址需要有效的 HTTPS 基础地址，不要填写 /chat/completions 或 /responses。',CONFIG_INVALID_LIMIT:'上下文、输出上限或超时时间须为支持范围内的正整数。',CONFIG_RESERVED_PARAMETER:'高级参数包含模型、消息、认证或输出预算等保留字段，请使用对应表单设置。',CONFIG_INVALID_PARAMETERS:'高级参数必须是 JSON 对象。',CONFIG_MISSING_FIELD:'配置缺少必要字段，请检查厂商与模型信息。',UPSTREAM_STREAM_ENDED_EARLY:'上游连接已结束，但没有收到完成信号。请检查协议及模型是否匹配。',UPSTREAM_OUTPUT_BUDGET_EXHAUSTED:'连接测试达到输出预算，尚未完整完成，请检查模型输出设置。',UPSTREAM_INCOMPLETE:'上游返回未完成响应，请检查服务状态。'};if(common[error.message])return common[error.message];if(error instanceof SyntaxError)return '高级参数 JSON 格式有误，请检查逗号、引号和括号。';const routingErrors={SESSION_MIGRATION_PROCESS_CHECK_FAILED:'无法读取 Codex 进程状态。开启或关闭接入时可重新预览并确认影响后继续；恢复备份前请检查系统权限。',SESSION_MIGRATION_CODEX_RUNNING:'检测到相关 Codex 进程。开启或关闭接入时可重新预览并确认影响后继续；CLI 迁移前请先退出 Codex。',SESSION_MIGRATION_CHANGED:'会话在预览后发生变化，请重新预览并重试。',SESSION_INDEX_CODEX_UNAVAILABLE:'未找到可用的 Codex 程序，无法补齐会话索引。请安装 Codex，或在实例设置中指定 codex_executable。',SESSION_INDEX_REPAIR_FAILED:'Codex 无法补齐会话索引，接入配置尚未切换。请检查 Codex 版本和本地数据后重试。',SESSION_INDEX_REPAIR_INCOMPLETE:'Codex 尚未补齐全部会话索引，接入配置尚未切换。请检查会话是否能在 Codex 中读取。',SESSION_MODEL_LIST_EMPTY:'缺少可用的官方模型列表，无法替换第三方会话模型。请先更新模型列表。',SESSION_MIGRATION_RECOVERY_REQUIRED:'发现中断的会话迁移，请按使用文档恢复备份后重试。',CLIENT_CONFIG_CHANGED:'Codex 配置在预览后发生变化，或接入字段已被外部修改。未应用切换，请刷新并检查配置后重试。',CLIENT_BASELINE_UNAVAILABLE:'缺少可信的接入前配置备份，已停止自动恢复。请检查本地备份后修复。',CLIENT_CONFIG_REWRITE_UNSAFE:'无法安全修改 Codex 配置，已停止切换。请检查配置格式。',CLIENT_ROUTING_UNAVAILABLE:'当前 Codex 配置无法切换，请检查配置文件、厂商和 profile。',CLIENT_ROUTING_ALREADY_SET:'配置已处于目标状态，请刷新查看。'};if(routingErrors[error.message])return routingErrors[error.message];if(error.message==='LOCAL_AUTH_REQUIRED')return '已开启私密链接访问，请运行 codex-hybrid manage-url 获取管理链接。';if(error.message==='UPSTREAM_HTTP_401'){const source=state?.mode==='cc_switch'?'CC Switch':'独立管理';const next=state?.mode==='cc_switch'?'请在 CC Switch 更新该厂商的 API Key，然后重试。':'请在厂商配置中更新 API Key 并保存，然后重试。';return '厂商认证失败（401）。当前凭据来源：'+source+'。'+next+'无需重启网关，不会回退到其他 Key。';}return '操作未完成：'+error.message;}
+function errorMessage(error){const common={INSTANCE_BUSY:'其他进程正在操作此数据目录，请等待完成后刷新重试。',SERVICE_ALREADY_RUNNING:'此数据目录已有服务运行，未重复启动。',FORWARDING_START_FAILED:'模型转发未能启动，请检查端口占用；管理页面仍可使用。',FORWARDING_UNAVAILABLE:'当前无法恢复模型转发，请检查接入配置。',OPERATION_TIMEOUT:'操作等待超时，结果尚未确认。请刷新状态后检查，不要连续重复提交。',SERVICE_UNREACHABLE:'无法连接本地服务，请确认服务已启动后重试。',INVALID_SERVICE_RESPONSE:'服务返回了无法读取的响应，请刷新页面或检查服务日志。',CONCURRENCY_LIMIT:'当前请求数已达上限，请等待现有请求结束后重试。',CREDENTIALS_NOT_FOUND:'未找到 API Key，请填写并保存，或检查凭据环境变量。',CONFIG_INVALID_IDENTIFIER:'厂商标识和模型别名仅支持字母、数字、点、下划线和连字符，且须以字母或数字开头。',CONFIG_INVALID_BASE_URL:'API 地址需要有效的 HTTPS 基础地址，不要填写 /chat/completions 或 /responses。',CONFIG_INVALID_LIMIT:'上下文、输出上限或超时时间须为支持范围内的正整数。',CONFIG_RESERVED_PARAMETER:'高级参数包含模型、消息、认证或输出预算等保留字段，请使用对应表单设置。',CONFIG_INVALID_PARAMETERS:'高级参数必须是 JSON 对象。',CONFIG_MISSING_FIELD:'配置缺少必要字段，请检查厂商与模型信息。',UPSTREAM_STREAM_ENDED_EARLY:'上游连接已结束，但没有收到完成信号。请检查协议及模型是否匹配。',UPSTREAM_OUTPUT_BUDGET_EXHAUSTED:'连接测试达到输出预算，尚未完整完成，请检查模型输出设置。',UPSTREAM_INCOMPLETE:'上游返回未完成响应，请检查服务状态。'};if(common[error.message])return common[error.message];if(error instanceof SyntaxError)return '高级参数 JSON 格式有误，请检查逗号、引号和括号。';const routingErrors={SESSION_MIGRATION_PROCESS_CHECK_FAILED:'无法读取 Codex 进程状态。开启或关闭接入时可重新预览并确认影响后继续；恢复备份前请检查系统权限。',SESSION_MIGRATION_CODEX_RUNNING:'检测到相关 Codex 进程。开启或关闭接入时可重新预览并确认影响后继续；CLI 迁移前请先退出 Codex。',SESSION_MIGRATION_CHANGED:'会话在预览后发生变化，请重新预览并重试。',SESSION_INDEX_CODEX_UNAVAILABLE:'未找到可用的 Codex 程序，无法补齐会话索引。请安装 Codex，或在实例设置中指定 codex_executable。',SESSION_INDEX_REPAIR_FAILED:'Codex 无法补齐会话索引，接入配置尚未切换。请检查 Codex 版本和本地数据后重试。',SESSION_INDEX_REPAIR_INCOMPLETE:'Codex 尚未补齐全部会话索引，接入配置尚未切换。请检查会话是否能在 Codex 中读取。',SESSION_MODEL_LIST_EMPTY:'缺少可用的官方模型列表，无法替换第三方会话模型。请先更新模型列表。',SESSION_MIGRATION_RECOVERY_REQUIRED:'发现中断的会话迁移，请按使用文档恢复备份后重试。',CLIENT_CONFIG_CHANGED:'Codex 配置在预览后发生变化，或接入字段已被外部修改。未应用切换，请刷新并检查配置后重试。',CLIENT_BASELINE_UNAVAILABLE:'缺少可信的接入前配置备份，已停止自动恢复。请检查本地备份后修复。',CLIENT_CONFIG_REWRITE_UNSAFE:'无法安全修改 Codex 配置，已停止切换。请检查配置格式。',CLIENT_ROUTING_UNAVAILABLE:'当前 Codex 配置无法切换，请检查配置文件、厂商和 profile。',CLIENT_ROUTING_ALREADY_SET:'配置已处于目标状态，请刷新查看。'};if(routingErrors[error.message])return routingErrors[error.message];if(error.message==='LOCAL_AUTH_REQUIRED')return '已开启私密链接访问，请运行 codex-hybrid manage-url 获取管理链接。';if(error.message==='UPSTREAM_HTTP_401'){const source=state?.mode==='cc_switch'?'CC Switch':'独立管理';const next=state?.mode==='cc_switch'?'请在 CC Switch 更新该厂商的 API Key，然后重试。':'请在厂商配置中更新 API Key 并保存，然后重试。';return '厂商认证失败（401）。当前凭据来源：'+source+'。'+next+'无需重启网关，不会回退到其他 Key。';}return '操作未完成：'+error.message;}
 async function action(fn){try{await fn();}catch(error){message(errorMessage(error),true);}}
 function button(text,fn,cls='secondary'){const b=el('button',text,cls);b.type='button';b.onclick=()=>action(async()=>{b.disabled=true;try{await fn();}finally{b.disabled=false;}});return b;}
 let fieldId=0;
@@ -301,6 +301,7 @@ async function refresh(automatic=false){
 }
 for(const mode of ['independent','cc_switch'])$(mode).onclick=()=>changeSource(mode);
 function renderRouting(){
+  renderForwarding(state?.forwarding);
   const toggle=$('routing-toggle');
   toggle.setAttribute('aria-checked',String(state?.routing_mode==='project'));
   toggle.disabled=routingSaving||!['project','openai'].includes(state?.routing_mode);
@@ -377,7 +378,7 @@ $('routing-toggle').onclick=async()=>{
     state.routing_mode=saved.routing_mode;
     const outcomes={started:'桌面端已启动。',already_running:'已检测到桌面端运行。',launch_unconfirmed:'未能确认桌面端启动成功，请自行打开 Codex 重试。',close_failed:'桌面端未能自动退出，请手动完全退出并重新打开 Codex。',unavailable:'未找到可用的桌面端安装，请自行打开或重启 Codex。',unknown:'无法确认桌面端状态，请自行打开或重启 Codex。',state_changed:'桌面端运行状态已变化，请自行重启 Codex。',not_running:'桌面端未运行，未启动。',manual:'请自行打开或重启需要使用新配置的 Codex。'};
     const reasons={quit_denied:'macOS 未允许退出操作，请检查自动化权限或手动退出 Codex。',window_enumeration_failed:'Windows 未允许读取桌面窗口。',restart_manager_identity_failed:'无法验证桌面端进程身份，未发送关闭请求。',restart_manager_identity_changed:'桌面端进程身份发生变化，未发送关闭请求。',restart_manager_start_failed:'无法创建 Windows 后台退出会话。',restart_manager_registration_failed:'Windows 未接受桌面端退出注册。',restart_manager_scope_changed:'Windows 返回的退出范围不符合本次桌面端目标，未发送关闭请求。',restart_manager_shutdown_failed:'Windows 后台正常退出请求未完成，应用可能拒绝退出或权限不足；未强制结束进程。',exit_timeout:'已请求正常退出，但桌面进程在等待期间仍未退出，请检查 Codex 是否弹出了退出确认。',process_reappeared:'原桌面进程退出后又检测到桌面进程，本次未重复操作。'};
-    finishRouting((mode==='project'?'接入配置已开启。':'接入前配置已恢复。')+(outcomes[saved.desktop_result]||outcomes.manual)+(reasons[saved.desktop_error]||'')+' 其他客户端请自行重启。'+(saved.warnings||[]).map(w=>w.message).join(' ')+' 备份：'+(saved.session_backup||'无需迁移'));
+    finishRouting((mode==='project'?'接入配置已开启。':'接入前配置已恢复。')+(outcomes[saved.desktop_result]||outcomes.manual)+(reasons[saved.desktop_error]||'')+' 其他客户端请自行重启。'+(saved.forwarding_retained?' 为避免中断仍运行的客户端，模型转发暂时保留。':'')+(saved.warnings||[]).map(w=>w.message).join(' ')+' 备份：'+(saved.session_backup||'无需迁移'));
   }catch(error){
     routingError=errorMessage(error);
     if($('routing-dialog').open)finishRouting(routingError+(error.message==='OPERATION_TIMEOUT'||error.message==='SERVICE_UNREACHABLE'?' 请检查实际配置和桌面端状态后自行处理。':' 未继续启动桌面端。'),true);
@@ -396,7 +397,15 @@ action(refresh);
 let syncTicks=0;
 setInterval(()=>{syncTicks++;if(!document.hidden&&(state?.mode==='cc_switch'||syncTicks%5===0))action(()=>refresh(true));},1000);
 
+function renderForwarding(forwarding){
+  if(!forwarding)return;
+  const status=forwarding.status;
+  $('forwarding-status').textContent='管理服务可用 · 模型转发'+(status==='running'?'运行中':status==='fault'?'启动失败':'已停止')+(status==='running'&&state?.routing_mode==='openai'?'（接入已关闭，暂保留供运行中的客户端使用）':'');
+  $('recover-forwarding').hidden=state?.routing_mode!=='project'||status==='running';
+}
+$('recover-forwarding').onclick=()=>action(async()=>{await api('runtime/recover',{});await refresh();message('模型转发已恢复。');});
 function renderGatewayActivity(activity){
+  renderForwarding(activity?.forwarding);
   const busy=activity?.gateway_status==='busy';
   const status=$('gateway-activity');
   status.hidden=false;
@@ -412,6 +421,7 @@ function renderClientProcesses(process){
     list.append(el('span',name+' · '+(count?count+' 个进程':known?'未检测到':'状态未知'),'client-process'+(count?' detected':'')+(kind==='unknown'?' unknown':'')));
   }
   $('client-process-note').textContent=(known?'':'检测不完整，部分进程可能无法读取。')+'进程数量不等于窗口数量或正在执行的任务。'+(process?.observed_at?' 检测于 '+new Date(process.observed_at*1000).toLocaleTimeString():'');
+
 }
 let processesRefreshing=false;
 async function refreshClientProcesses(){

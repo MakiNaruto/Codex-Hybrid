@@ -76,7 +76,7 @@ cd codex-hybrid
 
 管理页支持使用准备概览、未保存草稿提醒、厂商与模型筛选、活动状态、错误摘要和本地脱敏诊断下载，试用步骤见[网页版试用清单](docs/zh-CN/web-trial.md)。
 
-默认数据保存在 `~/.codex-hybrid/`，后续可在[本地管理页](http://127.0.0.1:18891/manage/)添加厂商、模型或修改 Key。自定义端口或启用私密链接时，用 `manage-url` 获取地址。
+默认数据保存在 `~/.codex-hybrid/`，后续可在[本地管理页](http://127.0.0.1:18892/manage/)添加厂商、模型或修改 Key。管理端口默认是转发端口加 1（默认 18892），可在 settings.json 设置独立的 `management_port`。升级后重启服务，再用 `manage-url` 获取当前地址。
 
 > 启用路由后，官方与第三方模型都依赖本地服务；重启电脑后请先运行 `start`。自定义数据目录、Codex 路径及手动 YAML 配置见[安装进阶](docs/zh-CN/cli.md)。
 

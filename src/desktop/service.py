@@ -162,6 +162,12 @@ def official_cache(codex_home, settings=None):
 
 
 def prepare(port, codex_home, source=None):
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(RUNTIME):
+        return _prepare_locked(port, codex_home, source)
+
+
+def _prepare_locked(port, codex_home, source=None):
     if (RUNTIME / 'state.json').exists():
         raise ValueError('Already prepared; use status/start/activate/rollback with the existing files')
     config_path = codex_home / 'config.toml'
@@ -193,11 +199,33 @@ def prepare(port, codex_home, source=None):
     print('已准备本机模型路由，尚未修改 Codex 用户配置：' + str(RUNTIME))
 
 
-def health(settings):
+def health(settings, ensure_forwarding=False):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(f'http://127.0.0.1:{settings["port"]}/healthz', timeout=3) as response:
-        if json.load(response) != {'service': 'connected-native-gateway', 'version': 1}:
-            raise ValueError('Unexpected service at the configured port')
+    from management.runtime import management_port
+    failure = None
+    for port in (management_port(settings), settings['port']):
+        try:
+            with opener.open(f'http://127.0.0.1:{port}/healthz', timeout=3) as response:
+                if json.load(response) != {'service': 'connected-native-gateway', 'version': 1}:
+                    raise ValueError('Unexpected service at the configured port')
+        except (OSError, ValueError) as error:
+            failure = error
+            continue
+        if ensure_forwarding and port == management_port(settings):
+            ensure_forwarding_ready(settings)
+        return
+    raise failure
+
+
+def ensure_forwarding_ready(settings):
+    from management.runtime import management_port
+    request = urllib.request.Request(
+        f'http://127.0.0.1:{management_port(settings)}/manage/api/forwarding/ensure',
+        data=b'{}', headers={'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + settings.get('management_token', '')})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=5) as response:
+        json.load(response)
 
 
 def start_service(settings):
@@ -237,7 +265,7 @@ def start_service(settings):
             time.sleep(.1)
     else:
         process.terminate()
-        raise ValueError(f'网关启动后约 3 秒内未通过就绪检查（127.0.0.1:{settings["port"]}/healthz）；'
+        raise ValueError(f'管理服务启动后约 3 秒内未通过就绪检查；'
                          '请检查端口占用、服务日志和本机网络权限')
     private_write(RUNTIME / 'service.pid', str(process.pid))
     print('本机服务已启动并通过就绪检查')
@@ -291,6 +319,12 @@ def owned_gateway_processes():
 
 
 def stop_service(missing_ok=False):
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(RUNTIME):
+        return _stop_service_locked(missing_ok)
+
+
+def _stop_service_locked(missing_ok=False):
     pid_path = RUNTIME / 'service.pid'
     pid = int(pid_path.read_text()) if pid_path.exists() else None
     if pid is not None and pid <= 0:
@@ -353,6 +387,12 @@ def retain_config_model(target, current):
 
 
 def migrate_routing(config_path, settings, state, data, activating, expected_current=None):
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(RUNTIME):
+        return _migrate_routing_locked(config_path, settings, state, data, activating, expected_current)
+
+
+def _migrate_routing_locked(config_path, settings, state, data, activating, expected_current=None):
     """Commit CLI routing changes together with offline session metadata."""
     from desktop.session_migration import plan, apply
     provider = tomllib.loads(data.decode()).get('model_provider', 'openai')
@@ -419,6 +459,13 @@ def main():
     if args.data_dir is not None or environment_value('DATA_DIR'):
         RUNTIME = data_directory(args.data_dir)
     check_legacy_installation(RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
+    from desktop.locking import DirectoryLock
+    mutation = args.action in {'prepare', 'refresh-models', 'activate', 'rollback', 'recover-sessions'}
+    with DirectoryLock(RUNTIME, 'operation.lock' if mutation else 'control.lock'):
+        return run_action(args)
+
+
+def run_action(args):
     if args.action == 'recover-sessions':
         from desktop.session_migration import recover
         if not args.backup.resolve().is_relative_to((RUNTIME / 'session-migrations').resolve()):
@@ -479,8 +526,11 @@ def main():
     if args.action == 'manage-url':
         if args.management_auth is not None:
             stop_service(missing_ok=True)
-            settings['management_auth_required'] = args.management_auth == 'on'
-            private_write(RUNTIME / 'settings.json', json.dumps(settings))
+            from desktop.locking import DirectoryLock
+            with DirectoryLock(RUNTIME):
+                settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
+                settings['management_auth_required'] = args.management_auth == 'on'
+                private_write(RUNTIME / 'settings.json', json.dumps(settings))
             start_service(settings)
             # Gateway startup may have generated the management token.
             settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
@@ -488,7 +538,8 @@ def main():
         token = settings.get('management_token') if settings.get('management_auth_required', False) else ''
         if settings.get('management_auth_required', False) and not token:
             raise ValueError('Restart the gateway to enable its management page')
-        print(json.dumps({'url': f'http://127.0.0.1:{settings["port"]}/manage/{"#" + token if token else ""}'}))
+        from management.runtime import management_port
+        print(json.dumps({'url': f'http://127.0.0.1:{management_port(settings)}/manage/{"#" + token if token else ""}'}))
         return
     if args.action == 'refresh-models':
         codex_home = args.codex_home if '--codex-home' in sys.argv or os.environ.get('CODEX_HOME') else Path(state['config_path']).parent
@@ -554,6 +605,8 @@ def main():
         print('┌──────────────────┬──────────────────────────────────────────────')
         row('服务状态', '运行中' if running else '未运行')
         row('监听端口', settings['port'])
+        from management.runtime import management_port
+        row('管理端口', management_port(settings))
         row('客户端路由', '已启用' if config_state == 'activated' else '未启用')
         row('配置状态', {'activated': '已接入', 'original': '未接入',
                          'modified_since_prepare': '初始化后有修改'}.get(config_state, config_state))
@@ -590,7 +643,7 @@ def main():
         if current != expected and activating:
             raise ValueError('Configuration changed since preparation; refusing to overwrite newer edits')
         if activating:
-            health(settings)
+            health(settings, ensure_forwarding=True)
         data = (RUNTIME / ('desktop-config.toml' if activating else 'original-config.toml')).read_bytes()
         if digest(data) != target:
             raise ValueError('Prepared file was changed; refusing activation/rollback')

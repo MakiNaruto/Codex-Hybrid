@@ -38,7 +38,7 @@ After install, use these commands to manage the service. On Windows, replace `./
 ./scripts/codex-hybrid.sh uninstall       # Stop service and confirm Codex configuration rollback
 ```
 
-The default management URL is [http://127.0.0.1:18891/manage/](http://127.0.0.1:18891/manage/); substitute your port if customized. Private-link authentication is off by default, even if a `management_token` already exists.
+The default management URL is [http://127.0.0.1:18892/manage/](http://127.0.0.1:18892/manage/); management defaults to the forwarding port plus one, or explicit `management_port`. Private-link authentication is off by default, even if a `management_token` already exists.
 
 Run `./scripts/codex-hybrid.sh manage-url --management-auth on` to enable authentication and get a private token-bearing link. Both the page and management operations then require that link; the plain address shows an access-restricted message. Use `--management-auth off` to disable it.
 

@@ -130,7 +130,7 @@ credentials:
 ## 管理页面
 
 当前版本需要先通过向导或手动 YAML 完成初始化，不能从空管理页开始安装。默认直接打开
-`http://127.0.0.1:18891/manage/` 即可管理（自定义端口时替换端口），也可运行以下命令获取地址：
+`http://127.0.0.1:18892/manage/` 即可管理（管理端口默认是转发端口加 1，可用 management_port 独立设置，以 manage-url 输出为准），也可运行以下命令获取地址：
 
 ```sh
 ./scripts/codex-hybrid.sh manage-url

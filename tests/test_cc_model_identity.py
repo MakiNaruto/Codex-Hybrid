@@ -16,7 +16,7 @@ class CCModelIdentityTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.database = self.root / 'cc.db'
         with closing(sqlite3.connect(self.database)) as db:
             db.execute('CREATE TABLE providers (id, app_type, name, settings_config, meta, sort_index, created_at)')

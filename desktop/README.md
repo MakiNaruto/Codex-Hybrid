@@ -3,6 +3,7 @@
 本目录集中保存 Codex Hybrid 桌面化的计划、验证记录、原型及本地构建产物。当前处于阶段 0，尚未完成双平台验证或进入生产桌面功能开发。
 
 - [实施计划](docs/plan.md)：已确认的产品范围、生命周期、实施阶段和验收标准。
+- [网页与桌面对齐](docs/web-desktop-alignment.md)：当前 demo 规则、代码证据及桌面未完成边界。
 - [阶段 0 验证记录](docs/stage0-validation.md)：实测结果、已发现问题与尚未验证的能力。
 - [阶段 0 工具说明](stage0/README.md)：Python 探针、Windows/macOS 复现命令与 Tauri 最小窗口。
 

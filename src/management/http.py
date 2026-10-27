@@ -72,7 +72,23 @@ def handle(handler, gateway, method):
         body = json.loads(handler.rfile.read(length))
         if not isinstance(body, dict):
             raise ConfigError('INVALID_BODY')
-        if handler.path == '/manage/api/routing/preview':
+        if handler.path == '/manage/api/forwarding/ensure':
+            # Internal lifecycle endpoint requires the token even on a public local page.
+            if not authenticated:
+                reply(403, {'code': 'LOCAL_AUTH_REQUIRED'}); return True
+            runtime = getattr(gateway, 'runtime', None)
+            if runtime is None:
+                raise ConfigError('FORWARDING_UNAVAILABLE')
+            runtime.start()
+            result = runtime.snapshot()
+        elif handler.path == '/manage/api/runtime/recover':
+            with manager.lock:
+                runtime = getattr(gateway, 'runtime', None)
+                if runtime is None or manager.routing_state() != 'project':
+                    raise ConfigError('FORWARDING_UNAVAILABLE')
+                runtime.start()
+                result = runtime.snapshot()
+        elif handler.path == '/manage/api/routing/preview':
             result = manager.preview_routing(body['mode'])
         elif handler.path == '/manage/api/desktop/preferences':
             result = manager.save_desktop_preferences(body.get('mode'), body.get('value'))

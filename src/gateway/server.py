@@ -249,7 +249,8 @@ def retry_payload_after_unknown_tool(payload, error):
 
 
 class Gateway:
-    def __init__(self, settings, settings_path=None):
+    def __init__(self, settings, settings_path=None, context=None):
+        self.context = context
         self.started_at = time.monotonic()
         self.record = lambda observation: print(json.dumps(observation), flush=True)
         self.settings = settings
@@ -261,6 +262,9 @@ class Gateway:
         self.activity = Activity()
         # No redirects: credentials can only go to the fixed official endpoints.
         self.opener = FreshProxyOpener()
+        if context is not None:
+            self.slots, self.activity, self.opener = context.slots, context.activity, context.opener
+            self.record = context.record
         self.manager = None
         if settings_path is not None and 'source' in settings:
             from management.service import Management, private_write
@@ -269,6 +273,17 @@ class Gateway:
                 settings['management_token'] = secrets.token_urlsafe(32)
                 private_write(settings_path, json.dumps(settings))
             self.manager = Management(self, settings_path, route, sse_events)
+
+    @property
+    def settings(self):
+        return self.context.settings if self.context is not None else self._settings
+
+    @settings.setter
+    def settings(self, value):
+        if self.context is not None:
+            self.context.settings = value
+        else:
+            self._settings = value
 
     def handler(self):
         owner = self
@@ -568,22 +583,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--settings', type=Path, required=True)
     args = parser.parse_args()
+    from desktop.locking import DirectoryLock
     from gateway.runtime_log import RuntimeLog
+    from management.runtime import serve
     import sys
-    runtime_log = RuntimeLog(args.settings.resolve().parent)
-    sys.stderr = runtime_log.stderr
-    settings = json.loads(args.settings.read_text(encoding='utf-8'))
-    gateway = Gateway(settings, args.settings)
-    gateway.record = runtime_log.emit
-    if gateway.manager is not None:
-        gateway.manager.start_sync()
-    try:
-        with Server(('127.0.0.1', settings['port']), gateway.handler()) as server:
-            runtime_log.emit({'status': 'listening', 'port': settings['port'], 'time': int(time.time())})
-            server.serve_forever()
-    finally:
-        if gateway.manager is not None:
-            gateway.manager.stop_sync()
+    with DirectoryLock(args.settings.resolve().parent, 'service.lock', 'SERVICE_ALREADY_RUNNING'):
+        runtime_log = RuntimeLog(args.settings.resolve().parent)
+        previous_stderr = sys.stderr
+        sys.stderr = runtime_log.stderr
+        try:
+            serve(args.settings, runtime_log.emit)
+        finally:
+            sys.stderr = previous_stderr
+            runtime_log.close()
 
 
 if __name__ == '__main__':

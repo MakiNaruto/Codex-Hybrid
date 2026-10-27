@@ -275,6 +275,12 @@ def _complete_indexes(migration):
 
 def apply(migration, directory, extra_files, *, allow_running=False):
     """Back up first; leave an explicit recovery journal if interrupted mid-write."""
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(migration['home'], '.codex-hybrid.lock'):
+        return _apply_locked(migration, directory, extra_files, allow_running=allow_running)
+
+
+def _apply_locked(migration, directory, extra_files, *, allow_running=False):
     home = migration['home']
     originals = dict(migration['originals'])
     changes = dict(migration['changes'])
@@ -376,6 +382,12 @@ def recover(backup):
     manifest = json.loads((backup / 'manifest.json').read_text(encoding='utf-8'))
     if manifest['status'] != 'applying':
         raise ConfigError('SESSION_MIGRATION_NOT_INTERRUPTED')
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(manifest['home'], '.codex-hybrid.lock'):
+        return _recover_locked(backup, manifest)
+
+
+def _recover_locked(backup, manifest):
     assert_stopped(Path(manifest['home']))
     home = Path(manifest['home'])
     paths = _rollout_paths(home, manifest['rows_before'])

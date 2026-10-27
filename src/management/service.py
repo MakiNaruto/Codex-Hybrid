@@ -36,7 +36,8 @@ class Management:
         self.directory = self.settings_path.parent
         self.route = route
         self.sse_events = sse_events
-        self.lock = threading.RLock()
+        from desktop.locking import ConfigurationLock
+        self.lock = ConfigurationLock(self)
         self.revision_secret = secrets.token_bytes(32)
         self.sync_error = None
         self.sync_stop = threading.Event()
@@ -91,29 +92,35 @@ class Management:
             next_check = time.monotonic() + interval
             try:
                 while not self.sync_stop.wait(min(0.1, interval)):
-                    with self.lock:
-                        source = self.gateway.settings['source']
-                        path = source['path'] if source['type'] == 'cc-switch' else None
-                    due = time.monotonic() >= next_check
-                    if path != watched_path or (path and watcher is None and due):
-                        if watcher is not None:
-                            watcher.stop()
-                        watcher = None
-                        watched_path = path
-                        self.sync_mode = 'periodic'
-                        if path:
-                            candidate = CCWatch(path)
-                            try:
-                                candidate.start()
-                            except (ImportError, OSError, RuntimeError):
-                                pass  # Keep the periodic safety net if notifications are unavailable.
-                            else:
-                                watcher = candidate
-                                self.sync_mode = 'watch'
-                        due = True  # Reconcile changes between startup/source switch and registration.
-                    if due or (watcher is not None and watcher.ready()):
-                        self.sync_cc()
-                        next_check = time.monotonic() + interval
+                    try:
+                        with self.lock:
+                            source = self.gateway.settings['source']
+                            path = source['path'] if source['type'] == 'cc-switch' else None
+                        due = time.monotonic() >= next_check
+                        if path != watched_path or (path and watcher is None and due):
+                            if watcher is not None:
+                                watcher.stop()
+                            watcher = None
+                            watched_path = path
+                            self.sync_mode = 'periodic'
+                            if path:
+                                candidate = CCWatch(path)
+                                try:
+                                    candidate.start()
+                                except (ImportError, OSError, RuntimeError):
+                                    pass  # Keep the periodic safety net if notifications are unavailable.
+                                else:
+                                    watcher = candidate
+                                    self.sync_mode = 'watch'
+                            due = True  # Reconcile changes between startup/source switch and registration.
+                        if due or (watcher is not None and watcher.ready()):
+                            self.sync_cc()
+                            next_check = time.monotonic() + interval
+                    except ConfigError as error:
+                        if error.code != 'INSTANCE_BUSY':
+                            raise
+                        # A CLI transaction owns the data briefly; keep watching after it ends.
+                        continue
             finally:
                 if watcher is not None:
                     watcher.stop()
@@ -153,8 +160,7 @@ class Management:
     def preview_routing(self, mode):
         with self.lock:
             *_, migration, revision = self.routing_plan(mode)
-            from desktop.process_state import codex_process_state
-            process = codex_process_state(migration['home'])
+            process = self.process_state()
             from desktop import client as desktop_client
             target = desktop_client.discover(migration['home'])
             desktop = {'available': bool(target), 'running': False, 'status': 'unavailable'}
@@ -185,9 +191,13 @@ class Management:
 
     def activity_state(self):
         activity = getattr(self.gateway, 'activity', None)
-        return activity.snapshot() if activity is not None else {
+        result = activity.snapshot() if activity is not None else {
             'active_requests': None, 'observed_at': None,
             'gateway_status': 'unknown', 'codex_status': 'unknown'}
+        runtime = getattr(self.gateway, 'runtime', None)
+        if runtime is not None:
+            result['forwarding'] = runtime.snapshot()
+        return result
 
     def desktop_preferences(self):
         try:
@@ -217,6 +227,9 @@ class Management:
             before = self.routing_plan(mode)
             if not isinstance(revision, str) or not hmac.compare_digest(revision, before[-1]):
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
+            runtime = getattr(self.gateway, 'runtime', None)
+            if mode == 'project' and runtime is not None:
+                runtime.start()
             target, outcome, should_launch = None, 'manual', False
             desktop_error = None
             if desktop_action:
@@ -255,6 +268,11 @@ class Management:
                     outcome = desktop_client.launch(target)
                 except Exception:
                     outcome = 'launch_unconfirmed'
+            if mode == 'openai' and runtime is not None:
+                try:
+                    result['forwarding_retained'] = not runtime.stop_if_safe(self)
+                except (OSError, ValueError):
+                    result['forwarding_retained'] = True
             result['desktop_result'] = outcome
             result['desktop_error'] = desktop_error
             record = getattr(self.gateway, 'record', None)
@@ -364,6 +382,8 @@ class Management:
             result['last_synced_at'] = self.last_synced_at
             result['sync_mode'] = self.sync_mode
             result['desktop_preferences'] = self.desktop_preferences()
+            runtime = getattr(self.gateway, 'runtime', None)
+            result['forwarding'] = runtime.snapshot() if runtime is not None else {'status': 'running', 'error': None}
             if mode == 'cc_switch':
                 catalog = self.cc_catalog
                 if catalog is not None:

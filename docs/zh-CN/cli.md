@@ -41,7 +41,7 @@ Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始�
 
 `uninstall` 会先停止 Codex Hybrid 本机服务，再询问是否将 Codex 配置恢复为安装前备份，并移除该服务写入的 `codex-hybrid` provider 表。若检测到初始化后的配置改动，覆盖前还会再次要求输入 `yes` 确认。为便于重新安装，数据目录中的配置文件和凭据会保留。
 
-默认直接打开 http://127.0.0.1:18891/manage/ 即可管理（自定义端口时替换端口）。
+默认直接打开 http://127.0.0.1:18892/manage/ 即可管理（管理端口默认是转发端口加 1，可用 management_port 独立设置，以 manage-url 输出为准）。
 私密链接访问默认关闭；已有 `management_token` 也不会自动开启校验。
 需要开启时执行 `./scripts/codex-hybrid.sh manage-url --management-auth on`，获取带令牌的私密链接；开启后管理页面和管理操作均必须通过该链接访问，普通地址只显示访问受限提示。
 执行 `./scripts/codex-hybrid.sh manage-url --management-auth off` 可关闭校验。

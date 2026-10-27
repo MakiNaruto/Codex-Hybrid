@@ -127,7 +127,7 @@ Do not commit files containing credentials. Set manually created key files to PO
 
 ## Management page
 
-Initialize through the wizard or manual YAML first; installation cannot start from an empty management page. The default URL is [http://127.0.0.1:18891/manage/](http://127.0.0.1:18891/manage/). Use your custom port if needed, or obtain the URL with:
+Initialize through the wizard or manual YAML first; installation cannot start from an empty management page. The default URL is [http://127.0.0.1:18892/manage/](http://127.0.0.1:18892/manage/). Management defaults to the forwarding port plus one (or explicit `management_port`). Obtain the current URL with:
 
 ```sh
 ./scripts/codex-hybrid.sh manage-url

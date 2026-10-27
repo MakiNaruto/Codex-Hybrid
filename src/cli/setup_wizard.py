@@ -40,58 +40,60 @@ def main():
     runtime = desktop.RUNTIME
     print(f'数据目录：{runtime}')
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if not (runtime / 'state.json').exists():
-        if not 1024 <= args.port <= 65535:
-            raise ValueError('端口必须在 1024–65535 之间')
-        home = args.codex_home.expanduser().resolve()
-        if not (home / 'config.toml').is_file() or not (home / 'models_cache.json').is_file():
-            raise ValueError('请先安装 Codex、登录并完成一次聊天，再运行向导；自定义目录用 --codex-home 指定')
-        # Validate compatibility before collecting a secret or creating files.
-        desktop.official_cache(home)
-        desktop.candidate_config((home / 'config.toml').read_text(),
-                                 {'catalog': str(runtime / 'models.json'), 'port': args.port, 'local_token': 'preflight'})
-        print('1. 配置来源：1 = 手动填写 API，2 = 本机 CC Switch（只读），3 = 稍后在网页配置')
-        choice = ask('选择', '1')
-        if choice == '2':
-            source = {'type': 'cc-switch', 'path': str(Path(ask('CC Switch 数据库', str(Path.home() / '.cc-switch/cc-switch.db'))).expanduser().resolve())}
-        elif choice == '1':
-            base = ask('API 前缀（按厂商要求包含 /v1，不填 /chat/completions）', 'https://api.deepseek.com')
-            model = ask('准确的 API 模型 ID', 'deepseek-v4-flash')
-            display = ask('模型显示名称', model)
-            protocol = ask('协议：1 = Chat Completions，2 = Responses', '1')
-            if protocol not in ('1', '2'):
-                raise ValueError('协议选择无效')
-            config = {'version': 1, 'default_model': 'custom/default', 'providers': {'custom': {
-                'protocol': 'openai_chat_completions' if protocol == '1' else 'openai_responses',
-                'base_url': base, 'credentials': {'api_key_env': 'CONNECTED_API_KEY', 'env_file': './provider.env'},
-                'models': {'default': {'model_id': model, 'display_name': display}}}}}
-            runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
-            config_path = runtime / 'setup-models.yaml'
-            # Never overwrite an earlier unfinished setup's credentials without consent.
-            if config_path.exists() or (runtime / 'provider.env').exists():
-                raise ValueError(f'存在未完成的配置，请先检查 {config_path} 和 {runtime / "provider.env"}')
-            desktop.private_write(config_path, yaml.safe_dump(config, allow_unicode=True))
-            try:
-                Catalog(config_path)
-                key = getpass.getpass('API Key（输入不显示）：').strip()
-                if not key or any(c.isspace() for c in key) or key[0] in "\"'":
-                    raise ValueError('API Key 不能为空或包含空白/外层引号')
-                desktop.private_write(runtime / 'provider.env', 'CONNECTED_API_KEY=' + key + '\n')
-            except BaseException:
-                config_path.unlink(missing_ok=True)
-                raise
-            source = {'type': 'yaml', 'path': str(config_path)}
-        elif choice == '3':
-            config_path = runtime / 'setup-models.yaml'
-            if config_path.exists():
-                raise ValueError(f'存在未完成的配置，请先检查 {config_path}')
-            desktop.private_write(config_path, yaml.safe_dump({'version': 1, 'providers': {}}))
-            source = {'type': 'yaml', 'path': str(config_path)}
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(runtime):
+        if not (runtime / 'state.json').exists():
+            if not 1024 <= args.port <= 65535:
+                raise ValueError('端口必须在 1024–65535 之间')
+            home = args.codex_home.expanduser().resolve()
+            if not (home / 'config.toml').is_file() or not (home / 'models_cache.json').is_file():
+                raise ValueError('请先安装 Codex、登录并完成一次聊天，再运行向导；自定义目录用 --codex-home 指定')
+            # Validate compatibility before collecting a secret or creating files.
+            desktop.official_cache(home)
+            desktop.candidate_config((home / 'config.toml').read_text(),
+                                     {'catalog': str(runtime / 'models.json'), 'port': args.port, 'local_token': 'preflight'})
+            print('1. 配置来源：1 = 手动填写 API，2 = 本机 CC Switch（只读），3 = 稍后在网页配置')
+            choice = ask('选择', '1')
+            if choice == '2':
+                source = {'type': 'cc-switch', 'path': str(Path(ask('CC Switch 数据库', str(Path.home() / '.cc-switch/cc-switch.db'))).expanduser().resolve())}
+            elif choice == '1':
+                base = ask('API 前缀（按厂商要求包含 /v1，不填 /chat/completions）', 'https://api.deepseek.com')
+                model = ask('准确的 API 模型 ID', 'deepseek-v4-flash')
+                display = ask('模型显示名称', model)
+                protocol = ask('协议：1 = Chat Completions，2 = Responses', '1')
+                if protocol not in ('1', '2'):
+                    raise ValueError('协议选择无效')
+                config = {'version': 1, 'default_model': 'custom/default', 'providers': {'custom': {
+                    'protocol': 'openai_chat_completions' if protocol == '1' else 'openai_responses',
+                    'base_url': base, 'credentials': {'api_key_env': 'CONNECTED_API_KEY', 'env_file': './provider.env'},
+                    'models': {'default': {'model_id': model, 'display_name': display}}}}}
+                runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+                config_path = runtime / 'setup-models.yaml'
+                # Never overwrite an earlier unfinished setup's credentials without consent.
+                if config_path.exists() or (runtime / 'provider.env').exists():
+                    raise ValueError(f'存在未完成的配置，请先检查 {config_path} 和 {runtime / "provider.env"}')
+                desktop.private_write(config_path, yaml.safe_dump(config, allow_unicode=True))
+                try:
+                    Catalog(config_path)
+                    key = getpass.getpass('API Key（输入不显示）：').strip()
+                    if not key or any(c.isspace() for c in key) or key[0] in "\"'":
+                        raise ValueError('API Key 不能为空或包含空白/外层引号')
+                    desktop.private_write(runtime / 'provider.env', 'CONNECTED_API_KEY=' + key + '\n')
+                except BaseException:
+                    config_path.unlink(missing_ok=True)
+                    raise
+                source = {'type': 'yaml', 'path': str(config_path)}
+            elif choice == '3':
+                config_path = runtime / 'setup-models.yaml'
+                if config_path.exists():
+                    raise ValueError(f'存在未完成的配置，请先检查 {config_path}')
+                desktop.private_write(config_path, yaml.safe_dump({'version': 1, 'providers': {}}))
+                source = {'type': 'yaml', 'path': str(config_path)}
+            else:
+                raise ValueError('配置来源选择无效')
+            desktop.prepare(args.port, home, source)
         else:
-            raise ValueError('配置来源选择无效')
-        desktop.prepare(args.port, home, source)
-    else:
-        print('1. 检查并复用已有配置')
+            print('1. 检查并复用已有配置')
     print('\n2. 启动本机服务（已有配置会保留）')
     start_now = ask('现在启动？y/n', 'y').lower()
     if start_now not in ('y', 'n'):
@@ -105,7 +107,8 @@ def main():
     print(f'  数据目录：{runtime}')
     if service_started:
         print('  是否启用本地路由，可在管理页面点击“客户端路由”开关。')
-        url = f'http://127.0.0.1:{settings["port"]}/manage/{"#" + token if token else ""}'
+        from management.runtime import management_port
+        url = f'http://127.0.0.1:{management_port(settings)}/manage/{"#" + token if token else ""}'
         try:
             opened = webbrowser.open(url)
         except (webbrowser.Error, OSError):

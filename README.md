@@ -76,7 +76,7 @@ Turning the switch on backs up and updates Codex routing configuration. Turning 
 
 The web UI includes setup readiness, unsaved draft warnings, provider/model filtering, activity status, error summaries and local sanitized diagnostics. See the [web trial checklist (Chinese)](docs/zh-CN/web-trial.md).
 
-Private data is stored in `~/.codex-hybrid/` by default. Use the [local management page](http://127.0.0.1:18891/manage/) to add providers and models or update API keys. For a custom port or private access link, run `manage-url` to get the address.
+Private data is stored in `~/.codex-hybrid/` by default. Use the [local management page](http://127.0.0.1:18892/manage/) to add providers and models or update API keys. Management uses the forwarding port plus one by default (18892), or an explicit `management_port` in settings.json. Restart the service after upgrading and run `manage-url` for its current address.
 
 > While routing is enabled, both official and third-party models depend on the local service. Run `start` after restarting your computer. See [advanced setup](docs/en/cli.md) for custom data directories, Codex paths, and YAML configuration.
 
