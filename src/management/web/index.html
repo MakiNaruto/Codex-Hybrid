@@ -48,10 +48,19 @@
     <div id="providers"></div>
   </section>
   <section class="diagnostics-section" aria-labelledby="diagnostics-heading">
-    <div class="section-head"><h2 id="diagnostics-heading">运行与诊断</h2><div class="toolbar"><button id="refresh-diagnostics" class="secondary" type="button">刷新状态</button><button id="export-diagnostics" class="secondary" type="button">下载脱敏诊断</button></div></div>
-    <p id="service-status" class="hint" role="status">正在读取服务运行状态…</p>
-    <p class="hint">仅展示日志尾部最近 20 条错误摘要；不包含聊天内容、Key 或完整日志。诊断文件仅下载到本机，由你自行决定是否分享。</p>
-    <details><summary>最近错误摘要</summary><ul id="diagnostic-errors"><li>尚未读取</li></ul></details>
+    <div class="section-head"><h2 id="diagnostics-heading">运行与诊断</h2><div class="toolbar"><button id="refresh-diagnostics" class="secondary" type="button">刷新 ↻</button><button id="export-diagnostics" class="secondary" type="button">下载诊断 ↓</button></div></div>
+    <div class="diagnostic-statusbar"><p id="service-status" role="status">正在读取服务运行状态…</p><span id="diagnostic-updated" class="hint"></span></div>
+    <div class="diagnostic-controls">
+      <div id="diagnostic-period" class="diagnostic-segments" role="group" aria-label="错误记录时间范围">
+        <button type="button" data-period="1" aria-pressed="true">近24小时</button>
+        <button type="button" data-period="7" aria-pressed="false">近7天</button>
+        <button type="button" data-period="30" aria-pressed="false">近30天</button>
+        <button type="button" data-period="all" aria-pressed="false">全部</button>
+      </div>
+      <div class="diagnostic-help"><span>说明</span><button type="button" class="help-trigger" aria-label="错误摘要与诊断说明" aria-expanded="false" data-help="按所选时间范围查看已保留的错误记录，敏感信息已隐藏。历史记录可能因清理而不完整；缺少发生时间的记录会标明参考时间。将指针移到记录时间上或聚焦时间，可查看完整日期及时间依据。下载的诊断文件仅保存到本机。">?</button></div>
+    </div>
+    <p id="diagnostic-coverage" class="hint" role="status" hidden></p>
+    <ul id="diagnostic-errors" aria-label="最近请求错误摘要" aria-live="polite"><li class="diagnostic-empty">正在读取错误记录…</li></ul>
   </section>
 </main>
 <dialog id="routing-dialog" aria-labelledby="routing-dialog-title" aria-describedby="routing-dialog-description">

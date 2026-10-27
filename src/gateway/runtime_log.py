@@ -1,10 +1,12 @@
 """Size-limited local runtime logs shared by foreground and background starts."""
+from datetime import datetime, timezone
 import io
 import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 import threading
+import time
 
 
 LOG_BYTES = 2 * 1024 * 1024
@@ -39,6 +41,12 @@ class ErrorStream:
         self.buffer = ''
         self.lock = threading.RLock()
 
+    def emit_line(self, line):
+        now = time.time()
+        record = {'time': now, 'timestamp': datetime.fromtimestamp(now, timezone.utc).isoformat(),
+                  'message': line}
+        self.output.handle(logging.makeLogRecord({'msg': json.dumps(record), 'levelno': logging.ERROR}))
+
     def write(self, value):
         with self.lock:
             self.buffer += value
@@ -46,13 +54,13 @@ class ErrorStream:
                 end = self.buffer.find('\n')
                 end = min(end, 8192) if end >= 0 else 8192
                 line, self.buffer = self.buffer[:end], self.buffer[end + (self.buffer[end:end+1] == '\n'):]
-                self.output.handle(logging.makeLogRecord({'msg': line, 'levelno': logging.ERROR}))
+                self.emit_line(line)
         return len(value)
 
     def flush(self):
         with self.lock:
             if self.buffer:
-                self.output.handle(logging.makeLogRecord({'msg': self.buffer, 'levelno': logging.ERROR}))
+                self.emit_line(self.buffer)
                 self.buffer = ''
             self.output.flush()
 
@@ -67,11 +75,14 @@ class RuntimeLog:
         self.stderr = ErrorStream(self.errors)
 
     def emit(self, observation):
+        observation = dict(observation)
+        observation.setdefault('time', time.time())
+        observation['timestamp'] = datetime.fromtimestamp(observation['time'], timezone.utc).isoformat()
         encoded = json.dumps(observation)
         if len(encoded.encode('utf-8')) > 16384:
             # An unusually large tool list must not defeat the per-file limit.
             compact = {'record_truncated': True}
-            for key in ('time', 'status', 'phase', 'request_id', 'http_status', 'elapsed_ms', 'error_kind'):
+            for key in ('time', 'timestamp', 'status', 'phase', 'request_id', 'http_status', 'elapsed_ms', 'error_kind'):
                 value = observation.get(key)
                 if type(value) in (int, float, bool) or value is None:
                     compact[key] = value

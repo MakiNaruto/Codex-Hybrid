@@ -28,7 +28,7 @@ class RuntimeLogTests(unittest.TestCase):
                 stream = ErrorStream(output)
                 stream.write('one');stream.write(' two\nthree')
                 stream.flush()
-                self.assertEqual((Path(temp) / 'service.stderr').read_text(), 'one two\nthree\n')
+                self.assertEqual([json.loads(line)['message'] for line in (Path(temp) / 'service.stderr').read_text().splitlines()], ['one two', 'three'])
                 stream.write('x'*30000)
                 self.assertLess(len(stream.buffer), 8192)
                 stream.flush()
@@ -42,8 +42,14 @@ class RuntimeLogTests(unittest.TestCase):
             log.emit({'status': 'listening'})
             log.stderr.write('test error\n')
             log.close()
-            self.assertEqual(json.loads((Path(temp)/'service.jsonl').read_text()), {'status': 'listening'})
-            self.assertEqual((Path(temp)/'service.stderr').read_text(), 'test error\n')
+            event = json.loads((Path(temp)/'service.jsonl').read_text())
+            self.assertEqual(event['status'], 'listening')
+            self.assertGreater(event['time'], 0)
+            self.assertIn('+00:00', event['timestamp'])
+            error = json.loads((Path(temp)/'service.stderr').read_text())
+            self.assertEqual(error['message'], 'test error')
+            self.assertGreater(error['time'], 0)
+            self.assertIn('+00:00', error['timestamp'])
 
     def test_large_tool_metadata_cannot_exceed_log_size_limit(self):
         with TemporaryDirectory() as temp:

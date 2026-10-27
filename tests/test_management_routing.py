@@ -167,6 +167,18 @@ class RoutingTests(unittest.TestCase):
                 with opener.open(request, timeout=3) as response:
                     diagnostic = json.load(response)
                 self.assertEqual(diagnostic['schema_version'], 1)
+                self.assertEqual(diagnostic['period_days'], 1)
+                for period in ('7', '30', 'all'):
+                    period_request = urllib.request.Request(
+                        f'http://127.0.0.1:{server.server_port}/manage/api/diagnostics?days={period}', headers=headers)
+                    with opener.open(period_request, timeout=3) as period_response:
+                        self.assertEqual(json.load(period_response)['period_days'], None if period == 'all' else int(period))
+                bad_request = urllib.request.Request(
+                    f'http://127.0.0.1:{server.server_port}/manage/api/diagnostics?days=invalid', headers=headers)
+                with self.assertRaises(urllib.error.HTTPError) as invalid:
+                    opener.open(bad_request, timeout=3)
+                self.assertEqual(invalid.exception.code, 400)
+                invalid.exception.close()
                 self.assertNotIn('test-token', json.dumps(diagnostic))
             else:
                 with self.assertRaises(urllib.error.HTTPError) as error:

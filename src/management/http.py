@@ -1,6 +1,7 @@
 """Management HTTP adapter on the existing native gateway, not an inference service."""
 import hmac
 import json
+from urllib.parse import urlsplit, parse_qs
 from pathlib import Path
 
 from model_catalog.catalog import ConfigError
@@ -49,9 +50,13 @@ def handle(handler, gateway, method):
         manager = gateway.manager
         if method == 'GET' and handler.path == '/manage/api/processes':
             reply(200, manager.process_state()); return True
-        if method == 'GET' and handler.path == '/manage/api/diagnostics':
+        if method == 'GET' and urlsplit(handler.path).path == '/manage/api/diagnostics':
             from management.diagnostics import report
-            reply(200, report(manager)); return True
+            periods = parse_qs(urlsplit(handler.path).query, keep_blank_values=True).get('days', ['1'])
+            if len(periods) != 1 or periods[0] not in {'1', '7', '30', 'all'}:
+                reply(400, {'code': 'INVALID_DIAGNOSTIC_PERIOD'}); return True
+            days = None if periods[0] == 'all' else int(periods[0])
+            reply(200, report(manager, days=days)); return True
         if method == 'GET' and handler.path == '/manage/api/activity':
             reply(200, manager.activity_state()); return True
         if method == 'GET' and handler.path == '/manage/api/state':
