@@ -36,6 +36,7 @@ def handle(handler, gateway, method):
         return True
     static = {'/manage/': ('index.html', 'text/html; charset=utf-8'),
               '/manage/entry.js': ('entry.js', 'application/javascript; charset=utf-8'),
+              '/manage/theme.js': ('theme.js', 'application/javascript; charset=utf-8'),
               '/manage/app.js': ('app.js', 'application/javascript; charset=utf-8'),
               '/manage/style.css': ('style.css', 'text/css; charset=utf-8')}
     if method == 'GET' and handler.path in static:
