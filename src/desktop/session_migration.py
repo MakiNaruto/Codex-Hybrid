@@ -14,6 +14,67 @@ import time
 from model_catalog.catalog import ConfigError
 
 
+def _zstd():
+    # Python 3.14 includes Zstandard; older supported Python versions use the
+    # dependency with the same frame format. Keep offsets in decompressed bytes.
+    try:
+        from compression import zstd
+        return zstd
+    except ImportError:
+        import zstandard
+        return zstandard
+
+
+def _decode_rollout(path, data):
+    if path.name.endswith('.jsonl.zst'):
+        codec = _zstd()
+        try:
+            # Accept concatenated/unknown-size frames, but reject truncated
+            # streams even when they happen to end at a valid JSONL boundary.
+            chunks = []
+            while data:
+                decoder = codec.ZstdDecompressor()
+                if hasattr(decoder, 'decompressobj'):
+                    decoder = decoder.decompressobj()
+                chunks.append(decoder.decompress(data))
+                if not decoder.eof:
+                    raise ValueError()
+                data = decoder.unused_data
+            if not chunks:
+                raise ValueError()
+            return b''.join(chunks)
+        except (ValueError, EOFError, codec.ZstdError):
+            raise ConfigError('SESSION_HISTORY_INVALID') from None
+    return data
+
+
+def _encode_rollout(path, data):
+    if path.name.endswith('.jsonl.zst'):
+        codec = _zstd()
+        return codec.compress(data)
+    return data
+
+
+def _row_path(row):
+    path = Path(row[1])
+    compressed = path.with_name(path.name + '.zst')
+    # Codex can keep the original .jsonl name in its index after compression.
+    if not path.is_file() and path.suffix == '.jsonl' and compressed.is_file():
+        return compressed
+    return path
+
+
+def _rollout_paths(home, rows=()):
+    paths = {p.resolve() for folder in ('sessions', 'archived_sessions')
+             for p in (home / folder).rglob('*.jsonl*')
+             if p.name.endswith(('.jsonl', '.jsonl.zst'))}
+    paths |= {_row_path(row).resolve() for row in rows
+              if row[1] and Path(row[1]).resolve().is_relative_to(home) and _row_path(row).is_file()}
+    if any(not p.is_relative_to(home) for p in paths):
+        raise ConfigError('SESSION_PATH_UNSAFE')
+    return paths
+
+
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -157,10 +218,6 @@ def log_warnings(migration, directory):
 
 def _plan(home, settings, provider, requested=None):
     home = Path(home).resolve()
-    paths = sorted({p.resolve() for folder in ('sessions', 'archived_sessions')
-                    for p in (home / folder).rglob('*.jsonl')})
-    if any(not p.is_relative_to(home) for p in paths):
-        raise ConfigError('SESSION_PATH_UNSAFE')
     database = _database(home)
     rows = []
     if database:
@@ -168,13 +225,14 @@ def _plan(home, settings, provider, requested=None):
             rows = _rows(db)
     # Cloud sessions have no local rollout and are deliberately outside this migration.
     local_rows = [row for row in rows if row[1] and Path(row[1]).resolve().is_relative_to(home)]
-    missing = [r for r in local_rows if not Path(r[1]).is_file()]
-    paths = sorted(set(paths) | {Path(row[1]).resolve() for row in local_rows if Path(row[1]).is_file()})
+    missing = [r for r in local_rows if not _row_path(r).is_file()]
+    paths = sorted(_rollout_paths(home, local_rows))
     needs_model = paths or local_rows or requested is not None or settings.get('models') or settings.get('official_models')
     model = select_model(home, settings, provider, requested) if needs_model else None
     originals = {p: p.read_bytes() for p in paths}
+    decoded = {p: _decode_rollout(p, data) for p, data in originals.items()}
     records, ids = {}, {}
-    for p, data in originals.items():
+    for p, data in decoded.items():
         try:
             lines = data.splitlines(keepends=True)
             header = json.loads(lines[0])
@@ -183,7 +241,7 @@ def _plan(home, settings, provider, requested=None):
             # Newer Codex stores multiple immutable rollout segments for one
             # logical thread. history_base refers to the filename's segment ID,
             # not necessarily session_meta.id or threads.id.
-            segment = re.search(r'([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\.jsonl$', p.name)
+            segment = re.search(r'([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})\.jsonl(?:\.zst)?$', p.name)
             segment_id = segment[1] if segment else header['payload']['id']
             if segment_id in ids and ids[segment_id] != p:
                 raise ConfigError('SESSION_ID_AMBIGUOUS')
@@ -244,7 +302,7 @@ def _plan(home, settings, provider, requested=None):
 
     for p in paths:
         render(p)
-    changes = {p: data for p, data in rendered.items() if data != originals[p]}
+    changes = {p: _encode_rollout(p, data) for p, data in rendered.items() if data != decoded[p]}
     fingerprint = sha(json.dumps([provider, model, rows, [(str(p), sha(originals[p])) for p in paths]],
                                 sort_keys=True).encode())
     return {'home': home, 'provider': provider, 'model': model, 'database': database,
@@ -273,9 +331,7 @@ def apply(migration, directory, extra_files, *, allow_running=False):
             if json.loads(manifest.read_text()).get('status') == 'applying':
                 raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED')
     if not migration.get('skip_sessions'):
-        current_paths = {p.resolve() for folder in ('sessions', 'archived_sessions')
-                         for p in (home / folder).rglob('*.jsonl')}
-        current_paths |= {Path(r[1]).resolve() for r in migration['local_rows'] if Path(r[1]).is_file()}
+        current_paths = _rollout_paths(home, migration['local_rows'])
         if current_paths != set(migration['originals']) or _database(home) != migration['database']:
             raise ConfigError('SESSION_MIGRATION_CHANGED')
     backup = root / secrets.token_hex(12)
@@ -362,10 +418,7 @@ def recover(backup):
         raise ConfigError('SESSION_MIGRATION_NOT_INTERRUPTED')
     assert_stopped(Path(manifest['home']))
     home = Path(manifest['home'])
-    paths = {p.resolve() for folder in ('sessions', 'archived_sessions')
-             for p in (home / folder).rglob('*.jsonl')}
-    paths |= {Path(r[1]).resolve() for r in manifest['rows_before']
-              if r[1] and Path(r[1]).is_file() and Path(r[1]).resolve().is_relative_to(home)}
+    paths = _rollout_paths(home, manifest['rows_before'])
     if not manifest.get('skip_sessions') and sorted(str(p) for p in paths) != manifest['rollout_paths']:
         raise ConfigError('SESSION_MIGRATION_CHANGED')
     if manifest['database']:

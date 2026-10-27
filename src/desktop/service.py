@@ -427,7 +427,7 @@ def main():
         current = digest(config_path.read_bytes())
         if current == state['original_sha256']:
             try:
-                cleaned, removed = remove_bridge_provider_table(config_path.read_text())
+                cleaned, removed = remove_bridge_provider_table(config_path.read_bytes().decode('utf-8'))
             except ValueError as error:
                 print('无法安全移除 Codex 配置中的 provider 表：' + str(error))
                 return

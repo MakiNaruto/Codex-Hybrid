@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import tomllib
 import unittest
+from unittest.mock import patch
 
 from desktop.service import PROVIDER, candidate_config, digest
 from management.service import Management
@@ -18,6 +19,9 @@ from model_catalog.catalog import ConfigError
 
 class RoutingTests(unittest.TestCase):
     def setUp(self):
+        processes = patch('psutil.process_iter', return_value=[])
+        processes.start()
+        self.addCleanup(processes.stop)
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
@@ -65,6 +69,15 @@ class RoutingTests(unittest.TestCase):
         self.switch('openai')
         self.assertEqual(tomllib.loads(self.path.read_text()), {
             'model_provider': 'openai', 'model_catalog_json': 'custom.json'})
+
+    def test_utf8_config_state_survives_switch_with_non_ascii_comments(self):
+        self.initialize('# 用户配置：保留中文注释\r\nmodel = "gpt-test"\r\n')
+        self.assertEqual(self.manager.routing_state(), 'openai')
+        self.switch('project')
+        self.assertEqual(self.manager.routing_state(), 'project')
+        self.switch('openai')
+        self.assertEqual(self.manager.routing_state(), 'openai')
+        self.assertIn('# 用户配置：保留中文注释', self.path.read_bytes().decode('utf-8'))
 
     def test_stale_preview_rejected_without_writes(self):
         preview = self.manager.preview_routing('project')

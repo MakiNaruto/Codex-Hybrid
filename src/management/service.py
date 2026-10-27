@@ -130,7 +130,7 @@ class Management:
     def routing_state(self):
         try:
             state = json.loads((self.directory/'state.json').read_text())
-            config = tomllib.loads(Path(state['config_path']).read_text())
+            config = tomllib.loads(Path(state['config_path']).read_text(encoding='utf-8'))
             if config.get('profile'):
                 return 'unsupported'
             provider = config.get('model_provider', 'openai')

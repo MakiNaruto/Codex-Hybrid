@@ -14,7 +14,9 @@ def main():
     python = ROOT / '.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     if not python.is_file():
         venv.create(ROOT / '.venv', with_pip=True)
-    check = subprocess.run([str(python), '-c', 'import yaml; import psutil; import watchdog'], capture_output=True)
+    check = subprocess.run([str(python), '-c',
+        'import yaml; import psutil; import watchdog; import sys; '
+        'sys.version_info >= (3, 14) or __import__("zstandard")'], capture_output=True)
     if check.returncode:
         subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(ROOT / 'requirements.txt')], check=True)
     args = sys.argv[1:]

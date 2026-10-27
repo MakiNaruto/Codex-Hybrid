@@ -8,15 +8,23 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+try:
+    from compression import zstd
+except ImportError:
+    import zstandard as zstd
+
 from desktop.session_migration import apply, assert_stopped, config_model, plan, recover, select_model
 from model_catalog.catalog import ConfigError
 
 
 class SessionMigrationTests(unittest.TestCase):
     def setUp(self):
+        processes = patch('psutil.process_iter', return_value=[])
+        processes.start()
+        self.addCleanup(processes.stop)
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.home = Path(self.temp.name) / 'codex'
+        self.home = Path(self.temp.name) / 'codex 中文 space'
         self.home.mkdir()
         self.runtime = Path(self.temp.name) / 'runtime'
         self.settings = {'catalog': str(self.home / 'catalog.json'),
@@ -231,6 +239,85 @@ class SessionMigrationTests(unittest.TestCase):
         base = json.loads(second.read_bytes().splitlines()[0])['payload']['history_base']
         self.assertEqual(base['end_byte_offset'], len(first.read_bytes().splitlines(keepends=True)[0]))
 
+    def test_compressed_history_updates_offsets_and_recovers_original_frames(self):
+        parent = self.session('parent')
+        parent_before = parent.read_bytes()
+        old_lines = parent_before.splitlines(keepends=True)
+        child = self.session('child', archived=True, base={
+            'thread_id': 'parent', 'end_ordinal_exclusive': 2,
+            'end_byte_offset': len(old_lines[0]) + len(old_lines[1])})
+        child_before = child.read_bytes()
+        compressed = parent.with_suffix('.jsonl.zst')
+        frame = zstd.compress(parent_before)
+        compressed.write_bytes(frame)
+        parent.unlink()
+        # The DB still names .jsonl, while history_base needs the compressed base.
+        for provider, model in [('codex-hybrid', 'gpt-6-astra'), ('openai', 'gpt-6.1-sol')]:
+            migration = plan(self.home, self.settings, provider, model)
+            self.assertEqual(migration['missing_rollouts'], 0)
+            self.assertEqual(migration['count'], 2)
+            backup = Path(apply(migration, self.runtime, {}))
+            with zstd.open(io.BytesIO(compressed.read_bytes()), 'rb') as reader:
+                new_lines = reader.read().splitlines(keepends=True)
+            base = json.loads(child.read_bytes().splitlines()[0])['payload']['history_base']
+            self.assertEqual(base['end_byte_offset'], len(new_lines[0]) + len(new_lines[1]))
+            self.assertEqual(new_lines[-1], old_lines[-1])
+            self.assertEqual(json.loads(new_lines[0])['payload']['model_provider'], provider)
+            self.assertEqual(json.loads(new_lines[1])['payload']['model'], model)
+            self.assertFalse(parent.exists())
+            manifest = json.loads((backup/'manifest.json').read_text())
+            manifest['status'] = 'applying'
+            (backup/'manifest.json').write_text(json.dumps(manifest))
+            recover(backup)
+            self.assertEqual(compressed.read_bytes(), frame)
+            self.assertEqual(child.read_bytes(), child_before)
+            self.assertEqual(self.rows()[0][1], 'old')
+
+    def test_archived_compressed_rollout_with_index_is_migrated(self):
+        path = self.session('archived', archived=True)
+        compressed = path.with_suffix('.jsonl.zst')
+        compressed.write_bytes(zstd.compress(path.read_bytes()))
+        path.unlink()
+        with contextlib.closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('UPDATE threads SET rollout_path=?', (str(compressed),))
+        migration = plan(self.home, self.settings, 'openai')
+        self.assertEqual(migration['missing_rollouts'], 0)
+        apply(migration, self.runtime, {})
+        self.assertEqual(self.rows(), [('archived', 'openai', 'gpt-6.1-sol')])
+        # A no-op plan must not recompress an unchanged frame.
+        self.assertEqual(plan(self.home, self.settings, 'openai')['changes'], {})
+
+    def test_changed_compressed_history_refuses_writes(self):
+        path = self.session('one')
+        compressed = path.with_suffix('.jsonl.zst')
+        compressed.write_bytes(zstd.compress(path.read_bytes()))
+        path.unlink()
+        migration = plan(self.home, self.settings, 'openai')
+        after = zstd.compress(b'changed')
+        compressed.write_bytes(after)
+        with self.assertRaisesRegex(ConfigError, 'SESSION_MIGRATION_CHANGED'):
+            apply(migration, self.runtime, {})
+        self.assertEqual(compressed.read_bytes(), after)
+        self.assertEqual(self.rows()[0][1], 'old')
+
+    def test_invalid_compressed_history_warns_without_modifying_files(self):
+        path = self.home/'sessions'/'broken.jsonl.zst'
+        path.parent.mkdir()
+        path.write_bytes(b'not a zstandard frame')
+        with self.assertRaisesRegex(ConfigError, 'SESSION_HISTORY_INVALID'):
+            plan(self.home, self.settings, 'openai')
+        preview = plan(self.home, self.settings, 'openai', best_effort=True)
+        self.assertEqual(preview['warnings'][0]['code'], 'SESSION_HISTORY_INVALID')
+        self.assertEqual(path.read_bytes(), b'not a zstandard frame')
+
+    def test_truncated_compressed_history_is_rejected(self):
+        path = self.session('one')
+        compressed = path.with_suffix('.jsonl.zst')
+        compressed.write_bytes(zstd.compress(path.read_bytes())[:-1])
+        path.unlink()
+        with self.assertRaisesRegex(ConfigError, 'SESSION_HISTORY_INVALID'):
+            plan(self.home, self.settings, 'openai')
+
     def test_commit_marker_failure_restores_database_as_well_as_files(self):
         path = self.session('one');before = path.read_bytes()
         migration = plan(self.home, self.settings, 'openai')
@@ -266,17 +353,16 @@ class SessionMigrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, 'SESSION_MIGRATION_CHANGED'):
             recover(backup)
 
-    def management(self):
+    def management(self, native='model_provider = "openai"\nmodel = "gpt-6.1-sol"\n'):
         from desktop.service import candidate_config, digest
         from management.service import Management
         self.runtime.mkdir(exist_ok=True)
         self.settings.update(port=18891, local_token='test-token')
         config = self.home/'config.toml'
-        native = 'model_provider = "openai"\nmodel = "gpt-6.1-sol"\n'
         candidate = candidate_config(native, self.settings)
-        config.write_text(native)
-        (self.runtime/'original-config.toml').write_text(native)
-        (self.runtime/'desktop-config.toml').write_text(candidate)
+        config.write_bytes(native.encode('utf-8'))
+        (self.runtime/'original-config.toml').write_bytes(native.encode('utf-8'))
+        (self.runtime/'desktop-config.toml').write_bytes(candidate.encode('utf-8'))
         (self.runtime/'settings.json').write_text(json.dumps(self.settings))
         state = {'config_path': str(config), 'original_sha256': digest(native.encode()),
                  'candidate_sha256': digest(candidate.encode()), 'activated': False}
@@ -335,7 +421,7 @@ class SessionMigrationTests(unittest.TestCase):
     def test_cli_activate_rollback_and_uninstall_migrate(self):
         from desktop import service
         self.session('one')
-        self.management()
+        self.management('# 用户配置：保留中文注释\r\nmodel_provider = "openai"\r\nmodel = "gpt-6.1-sol"\r\n')
         for action, requested, expected_provider, expected_model in [
                 ('activate', 'vendor/model', 'codex-hybrid', 'vendor/model'),
                 ('rollback', None, 'openai', 'gpt-6.1-sol'),

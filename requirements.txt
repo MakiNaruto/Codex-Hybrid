@@ -1,3 +1,4 @@
 PyYAML>=6.0.2,<7
 psutil>=6.0,<8
 watchdog>=6.0,<7
+zstandard>=0.23,<1; python_version < "3.14"
