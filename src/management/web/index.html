@@ -20,14 +20,12 @@
     <ol id="readiness-steps" class="readiness-steps"></ol>
   </section>
   <div class="settings-grid">
-    <section aria-labelledby="routing-heading">
+    <section class="routing-section" aria-labelledby="routing-heading">
       <div class="section-head"><h2 id="routing-heading">Codex 接入</h2><button id="detect-processes" class="secondary" type="button">检测状态</button></div>
-      <div class="routing-control"><label id="routing-label" for="routing-toggle">启用 Codex 接入</label><button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button></div>
-      <div class="desktop-preferences">
-        <label for="desktop-project">开启接入时的桌面端操作</label><select id="desktop-project"><option value="ask">每次询问</option><option value="auto">自动启动或重启</option><option value="never">不操作桌面端</option></select>
-        <label for="desktop-openai">关闭接入时的桌面端操作</label><select id="desktop-openai"><option value="ask">每次询问</option><option value="auto">自动重启（未运行则不启动）</option><option value="never">不操作桌面端</option></select>
+      <div class="routing-control">
+        <div class="routing-copy"><p id="routing-status" class="routing-status" role="status"></p><label id="routing-label" for="routing-toggle">让 Codex 使用你的模型</label><p class="routing-description">通过 Hybrid 调用已配置的第三方模型。</p></div>
+        <button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button>
       </div>
-      <p id="routing-status" class="routing-status" role="status"></p>
       <div class="client-processes" aria-label="Codex 与网关状态检测">
         <div class="client-process-list">
           <div id="client-process-list" class="client-process-clients"><span class="hint">尚未检测</span></div>
@@ -35,6 +33,15 @@
         </div>
         <p id="client-process-note" class="hint" role="status">点击“检测状态”更新桌面端、VS Code 端、CLI 端和网关状态。</p>
       </div>
+      <details class="desktop-behavior">
+        <summary>桌面端行为<span>启动与重启偏好</span></summary>
+        <div class="desktop-preferences">
+          <label for="desktop-project">开启接入时</label><select id="desktop-project"><option value="ask">每次询问</option><option value="auto">自动启动或重启</option><option value="never">不操作桌面端</option></select>
+          <label for="desktop-openai">关闭接入时</label><select id="desktop-openai" aria-describedby="desktop-close-note"><option value="ask">每次询问</option><option value="auto">自动重启</option><option value="never">不操作桌面端</option></select>
+        </div>
+        <p id="desktop-close-note" class="hint">关闭接入时，自动重启仅对已运行的桌面端生效。</p>
+      </details>
+      <p class="routing-footnote">切换前预览影响，并确认是否重启桌面端。</p>
     </section>
     <section class="source" aria-labelledby="source-heading">
       <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>

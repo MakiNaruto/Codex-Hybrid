@@ -22,8 +22,8 @@ class DesktopClientTests(unittest.TestCase):
         implementation.close.assert_called_once_with(target, timeout=7)
         implementation.launch.assert_called_once_with(target, timeout=9)
 
-    def test_macos_and_other_platforms_fall_back_without_loading_windows(self):
-        for platform in ('darwin', 'linux'):
+    def test_other_platforms_fall_back_without_loading_windows(self):
+        for platform in ('linux',):
             with self.subTest(platform=platform), patch.object(client.sys, 'platform', platform), \
                     patch.object(client, 'import_module') as load:
                 self.assertIsNone(client.discover(Path('fixture')))
@@ -31,3 +31,8 @@ class DesktopClientTests(unittest.TestCase):
                     with self.assertRaisesRegex(client.DesktopControlError, 'unsupported_platform'):
                         operation({})
                 load.assert_not_called()
+
+    def test_macos_dispatches_to_native_backend(self):
+        with patch.object(client.sys, 'platform', 'darwin'), patch.object(client, 'import_module') as load:
+            client.discover(Path('fixture'))
+            load.assert_called_once_with('desktop.macos_client')

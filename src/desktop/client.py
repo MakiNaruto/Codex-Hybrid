@@ -27,9 +27,7 @@ def backend():
     if sys.platform == 'win32':
         return import_module('desktop.windows_client')
     if sys.platform == 'darwin':
-        # Add a native macOS backend here after installation identity, normal
-        # app quit, permissions and launch behavior have been validated on Mac.
-        return None
+        return import_module('desktop.macos_client')
     return None
 
 

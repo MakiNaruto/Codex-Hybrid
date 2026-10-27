@@ -312,14 +312,14 @@ function confirmRouting(mode,preview){
   checkbox.checked=possible&&preference==='auto';
   checkbox.disabled=!possible||preference==='never';
   $('desktop-action-row').hidden=!possible||preference==='never';
-  $('desktop-action-label').textContent=desktop?.running?'同时重启 Windows 桌面端':'完成后启动 Windows 桌面端';
+  $('desktop-action-label').textContent=desktop?.running?'同时重启 Codex 桌面端':'完成后启动 Codex 桌面端';
   $('routing-dialog-title').textContent=verb+' Codex 接入？';
   $('routing-dialog-description').textContent=(mode==='project'?'将启用混合路由':'将恢复接入前的路由配置')+'，并备份、更新本地会话索引，保留历史内容和配置中的模型。';
   renderClientProcesses(preview.codex_process);renderGatewayActivity(preview.activity);
   const warnings=(preview.warnings||[]).map(warning=>warning.message+'（'+warning.code+'）');
   if((preview.activity?.active_requests||0)>0)warnings.push('当前仍有请求正在执行，重启桌面端可能中断任务。');
   if((preview.codex_process?.clients?.cli||0)+(preview.codex_process?.clients?.vscode||0)>0)warnings.push('CLI / VS Code 仍在运行，将更新共享配置和会话索引，建议先结束正在执行的任务。');
-  warnings.push('自动操作仅针对 Windows 桌面端，重启可能影响所有桌面窗口的任务。其他客户端请自行重启。');
+  warnings.push('自动操作仅针对本机 Codex 桌面端，重启可能影响所有桌面窗口的任务。其他客户端请自行重启。');
   if(!possible&&mode==='project')warnings.push('桌面端未识别、检测不完整或不支持自动操作，请自行打开或重启 Codex。');
   $('routing-dialog-warning').hidden=false;$('routing-dialog-warning').textContent=warnings.join(' ');
   $('routing-dialog-details').textContent=[...(preview.changes||[]),mode==='openai'?'关闭后请选择官方模型。':''].filter(Boolean).join('\n\n');
@@ -372,7 +372,7 @@ $('routing-toggle').onclick=async()=>{
     const saved=await api('routing',{mode,revision:preview.revision,confirm_activity:true,...choice});
     state.routing_mode=saved.routing_mode;
     const outcomes={started:'桌面端已启动。',already_running:'已检测到桌面端运行。',launch_unconfirmed:'未能确认桌面端启动成功，请自行打开 Codex 重试。',close_failed:'桌面端未能自动退出，请手动完全退出并重新打开 Codex。',unavailable:'未找到可用的桌面端安装，请自行打开或重启 Codex。',unknown:'无法确认桌面端状态，请自行打开或重启 Codex。',state_changed:'桌面端运行状态已变化，请自行重启 Codex。',not_running:'桌面端未运行，未启动。',manual:'请自行打开或重启需要使用新配置的 Codex。'};
-    const reasons={window_enumeration_failed:'Windows 未允许读取桌面窗口。',restart_manager_identity_failed:'无法验证桌面端进程身份，未发送关闭请求。',restart_manager_identity_changed:'桌面端进程身份发生变化，未发送关闭请求。',restart_manager_start_failed:'无法创建 Windows 后台退出会话。',restart_manager_registration_failed:'Windows 未接受桌面端退出注册。',restart_manager_scope_changed:'Windows 返回的退出范围不符合本次桌面端目标，未发送关闭请求。',restart_manager_shutdown_failed:'Windows 后台正常退出请求未完成，应用可能拒绝退出或权限不足；未强制结束进程。',exit_timeout:'Windows 退出请求已完成，但桌面进程在随后 12 秒内仍未退出。',process_reappeared:'原桌面进程退出后又检测到桌面进程，本次未重复操作。'};
+    const reasons={quit_denied:'macOS 未允许退出操作，请检查自动化权限或手动退出 Codex。',window_enumeration_failed:'Windows 未允许读取桌面窗口。',restart_manager_identity_failed:'无法验证桌面端进程身份，未发送关闭请求。',restart_manager_identity_changed:'桌面端进程身份发生变化，未发送关闭请求。',restart_manager_start_failed:'无法创建 Windows 后台退出会话。',restart_manager_registration_failed:'Windows 未接受桌面端退出注册。',restart_manager_scope_changed:'Windows 返回的退出范围不符合本次桌面端目标，未发送关闭请求。',restart_manager_shutdown_failed:'Windows 后台正常退出请求未完成，应用可能拒绝退出或权限不足；未强制结束进程。',exit_timeout:'已请求正常退出，但桌面进程在等待期间仍未退出，请检查 Codex 是否弹出了退出确认。',process_reappeared:'原桌面进程退出后又检测到桌面进程，本次未重复操作。'};
     finishRouting((mode==='project'?'接入配置已开启。':'接入前配置已恢复。')+(outcomes[saved.desktop_result]||outcomes.manual)+(reasons[saved.desktop_error]||'')+' 其他客户端请自行重启。'+(saved.warnings||[]).map(w=>w.message).join(' ')+' 备份：'+(saved.session_backup||'无需迁移'));
   }catch(error){
     routingError=errorMessage(error);
