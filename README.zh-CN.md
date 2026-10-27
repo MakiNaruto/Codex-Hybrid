@@ -17,16 +17,20 @@
 
 <table>
   <tr>
-    <td align="center" valign="middle">
-      <img src="docs/images/codex-model-picker.png" width="520" alt="在 Codex 原生列表中选择第三方模型，并收到 Hello World 回复">
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/codex-model-picker.png" width="520" alt="在 Codex 原生列表中选择第三方模型">
     </td>
-    <td align="center" valign="middle">
-      <img src="docs/images/management.png" width="290" alt="Codex Hybrid 本地管理页：客户端路由、配置来源与厂商模型管理">
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/management.png" width="520" alt="手动添加厂商、API Key 和模型">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/management-ccswitch.png" width="520" alt="选择 CC Switch 并复用已有厂商与模型">
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>在原生模型列表中选择第三方模型并收到回复</sub></td>
-    <td align="center"><sub>在一页内管理路由、来源、厂商与模型</sub></td>
+    <td align="center"><sub>在 Codex 中使用第三方模型</sub></td>
+    <td align="center"><sub>手动添加厂商与模型</sub></td>
+    <td align="center"><sub>复用 CC Switch 配置</sub></td>
   </tr>
 </table>
 

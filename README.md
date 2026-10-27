@@ -17,16 +17,20 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
 
 <table>
   <tr>
-    <td align="center" valign="middle">
-      <img src="docs/images/codex-model-picker.png" width="520" alt="Select a third-party model in Codex's native model picker and receive a Hello World reply">
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/codex-model-picker.png" width="520" alt="Select a third-party model in Codex’s native model picker">
     </td>
-    <td align="center" valign="middle">
-      <img src="docs/images/management.png" width="290" alt="Codex Hybrid local management page: routing, configuration sources, providers, and models">
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/management.png" width="520" alt="Manually add a provider, API key, and model">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/management-ccswitch.png" width="520" alt="Select CC Switch and reuse existing providers and models">
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Select a third-party model in the native picker and receive a reply</sub></td>
-    <td align="center"><sub>Manage routing, sources, providers, and models in one page</sub></td>
+    <td align="center"><sub>Use third-party models in Codex</sub></td>
+    <td align="center"><sub>Add providers and models manually</sub></td>
+    <td align="center"><sub>Reuse CC Switch configuration</sub></td>
   </tr>
 </table>
 
