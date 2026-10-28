@@ -7,6 +7,62 @@ let routingSaving=false;
 let routingError='';
 const $ = id => document.getElementById(id);
 function el(tag, text, cls) { const node=document.createElement(tag); if(text!==undefined)node.textContent=text; if(cls)node.className=cls; return node; }
+// Keep native values and change handlers as the preference persistence boundary.
+function syncDesktopSelect(select){
+  const trigger=select.parentElement.querySelector('.desktop-select-trigger');
+  if(!trigger)return;
+  trigger.textContent=select.selectedOptions[0].textContent;
+  for(const option of select.parentElement.querySelectorAll('[role="option"]')){
+    option.setAttribute('aria-selected',String(option.dataset.value===select.value));
+  }
+}
+function initDesktopSelects(){
+  let closeActive=()=>{};
+  for(const select of document.querySelectorAll('.desktop-select select')){
+    const wrapper=select.parentElement,label=document.querySelector('label[for="'+select.id+'"]');
+    const trigger=el('button',undefined,'desktop-select-trigger'),list=el('div',undefined,'desktop-select-menu');
+    trigger.type='button';trigger.id=select.id+'-trigger';
+    label.id=select.id+'-label';label.htmlFor=trigger.id;
+    trigger.setAttribute('aria-labelledby',label.id+' '+trigger.id);
+    trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
+    if(select.hasAttribute('aria-describedby'))trigger.setAttribute('aria-describedby',select.getAttribute('aria-describedby'));
+    list.id=select.id+'-options';list.role='listbox';list.hidden=true;
+    list.setAttribute('aria-labelledby',label.id);trigger.setAttribute('aria-controls',list.id);
+    const close=()=>{list.hidden=true;trigger.setAttribute('aria-expanded','false');};
+    const options=Array.from(select.options,option=>{
+      const item=el('div',option.textContent,'desktop-select-option');
+      item.role='option';item.tabIndex=-1;item.dataset.value=option.value;
+      item.addEventListener('click',()=>{
+        const changed=select.value!==option.value;
+        select.value=option.value;syncDesktopSelect(select);close();trigger.focus();
+        if(changed)select.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      list.append(item);return item;
+    });
+    const open=(index=select.selectedIndex)=>{
+      closeActive();closeActive=close;list.hidden=false;trigger.setAttribute('aria-expanded','true');
+      options[index].focus();
+    };
+    trigger.addEventListener('click',()=>list.hidden?open():close());
+    trigger.addEventListener('keydown',event=>{
+      if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+        event.preventDefault();open(event.key==='Home'?0:event.key==='End'?options.length-1:select.selectedIndex);
+      }
+    });
+    list.addEventListener('keydown',event=>{
+      const index=options.indexOf(document.activeElement);
+      if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+        event.preventDefault();options[event.key==='Home'?0:event.key==='End'?options.length-1:(index+(event.key==='ArrowDown'?1:-1)+options.length)%options.length].focus();
+      }else if(event.key==='Enter'||event.key===' '){event.preventDefault();options[index]?.click();}
+      else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();trigger.focus();}
+      else if(event.key==='Tab')close();
+    });
+    wrapper.addEventListener('focusout',event=>{if(!wrapper.contains(event.relatedTarget))close();});
+    document.addEventListener('pointerdown',event=>{if(!wrapper.contains(event.target))close();});
+    wrapper.closest('details').addEventListener('toggle',event=>{if(!event.target.open)close();});
+    select.hidden=true;wrapper.append(trigger,list);wrapper.classList.add('is-enhanced');syncDesktopSelect(select);
+  }
+}
 async function copyText(value){
   try{
     await navigator.clipboard.writeText(value);
@@ -296,7 +352,7 @@ async function refresh(automatic=false){
     updateUnsaved();applyFilters();
     $('catalog-status').textContent=state.catalog_pending?'模型列表有变更 · 更新列表后请重启客户端':'客户端模型列表已更新';
     renderSyncStatus();
-    for(const mode of ['project','openai'])$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';
+    for(const mode of ['project','openai']){$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';syncDesktopSelect($('desktop-'+mode));}
   }finally{refreshing=false;}
 }
 for(const mode of ['independent','cc_switch'])$(mode).onclick=()=>changeSource(mode);
@@ -358,6 +414,7 @@ $('routing-dialog').addEventListener('cancel',event=>{if(routingSaving&&$('routi
 for(const mode of ['project','openai'])$('desktop-'+mode).onchange=()=>action(async()=>{
   try{const saved=await api('desktop/preferences',{mode,value:$('desktop-'+mode).value});state.desktop_preferences=saved.desktop_preferences;message('桌面端操作设置已保存。');}
   catch(error){$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';throw error;}
+  finally{syncDesktopSelect($('desktop-'+mode));}
 });
 $('routing-toggle').onclick=async()=>{
   if(routingSaving)return;
@@ -583,3 +640,4 @@ function delayCloseHelp(){if(!helpPinned)helpTimer=setTimeout(closeHelp,180);}
  helpPanel.addEventListener('pointerenter',()=>clearTimeout(helpTimer));helpPanel.addEventListener('pointerleave',delayCloseHelp);
  window.addEventListener('resize',()=>{if(activeHelp)positionHelp();});
  window.addEventListener('scroll',()=>{if(activeHelp)positionHelp();},true);
+initDesktopSelects();
