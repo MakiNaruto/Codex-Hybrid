@@ -253,7 +253,15 @@ function ccCard(entry){
     for(const [title,value,description]of[
       ['上下文窗口',model.context_window?model.context_window.toLocaleString():'131,072',model.context_window?'单位为 tokens。':'CC Switch 未配置，使用默认 131,072 tokens。'],
       ['输出上限',model.max_output_tokens?model.max_output_tokens.toLocaleString():'不设上限',model.max_output_tokens?'单位为 tokens。':'CC Switch 未配置，实际输出受厂商限制。']
-    ]){const stat=el('div'),caption=el('div',undefined,'field-caption');caption.append(el('span',title),help(description,title+'说明'));stat.append(caption,el('span',value,'stat-value'));stats.append(stat);}
+    ]){
+      const stat=el('div',undefined,'model-stat'),caption=el('div',undefined,'field-caption');
+      caption.append(el('span',title),help(description,title+'说明'));
+      const metric=el('div',undefined,'stat-value');
+      metric.append(el('span',value));
+      if(value==='不设上限')metric.classList.add('is-unlimited');
+      else metric.append(el('span','tokens','stat-unit'));
+      stat.append(caption,metric);stats.append(stat);
+    }
     item.append(identity,testButton(state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id)),stats);rows.append(item);
   }
   if(!entry.models.length)rows.append(el('p','暂无可同步的模型','hint'));return card;
