@@ -12,7 +12,7 @@ def native_plaintext_marker(value):
 
 def normalize_history(original):
     """Official Responses accepts encrypted reasoning, not foreign reasoning_text."""
-    request = copy.deepcopy(original)
+    request = inline_history(original)
     normalized = []
     for item in request.get('input', []):
         content = item.get('content')
@@ -30,6 +30,24 @@ def normalize_history(original):
         else:
             normalized.append(item)
     request['input'] = normalized
+    return request
+
+
+def inline_history(original):
+    """Replay supplied history by value, without provider-local storage IDs.
+
+    Keep call_id and nested resource IDs: they identify tool pairs and assets,
+    not persisted response items. Bare references cannot be expanded here and
+    must retain their ID rather than silently losing historical context.
+    """
+    request = copy.deepcopy(original)
+    items = request.get('input', [])
+    if isinstance(items, list):
+        for item in items:
+            if (isinstance(item, dict) and item.get('type') != 'item_reference'
+                    and any(field in item for field in (
+                        'content', 'arguments', 'input', 'output', 'encrypted_content', 'summary'))):
+                item.pop('id', None)
     return request
 
 

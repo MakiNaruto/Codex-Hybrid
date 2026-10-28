@@ -7,6 +7,8 @@ import json
 import re
 import uuid
 
+from adapters.request_compat import inline_history
+
 
 class UnregisteredToolError(ValueError):
     def __init__(self, name):
@@ -198,7 +200,7 @@ class ResponsesAdapter:
                 self.strip_extensions(nested)
 
     def request(self, original):
-        request = copy.deepcopy(original)
+        request = inline_history(original)
         tools = []
         for tool in request.get('tools', []): tools.extend(self.convert_tool(tool))
         items = request.get('input', [])

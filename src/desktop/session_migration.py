@@ -1,4 +1,4 @@
-"""Recoverable index-only migration, preserving rollout bytes and config models."""
+"""Recoverable index migration with narrowly scoped official-history repairs."""
 import contextlib
 import hashlib
 import json
@@ -280,6 +280,46 @@ def apply(migration, directory, extra_files, *, allow_running=False):
         return _apply_locked(migration, directory, extra_files, allow_running=allow_running)
 
 
+def _official_history_repairs(migration):
+    """Rule greeting-message-id-v1; see docs/decisions/001-history-compatibility.md."""
+    originals, changes, repairs = {}, {}, []
+    if migration['provider'] != 'openai' or migration.get('skip_sessions'):
+        return originals, changes, repairs
+    for row in migration['local_rows']:
+        path = _row_path(row)
+        if not path.is_file() or path.name.endswith('.zst'):
+            continue
+        before = path.read_bytes()
+        lines = before.splitlines(keepends=True)
+        count = 0
+        for index, line in enumerate(lines):
+            try:
+                record = json.loads(line)
+                item = record.get('payload', {})
+                # Only the ChatAdapter-generated identity shape verified in the
+                # greeting incident. Native UUID message IDs remain untouched.
+                if (record.get('type') != 'response_item' or item.get('type') != 'message'
+                        or item.get('role') != 'assistant'
+                        or not re.fullmatch(r'msg_[0-9a-f]{32}', item.get('id') or '')
+                        or not item.get('content')
+                        or not all(p.get('type') == 'output_text' and isinstance(p.get('text'), str)
+                                   for p in item['content'])):
+                    continue
+                del item['id']
+                ending = b'\r\n' if line.endswith(b'\r\n') else b'\n' if line.endswith(b'\n') else b''
+                lines[index] = json.dumps(record, ensure_ascii=False, separators=(',', ':')).encode() + ending
+                count += 1
+            except (ValueError, AttributeError, TypeError):
+                raise ConfigError('SESSION_HISTORY_INVALID') from None
+        if count:
+            originals[path] = before
+            changes[path] = b''.join(lines)
+            repairs.append({'rule': 'greeting-message-id-v1', 'thread_id': row[0],
+                            'path': str(path), 'items': count,
+                            'before_sha256': sha(before), 'after_sha256': sha(changes[path])})
+    return originals, changes, repairs
+
+
 def _apply_locked(migration, directory, extra_files, *, allow_running=False):
     home = migration['home']
     originals = dict(migration['originals'])
@@ -297,6 +337,12 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
             if json.loads(manifest.read_text(encoding='utf-8')).get('status') == 'applying':
                 raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED')
     _complete_indexes(migration)
+    history_originals, history_changes, history_repairs = _official_history_repairs(migration)
+    if history_changes and allow_running:
+        # Index-only operations may opt out of stopping Codex; history cannot.
+        assert_stopped(home)
+    originals.update(history_originals)
+    changes.update(history_changes)
     row_changes = [after for before, after in zip(migration['rows'], migration.get('rows_after', [])) if before != after]
     if not changes and not row_changes:
         return None
@@ -309,7 +355,8 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
     manifest = {'status': 'preparing', 'home': str(home), 'database': str(database) if database else None,
                 'skip_sessions': migration.get('skip_sessions', False),
                 'warnings': migration.get('warnings', []),
-                'index_only': True, 'provider': migration['provider'], 'files': [],
+                'index_only': not bool(history_changes), 'provider': migration['provider'], 'files': [],
+                'history_compatibility': history_repairs,
                 'rollout_paths': [entry[0] for entry in migration.get('inventory', [])],
                 'rollout_inventory': migration.get('inventory', []),
                 'rows_before': migration['rows'],
@@ -338,6 +385,8 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
         manifest['status'] = 'applying'
         write(backup / 'manifest.json', json.dumps(manifest).encode())
         if migration['count'] and not allow_running:
+            assert_stopped(home)
+        if history_changes and allow_running:
             assert_stopped(home)
         for p, after in changes.items():
             if (p.read_bytes() if p.exists() else None) != originals[p]:

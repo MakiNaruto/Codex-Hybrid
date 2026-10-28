@@ -1,5 +1,9 @@
 # 常见问题
 
+关闭路由时，迁移会对已验证的第三方纯文字助手回复移除外部存储 ID，并保存备份。
+规则范围、已知限制和后续兼容决策见[历史兼容记录](../decisions/001-history-compatibility.md)。
+该转换尚未覆盖工具、推理、压缩历史，不代表所有会话都已通过官方续聊验证。
+
 [English](../en/troubleshooting.md) · **简体中文**
 
 [返回首页](../../README.zh-CN.md) · [文档导航](README.md)
@@ -9,6 +13,7 @@
 | 模型没有出现 | 在管理页更新客户端模型列表，完全退出并重开 Codex；确认目标 Codex 用户目录正确 |
 | 所有模型都连不上 | 检查网关是否启动；启用期间官方模型也依赖网关 |
 | 返回 401 | 更新当前 YAML、管理页或 CC Switch 来源的 Key；不会自动切换其他凭据来源 |
+| 切回官方模型后提示 `persisted-item lookup` / `rustponsesapi` | 外部模型历史项的 ID 不存在于官方存储。更新代码并重启服务，保持 Codex 接入开启，在原聊天中选择官方模型后重试；网关会按完整内容重放历史，移除历史项存储 ID，同时保留工具 `call_id` 和文件 ID。关闭接入后的官方直连请求不经过该兼容层；需要保持关闭时，可新建官方模型聊天。纯 ID 引用缺少完整内容时无法由此兼容层还原。 |
 | 第三方模型调用了不存在的工具 | Responses API 会丢弃这次生成，并把错误反馈给同一模型重试，最多两次；仍失败时会报告 `GATEWAY_UNREGISTERED_TOOL`。命令执行失败由 Codex 官方执行器回传给模型处理；网络错误不会自动重放 |
 | 安装失败 | 检查 Python 版本和网络后重试；macOS 可用 `CODEX_HYBRID_PYTHON` 指定解释器 |
 | macOS 提示脚本权限错误 | 在项目根目录执行 `sh scripts/codex-hybrid.sh install` |
