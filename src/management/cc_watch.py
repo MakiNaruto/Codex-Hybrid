@@ -1,5 +1,6 @@
 """Directory notifications for SQLite, including WAL commits and atomic replacement."""
 import os
+import sys
 from pathlib import Path
 import threading
 import time
@@ -31,7 +32,12 @@ class CCWatch:
 
     def start(self):
         from watchdog.events import FileSystemEventHandler
-        from watchdog.observers import Observer
+        if sys.platform == 'darwin':
+            # FSEvents can coalesce writes to an already-open SQLite WAL.
+            # kqueue observes those writes without treating SHM reads as updates.
+            from watchdog.observers.kqueue import KqueueObserver as Observer
+        else:
+            from watchdog.observers import Observer
         handler = FileSystemEventHandler()
         handler.on_any_event = self.on_event
         observer = Observer()
