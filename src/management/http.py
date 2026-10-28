@@ -22,7 +22,12 @@ def handle(handler, gateway, method):
             'Referrer-Policy': 'no-referrer', 'Content-Security-Policy':
             "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"}.items():
             handler.send_header(key, value)
-        handler.end_headers(); handler.wfile.write(data)
+        try:
+            handler.end_headers()
+            handler.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # A closed page cannot receive a response (including an error reply).
+            handler.close_connection = True
 
     origin = f'http://127.0.0.1:{handler.server.server_port}'
     if handler.headers.get('Host') != f'127.0.0.1:{handler.server.server_port}':

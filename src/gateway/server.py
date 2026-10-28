@@ -293,6 +293,14 @@ class Gateway:
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.0'
 
+            def handle(self):
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    # Client cancellation is normal, including during headers or
+                    # an error response outside the inference streaming loop.
+                    self.close_connection = True
+
             def log_message(self, *args):
                 pass
 
