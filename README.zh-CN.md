@@ -57,12 +57,12 @@ git clone git@github.com:MakiNaruto/Codex-Hybrid.git codex-hybrid
 cd codex-hybrid
 ```
 
-在项目根目录运行对应命令，或双击启动文件：
+在项目根目录运行对应命令：
 
-| 系统 | 终端命令 | 双击启动 |
-| --- | --- | --- |
-| macOS | `sh scripts/codex-hybrid.sh install` | `scripts/start-macos.command` |
-| Windows（PowerShell） | `.\scripts\codex-hybrid.cmd install` | `scripts/start-windows.cmd` |
+| 系统 | 终端命令 |
+| --- | --- |
+| macOS | `sh scripts/codex-hybrid.sh install` |
+| Windows（PowerShell） | `.\scripts\codex-hybrid.cmd install` |
 
 启动器自动创建 `.venv`、安装依赖并打开中文向导。首次安装需要联网下载依赖。
 

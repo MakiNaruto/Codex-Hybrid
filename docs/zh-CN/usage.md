@@ -94,7 +94,7 @@ Windows 桌面端使用 Restart Manager 请求后台正常退出，不依赖窗�
 
 平台实现边界：管理层通过 `desktop.client` 调用安装识别、进程查询、正常退出和启动，Windows 后台退出封装在 `desktop.windows_restart_manager`。macOS 后端通过标准安装目录和 Spotlight 查找 Codex.app，验证应用标识和可执行文件；使用 Apple events 请求正常退出，确认进程退出后通过 Launch Services 启动。首次操作可能需要允许自动化控制；权限被拒绝或退出超时时提示手动处理，不强制结束进程。启动结果仅确认桌面主进程已出现。
 
-可在正常交互用户环境中运行 `PYTHONPATH=src python scripts/probe-windows-restart-manager.py`（PowerShell 请先设置 `$env:PYTHONPATH='src'`），只创建两个不可见的隔离 GUI 测试程序。实测允许退出的程序在后台收到系统查询及会话结束事件，正常清理后退出；拒绝退出的程序保持运行。探针不操作真实 Codex。已只读确认本机 Codex 注册了系统应用重启能力；真实 Codex 的后台退出和重新启动仍需单独验收。
+可在正常交互用户环境中运行 `PYTHONPATH=src python -m desktop.probe_windows_restart_manager`（PowerShell 请先设置 `$env:PYTHONPATH='src'`），只创建两个不可见的隔离 GUI 测试程序。实测允许退出的程序在后台收到系统查询及会话结束事件，正常清理后退出；拒绝退出的程序保持运行。探针不操作真实 Codex。已只读确认本机 Codex 注册了系统应用重启能力；真实 Codex 的后台退出和重新启动仍需单独验收。
 
 协议依据：[Restart Manager 应用准则](https://learn.microsoft.com/en-us/windows/win32/rstmgr/guidelines-for-applications)、[RmShutdown](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmshutdown)。
 

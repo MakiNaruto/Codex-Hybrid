@@ -57,12 +57,12 @@ git clone git@github.com:MakiNaruto/Codex-Hybrid.git codex-hybrid
 cd codex-hybrid
 ```
 
-Run the command for your system from the project root, or double-click the launcher:
+Run the command for your system from the project root:
 
-| System | Terminal command | Double-click launcher |
-| --- | --- | --- |
-| macOS | `sh scripts/codex-hybrid.sh install` | `scripts/start-macos.command` |
-| Windows (PowerShell) | `.\scripts\codex-hybrid.cmd install` | `scripts/start-windows.cmd` |
+| System | Terminal command |
+| --- | --- |
+| macOS | `sh scripts/codex-hybrid.sh install` |
+| Windows (PowerShell) | `.\scripts\codex-hybrid.cmd install` |
 
 The launcher creates `.venv`, installs dependencies, and opens the install wizard. **The wizard and management UI are currently in Chinese.** The first installation needs internet access to download dependencies.
 
@@ -72,9 +72,9 @@ The launcher creates `.venv`, installs dependencies, and opens the install wizar
 2. Choose whether to start the local service now. Installation does not enable client routing automatically.
 3. After the service starts, enable **Client routing** in the management page, then **fully quit and reopen Codex**.
 
-Turning the switch on backs up and updates Codex routing configuration. Turning it off restores the fields changed by this tool while preserving unrelated edits; the local service continues running. Switching also migrates local session routing metadata. Fully quit Codex and use an independent browser before confirming; see the [session migration guide (Chinese)](docs/zh-CN/session-migration.md).
+Turning the switch on backs up and updates Codex routing configuration. Turning it off restores the fields changed by this tool while preserving unrelated edits; the local service continues running. Switching also migrates local session routing metadata. Fully quit Codex and use an independent browser before confirming; see the [session migration guide](docs/en/session-migration.md).
 
-The web UI includes setup readiness, unsaved draft warnings, provider/model filtering, activity status, error summaries and local sanitized diagnostics. See the [web trial checklist (Chinese)](docs/zh-CN/web-trial.md).
+The web UI includes setup readiness, unsaved draft warnings, provider/model filtering, activity status, error summaries and local sanitized diagnostics. See the [web trial checklist](docs/en/web-trial.md).
 
 Private data is stored in `~/.codex-hybrid/` by default. Use the [local management page](http://127.0.0.1:18892/manage/) to add providers and models or update API keys. Management uses the forwarding port plus one by default (18892), or an explicit `management_port` in settings.json. Restart the service after upgrading and run `manage-url` for its current address.
 

@@ -249,7 +249,7 @@ def start_service(settings):
     with (RUNTIME / 'service.startup.stderr').open('wb') as err:
         options = ({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
                    if WINDOWS else {'start_new_session': True})
-        entry = ([str(ROOT / 'scripts/gateway.py')] if (ROOT / 'scripts/gateway.py').is_file()
+        entry = ([str(ROOT / 'src/gateway/entry.py')] if (ROOT / 'src/gateway/entry.py').is_file()
                  else ['-m', 'gateway.server'])
         process = subprocess.Popen([sys.executable, *entry,
             '--settings', str(RUNTIME / 'settings.json')], cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -276,11 +276,12 @@ def stop_windows_process(pid, missing_ok=False):
     try:
         process = psutil.Process(pid)
         command = process.cmdline()
-        script = str(ROOT / 'scripts/gateway.py')
+        script = str(ROOT / 'src/gateway/entry.py')
         settings = str(RUNTIME / 'settings.json')
         normalize = lambda value: os.path.normcase(os.path.abspath(value))
         owned_entry = (len(command) >= 2 and normalize(command[1]) in {
-            normalize(script), normalize(ROOT / 'native_gateway/server.py')}) or command[1:3] == ['-m', 'gateway.server']
+            normalize(script), normalize(ROOT / 'scripts/gateway.py'),
+            normalize(ROOT / 'native_gateway/server.py')}) or command[1:3] == ['-m', 'gateway.server']
         if (len(command) < 4 or not owned_entry
                 or '--settings' not in command
                 or command.index('--settings') + 1 >= len(command)
@@ -300,7 +301,7 @@ def owned_gateway_processes():
     import psutil
 
     script_paths = {os.path.normcase(os.path.abspath(ROOT / path)) for path in
-                    ('scripts/gateway.py', 'native_gateway/server.py')}
+                    ('src/gateway/entry.py', 'scripts/gateway.py', 'native_gateway/server.py')}
     expected_settings = os.path.normcase(os.path.abspath(RUNTIME / 'settings.json'))
     for process in psutil.process_iter(('pid', 'cmdline')):
         try:
@@ -348,7 +349,7 @@ def _stop_service_locked(missing_ok=False):
         return
     result.check_returncode()
     owned_entry = any(str(ROOT / path) in result.stdout for path in
-                      ('scripts/gateway.py', 'native_gateway/server.py')) or ' -m gateway.server ' in result.stdout
+                      ('src/gateway/entry.py', 'scripts/gateway.py', 'native_gateway/server.py')) or ' -m gateway.server ' in result.stdout
     if not owned_entry or str(RUNTIME / 'settings.json') not in result.stdout:
         raise ValueError('PID does not belong to this gateway')
     os.kill(pid, signal.SIGTERM)

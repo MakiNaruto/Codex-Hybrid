@@ -11,7 +11,7 @@
 | A request returns 401 | Update the key in the active YAML, management-page configuration, or CC Switch source. There is no automatic fallback to other credential sources. |
 | A third-party model calls an unavailable tool | The Responses API discards that generation and retries the same model with corrective feedback, up to two times. If it still fails, the gateway reports `GATEWAY_UNREGISTERED_TOOL`. Codex's official executor reports command failures to the model; network failures are not automatically replayed. |
 | Installation fails | Check Python version and network access, then retry. On macOS, use `CODEX_HYBRID_PYTHON` to select an interpreter. |
-| macOS blocks the double-click launcher | Review the source, then run `sh scripts/codex-hybrid.sh install` in a terminal. |
+| macOS reports a script permission error | Run `sh scripts/codex-hybrid.sh install` from the project root. |
 | Rollback detects newer configuration changes | Enter `yes` to confirm restoring the initialization backup. The current configuration is first saved as `pre-rollback-*.toml` in the data directory. Pressing Enter or reaching noninteractive EOF cancels. Backup integrity failures still block restoration. |
 | You want to uninstall | Run `./scripts/codex-hybrid.sh uninstall`. It stops the service, asks whether to restore the Codex configuration, and removes the local provider table. Runtime files and credentials remain in the data directory. |
 | You want to migrate or reinstall | Run `uninstall` in the original location, then install dependencies and initialize with the selected data directory. |

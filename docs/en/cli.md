@@ -8,10 +8,10 @@
 
 Clone the repository with Git into a directory you plan to keep. Run the following commands from the project root.
 
-| System | Double-click launcher | Terminal command |
-| --- | --- | --- |
-| macOS | `scripts/start-macos.command` | `./scripts/codex-hybrid.sh install` |
-| Windows (PowerShell) | `scripts/start-windows.cmd` | `.\scripts\codex-hybrid.cmd install` |
+| System | Terminal command |
+| --- | --- |
+| macOS | `sh scripts/codex-hybrid.sh install` |
+| Windows (PowerShell) | `.\scripts\codex-hybrid.cmd install` |
 
 The launcher creates the project's `.venv`, installs dependencies, and opens a Chinese-language install wizard. On Windows, enable Python Launcher or Add Python to PATH when installing Python.
 

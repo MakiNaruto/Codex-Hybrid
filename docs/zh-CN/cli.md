@@ -8,10 +8,10 @@
 
 通过 Git 将仓库克隆到准备长期保留的目录。以下命令均在项目根目录执行。
 
-| 系统 | 双击启动 | 终端启动 |
-| --- | --- | --- |
-| macOS | `scripts/start-macos.command` | `./scripts/codex-hybrid.sh install` |
-| Windows（PowerShell） | `scripts/start-windows.cmd` | `.\scripts\codex-hybrid.cmd install` |
+| 系统 | 终端启动 |
+| --- | --- |
+| macOS | `sh scripts/codex-hybrid.sh install` |
+| Windows（PowerShell） | `.\scripts\codex-hybrid.cmd install` |
 
 启动器会创建项目 `.venv`、安装依赖并进入中文配置向导，按提示填写模型信息即可。
 Windows 建议安装 Python 时勾选 Python Launcher 或 Add Python to PATH。

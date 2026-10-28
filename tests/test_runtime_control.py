@@ -191,7 +191,7 @@ with DirectoryLock(sys.argv[1],'.codex-hybrid.lock'):
         process = subprocess.Popen([sys.executable, '-c', script, str(self.home)],
             env=dict(os.environ, PYTHONPATH=SRC), stdout=subprocess.PIPE)
         try:
-            self.assertEqual(process.stdout.readline(), b'locked\n')
+            self.assertEqual(process.stdout.readline().rstrip(b'\r\n'), b'locked')
             before = (self.home/'config.toml').read_bytes()
             with self.assertRaisesRegex(ConfigError, 'INSTANCE_BUSY'):
                 self.switch('project')
@@ -266,7 +266,7 @@ with DirectoryLock(sys.argv[1],'service.lock'):
         process = subprocess.Popen([sys.executable, '-c', script, str(self.root)],
             stdout=subprocess.PIPE, env=dict(os.environ, PYTHONPATH=SRC))
         try:
-            self.assertEqual(process.stdout.readline(), b'locked\n')
+            self.assertEqual(process.stdout.readline().rstrip(b'\r\n'), b'locked')
             inode = (self.root/'service.lock').stat().st_ino
             process.kill()
             process.wait(5)
