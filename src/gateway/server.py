@@ -20,7 +20,7 @@ import urllib.parse
 import uuid
 
 from model_catalog.legacy_config import load_config
-from gateway.transport import FreshProxyOpener
+from gateway.transport import FreshProxyOpener, records as sse_events
 from adapters.responses import (ResponsesAdapter, UnregisteredToolError,
                                  plaintext_collaboration_schema, NativeCoordinationAdapter)
 from model_catalog.sources import load_source
@@ -197,26 +197,6 @@ def route(body, headers, settings, deepseek=None):
     external_models = (set(settings['models']) - set(settings['official_models'])
                        if 'source' in settings else deepseek['DEEPSEEK_MODEL'])
     return OPENAI_URL, normalize_history(plaintext_collaboration_schema(body)), outgoing, NativeCoordinationAdapter(external_models).event
-
-
-def sse_events(response):
-    """Parse SSE records, including multi-line data and EOF without a blank line."""
-    data = []
-    for raw in response:
-        line = raw.decode('utf-8').rstrip('\r\n')
-        if not line:
-            if data:
-                yield json.loads('\n'.join(data))
-                data = []
-        elif line.startswith('data:'):
-            value = line[5:].lstrip(' ')
-            if value == '[DONE]':
-                if data:
-                    yield json.loads('\n'.join(data))
-                return
-            data.append(value)
-    if data:
-        yield json.loads('\n'.join(data))
 
 
 def adapted_stream(response, adapt, on_event=None):
@@ -550,8 +530,11 @@ class Gateway:
                     observation['error_code'] = code
                     if (type(error) is ValueError and error.args and isinstance(error.args[0], str)
                             and error.args[0] in {
-                            'SUBSCRIPTION_AUTH_REQUIRED', 'STREAM_REQUIRED', 'INVALID_REQUEST_OBJECT'}):
+                            'SUBSCRIPTION_AUTH_REQUIRED', 'STREAM_REQUIRED', 'INVALID_REQUEST_OBJECT',
+                            'UPSTREAM_PROTOCOL_MISMATCH', 'INVALID_STREAM_PAYLOAD',
+                            'UNSUPPORTED_REASONING_HISTORY', 'UNSUPPORTED_SYSTEM_CONTENT'}):
                         observation['error_code'] = error.args[0]
+                        code = error.args[0]
                     detail = None
                     if hasattr(error, 'tool_name'):
                         detail = {'request_id': observation['request_id'],

@@ -5,6 +5,7 @@ import time
 import uuid
 
 from adapters.responses import ResponsesAdapter
+from adapters.request_compat import stream_error_event
 
 
 class ChatAdapter:
@@ -49,8 +50,6 @@ class ChatAdapter:
                 output = item.get('output', '')
                 messages.append({'role': 'tool', 'tool_call_id': item['call_id'],
                                  'content': output if isinstance(output, str) else json.dumps(output)})
-            elif kind == 'reasoning':
-                continue  # OpenAI reasoning is not transferable to other providers.
             else:
                 raise ValueError('Unsupported native history item')
         result = {'model': converted['model'], 'messages': messages, 'stream': True}
@@ -69,8 +68,12 @@ class ChatAdapter:
     def event(self, chunk):
         if self.done:
             return []
-        if chunk.get('error'):
-            raise ValueError('Upstream Chat Completions error')
+        failure = stream_error_event(chunk)
+        if failure is not None:
+            self.done = True
+            return [failure]
+        if str(chunk.get('type', '')).startswith('response.'):
+            raise ValueError('UPSTREAM_PROTOCOL_MISMATCH')
         self.returned_model = chunk.get('model', self.returned_model)
         self.usage = chunk.get('usage') or self.usage
         events = []

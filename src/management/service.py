@@ -548,6 +548,8 @@ class Management:
                     if not isinstance(events, list):
                         events = [] if events is None else [events]
                     for item in events:
+                        if item.get('type') == 'response.failed':
+                            raise ConfigError('UPSTREAM_STREAM_ERROR')
                         if item.get('type') == 'response.incomplete':
                             reason = item.get('response', {}).get('incomplete_details', {}).get('reason')
                             raise ConfigError('UPSTREAM_OUTPUT_BUDGET_EXHAUSTED' if reason == 'max_output_tokens'

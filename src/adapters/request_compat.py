@@ -2,6 +2,8 @@
 import copy
 import json
 import re
+import time
+import uuid
 
 
 def native_plaintext_marker(value):
@@ -10,12 +12,48 @@ def native_plaintext_marker(value):
         r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-\d+', value) is not None
 
 
-def normalize_history(original):
-    """Official Responses accepts encrypted reasoning, not foreign reasoning_text."""
+def normalize_history(original, *, portable=False):
+    """Preserve native opaque state only on the native route; migrate readable history."""
     request = inline_history(original)
     normalized = []
+    instructions = [request['instructions']] if portable and request.get('instructions') else []
     for item in request.get('input', []):
         content = item.get('content')
+        if (portable and item.get('type') in {'function_call_output', 'custom_tool_call_output'}
+                and not item.get('call_id') and isinstance(item.get('name'), str)):
+            # Host-delivered task/context notifications use tool-output envelopes
+            # without an executable call. Foreign APIs require real call identities;
+            # preserve the notification as context rather than inventing a tool pair.
+            source = '.'.join(value for value in (item.get('namespace'), item['name']) if isinstance(value, str))
+            output = item.get('output', '')
+            text = output if isinstance(output, str) else json.dumps(output, ensure_ascii=False)
+            normalized.append({'type': 'message', 'role': 'user', 'content': [
+                {'type': 'input_text', 'text': f'Host-delivered context from {source}:\n{text}'}]})
+            continue
+        if (portable and item.get('type') in {None, 'message'}
+                and item.get('role') in {'system', 'developer'}):
+            if isinstance(content, str):
+                instructions.append(content)
+            elif isinstance(content, list) and all(
+                    isinstance(part, dict) and part.get('type') in {'input_text', 'output_text', 'text'}
+                    and isinstance(part.get('text'), str) for part in content):
+                instructions.append('\n'.join(part['text'] for part in content))
+            else:
+                raise ValueError('UNSUPPORTED_SYSTEM_CONTENT')
+            continue
+        if portable and item.get('type') == 'reasoning':
+            parts = content or item.get('summary') or []
+            if not isinstance(parts, list) or any(
+                    not isinstance(part, dict)
+                    or part.get('type') not in {'reasoning_text', 'summary_text'}
+                    or not isinstance(part.get('text'), str) for part in parts):
+                raise ValueError('UNSUPPORTED_REASONING_HISTORY')
+            text = ''.join(part['text'] for part in parts)
+            if text:
+                normalized.append({'type': 'message', 'role': 'assistant', 'content': [
+                    {'type': 'output_text', 'text': 'Previous model reasoning (historical context):\n' + text,
+                     'annotations': []}]})
+            continue
         if (item.get('type') == 'reasoning' and content
                 and (not item.get('encrypted_content')
                      or native_plaintext_marker(item['encrypted_content']))
@@ -30,6 +68,8 @@ def normalize_history(original):
         else:
             normalized.append(item)
     request['input'] = normalized
+    if portable and instructions:
+        request['instructions'] = '\n\n'.join(instructions)
     return request
 
 
@@ -175,3 +215,22 @@ def upstream_error(detail, status):
     if identifiers:
         result['message'] += ': ' + identifiers
     return result
+
+
+def stream_error_event(event):
+    """Translate explicit protocol error envelopes without echoing upstream text."""
+    kind = event.get('type', '')
+    if kind in {'response.failed', 'response.incomplete'}:
+        response = copy.deepcopy(event.get('response', {}))
+        if isinstance(response.get('error'), dict):
+            response['error'] = upstream_error(response['error'], 502)
+            response['error']['message'] = 'UPSTREAM_STREAM_ERROR'
+        return dict(event, response=response)
+    if kind != 'error' and not event.get('error') and not (
+            not kind and 'code' in event and 'message' in event):
+        return None
+    safe = upstream_error(event.get('error', event), 502)
+    safe['message'] = 'UPSTREAM_STREAM_ERROR'
+    return {'type': 'response.failed', 'response': {
+        'id': 'resp_gateway_' + uuid.uuid4().hex, 'object': 'response',
+        'created_at': int(time.time()), 'status': 'failed', 'output': [], 'usage': None, 'error': safe}}

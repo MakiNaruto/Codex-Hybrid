@@ -74,20 +74,41 @@ def error_event(error, stage, requested_model=None):
     return event
 
 def records(source):
-    data = []
+    """Shared JSON SSE framing; event fields may supply missing payload types."""
+    data, event_type = [], ''
+    first = True
+
+    def decode():
+        value = json.loads('\n'.join(data))
+        if not isinstance(value, dict):
+            raise ValueError('INVALID_STREAM_PAYLOAD')
+        if event_type and not value.get('type'):
+            value['type'] = event_type
+        return value
+
     for raw in source:
         line = raw.decode('utf-8').rstrip('\r\n')
+        if first:
+            line = line.removeprefix('\ufeff')
+            first = False
         if not line:
             if data:
                 value = '\n'.join(data)
                 if value == '[DONE]':
                     return
-                yield json.loads(value)
-                data = []
+                yield decode()
+            data, event_type = [], ''
         elif line.startswith('data:'):
-            data.append(line[5:].lstrip())
+            value = line[5:].removeprefix(' ')
+            if value == '[DONE]':
+                if data:
+                    yield decode()
+                return
+            data.append(value)
+        elif line.startswith('event:'):
+            event_type = line[6:].removeprefix(' ')
     if data and '\n'.join(data) != '[DONE]':
-        yield json.loads('\n'.join(data))
+        yield decode()
 
 
 def relay(source, emit, requested_model):

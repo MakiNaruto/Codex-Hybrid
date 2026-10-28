@@ -7,7 +7,7 @@ import json
 import re
 import uuid
 
-from adapters.request_compat import inline_history
+from adapters.request_compat import normalize_history, stream_error_event
 
 
 class UnregisteredToolError(ValueError):
@@ -200,7 +200,7 @@ class ResponsesAdapter:
                 self.strip_extensions(nested)
 
     def request(self, original):
-        request = inline_history(original)
+        request = normalize_history(original, portable=True)
         tools = []
         for tool in request.get('tools', []): tools.extend(self.convert_tool(tool))
         items = request.get('input', [])
@@ -248,15 +248,6 @@ class ResponsesAdapter:
                 item['name'] = alias
             elif kind == 'custom_tool_call_output':
                 item['type'] = 'function_call_output'
-            elif kind == 'reasoning':
-                # Encrypted OpenAI reasoning cannot be consumed by another provider.
-                if not item.get('content'):
-                    continue
-                item.pop('encrypted_content',None)
-                item.pop('summary',None)
-            elif item.get('role') == 'developer':
-                # DeepSeek treats developer as user; retain instruction priority explicitly.
-                item['role'] = 'system'
             converted.append(item)
         request['input'] = converted
         # Search results can repeat definitions already present in additional_tools.
@@ -266,6 +257,17 @@ class ResponsesAdapter:
                 raise ValueError('Conflicting tool definitions')
             unique[tool['name']] = tool
         request['tools'] = list(unique.values())
+        coordination = {'spawn_agent', 'send_message', 'followup_task', 'wait_agent',
+                        'list_agents', 'interrupt_agent'}
+        aliases = [f"{binding['name']} = `{alias}`" for alias, binding in self.bindings.items()
+                   if binding['name'] in coordination or (
+                       binding['name'] == 'wait' and {'ids', 'targets'} &
+                       unique[alias].get('parameters', {}).get('properties', {}).keys())]
+        if aliases:
+            request['instructions'] = (request.get('instructions') or '') + (
+                '\nNative agent coordination tools registered for this request: ' + '; '.join(aliases) +
+                '. Use these exact callable names, even if earlier instructions name a host namespace. '
+                'Use the registered coordination wait tool for agents, never a process stdin tool.')
         return request
 
     def item(self, original):
@@ -303,6 +305,11 @@ class ResponsesAdapter:
         return item
 
     def event(self, original):
+        failure = stream_error_event(original)
+        if failure is not None:
+            return failure
+        if 'choices' in original:
+            raise ValueError('UPSTREAM_PROTOCOL_MISMATCH')
         event = copy.deepcopy(original)
         kind = event.get('type','')
         # JSON wrapper argument deltas aren't raw custom-tool input deltas. Final
