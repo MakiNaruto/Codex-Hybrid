@@ -556,6 +556,9 @@ function renderDiagnostics(report){
       if(entry.errno!==undefined)meta.push('errno '+entry.errno);
       if(entry.http_status!==undefined)meta.push('HTTP '+entry.http_status);
       if(entry.elapsed_ms!==undefined)meta.push(entry.elapsed_ms+' ms');
+      if(entry.error_code)meta.push(entry.error_code);
+      if(entry.error_kind)meta.push(entry.error_kind);
+      if(entry.request_ref)meta.push('请求 '+entry.request_ref);
       if(entry.source){
         const source=entry.source.startsWith('service.startup.stderr')?'启动日志':entry.source.startsWith('service.stderr')?'服务日志':'请求日志';
         meta.push(source+(/\.[123]$/.test(entry.source)?' · 历史记录':''));
@@ -573,7 +576,7 @@ function renderDiagnostics(report){
     (report.log.state==='missing'?'尚无日志文件':
      report.log.state==='unavailable'?'日志暂时无法读取':
      report.log.state==='partial'?'部分日志无法读取，以下结果不完整':'')+
-    '';
+    (report.log.coverage?.rotation_may_remove_history?' 仅包含保留日志，历史记录可能已被轮转清理。':'');
   $('diagnostic-coverage').hidden=!$('diagnostic-coverage').textContent;
 }
 let diagnosticRequest=0;

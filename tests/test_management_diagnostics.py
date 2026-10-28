@@ -118,6 +118,49 @@ class DiagnosticTests(unittest.TestCase):
         self.assertTrue(all('count' not in entry for entry in errors))
 
     def test_missing_and_unreadable_logs_are_explicit(self):
-        self.assertEqual(recent_errors(self.directory), {'state': 'missing', 'errors': []})
+        self.assertEqual(recent_errors(self.directory)['state'], 'missing')
         self.log.mkdir()
-        self.assertEqual(recent_errors(self.directory), {'state': 'unavailable', 'errors': []})
+        result = recent_errors(self.directory)
+        self.assertEqual(result['state'], 'unavailable')
+        self.assertTrue(result['coverage']['read_failed'])
+
+    def test_support_metadata_is_allowlisted_and_request_reference_is_anonymous(self):
+        record = {'status': 'upstream_connection_failed', 'time': 123,
+                  'request_id': 'a'*32, 'protocol': 'openai_responses', 'route_type': 'external',
+                  'stream': True, 'proxy_configured': False, 'error_kind': 'timeout',
+                  'errno': -2, 'winerror': 10053,
+                  'error_type': 'URLError', 'cause_type': 'TimeoutError', 'timeout_seconds': 120,
+                  'error_locations': ['gateway/server.py:123', 'C:/private/secret.py:12',
+                                      'gateway/../../secret.py:1', 'gateway/server.py:12:secret'],
+                  'upstream_error_type': 'rate_limit_error', 'upstream_error_code': 'secret-key',
+                  'message': 'private-chat', 'headers': {'Authorization': 'secret-key'}}
+        self.log.write_text(json.dumps(record))
+        result = recent_errors(self.directory)['errors'][0]
+        self.assertEqual(result['error_locations'], ['gateway/server.py:123'])
+        self.assertEqual(result['error_kind'], 'timeout')
+        self.assertEqual(result['errno'], -2)
+        self.assertEqual(result['winerror'], 10053)
+        self.assertEqual(result['protocol'], 'openai_responses')
+        self.assertEqual(result['upstream_error_type'], 'rate_limit_error')
+        self.assertEqual(len(result['request_ref']), 24)
+        self.assertEqual(result, recent_errors(self.directory)['errors'][0])
+        encoded = json.dumps(result)
+        for secret in ('private', 'secret', 'a'*32, 'Authorization'):
+            self.assertNotIn(secret, encoded)
+
+    def test_untrusted_metadata_and_wrong_types_are_omitted(self):
+        self.log.write_text(json.dumps({'status': 'failed', 'request_id': 'secret',
+            'protocol': 'private', 'error_kind': [], 'error_type': 'secret',
+            'stream': 'secret', 'errno': True, 'error_locations': ['gateway/nonexistent.py:1']}))
+        result = recent_errors(self.directory)['errors'][0]
+        self.assertEqual(set(result), {'status', 'time', 'time_source'})
+
+    def test_report_includes_environment_and_retention_limits(self):
+        manager = SimpleNamespace(directory=self.directory, gateway=SimpleNamespace(),
+            routing_state=lambda: 'project', activity_state=lambda: {})
+        result = report(manager)
+        self.assertEqual(result['schema_version'], 2)
+        self.assertEqual(set(result['environment']),
+                         {'app_version', 'os', 'architecture', 'python_version'})
+        self.assertTrue(result['log']['coverage']['retained_files_only'])
+        self.assertTrue(result['log']['coverage']['rotation_may_remove_history'])

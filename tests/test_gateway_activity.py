@@ -12,6 +12,38 @@ from gateway.server import Gateway, Server
 
 
 class ActivityTests(unittest.TestCase):
+    def test_request_failure_exports_safe_support_context(self):
+        from management.diagnostics import safe_details
+        gateway = Gateway({'source': {}, 'max_concurrent_requests': 1,
+                           'models': [], 'local_token': 'test-token'})
+        records = []
+        recorded = threading.Event()
+        def record(entry):
+            records.append(entry)
+            recorded.set()
+        gateway.record = record
+        server = Server(('127.0.0.1', 0), gateway.handler())
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        request = urllib.request.Request(f'http://127.0.0.1:{server.server_port}/responses',
+            data=b'{"model":"private-model","input":[],"stream":true}',
+            headers={'X-Connected-Token': 'test-token'})
+        with patch('gateway.server.route', side_effect=ValueError('private-chat-secret')):
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                opener.open(request, timeout=5)
+            caught.exception.close()
+            self.assertTrue(recorded.wait(3))
+        result = safe_details(records[0])
+        self.assertEqual(result['error_code'], 'GATEWAY_STREAM_ADAPTATION_FAILED')
+        self.assertEqual(result['error_type'], 'ValueError')
+        self.assertEqual(result['route_type'], 'external')
+        self.assertTrue(result['stream'])
+        self.assertIn('request_ref', result)
+        self.assertTrue(any(p.startswith('gateway/server.py:') for p in result['error_locations']))
+        self.assertNotIn('private', json.dumps(result))
+
     def test_stream_remains_busy_until_terminal_or_transport_failure(self):
         for fails in (False, True):
             with self.subTest(transport_failure=fails):

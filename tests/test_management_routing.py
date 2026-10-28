@@ -166,7 +166,7 @@ class RoutingTests(unittest.TestCase):
             if authenticated:
                 with opener.open(request, timeout=3) as response:
                     diagnostic = json.load(response)
-                self.assertEqual(diagnostic['schema_version'], 1)
+                self.assertEqual(diagnostic['schema_version'], 2)
                 self.assertEqual(diagnostic['period_days'], 1)
                 for period in ('7', '30', 'all'):
                     period_request = urllib.request.Request(

@@ -111,6 +111,8 @@ def connection_diagnostic(error):
         result['cause_type'] = type(cause).__name__
         if isinstance(getattr(cause, 'errno', None), int):
             result['errno'] = cause.errno
+        if isinstance(getattr(cause, 'winerror', None), int):
+            result['winerror'] = cause.winerror
     return result
 
 
@@ -376,10 +378,14 @@ class Gateway:
                 try:
                     size = int(self.headers.get('Content-Length', '0'))
                     if size <= 0 or size > MAX_BODY or self.headers.get('Transfer-Encoding'):
+                        observation['error_code'] = 'INVALID_BODY_SIZE'
                         return self.reply(413, {'error': {'message': 'INVALID_BODY_SIZE'}})
                     body = json.loads(self.rfile.read(size))
                     if not isinstance(body, dict):
                         raise ValueError('INVALID_REQUEST_OBJECT')
+                    observation['stream'] = body.get('stream') is True
+                    observation['route_type'] = ('official' if body.get('model') in
+                                                 settings.get('official_models', []) else 'external')
                     if body.get('model') in settings['models']:
                         observation['model'] = body['model']
                     def tool_types(items):
@@ -400,6 +406,8 @@ class Gateway:
                     protocol_adapter = getattr(converter, '__self__', adapter_owner)
                     native_adapter = getattr(protocol_adapter, 'native', protocol_adapter)
                     timeout = getattr(protocol_adapter, 'timeout_seconds', 120)
+                    observation['protocol'] = ('openai_chat_completions' if
+                        isinstance(protocol_adapter, ChatAdapter) else 'openai_responses')
                     observation.update(upstream_host=target.hostname, upstream_port=target.port,
                                        upstream_scheme=target.scheme, timeout_seconds=timeout,
                                        phase='connect_upstream')
@@ -518,8 +526,11 @@ class Gateway:
                 except (ValueError, KeyError, TypeError, AttributeError, IndexError) as error:
                     observation['status'] = 'incompatible_request_or_stream'
                     observation['error_type'] = type(error).__name__
-                    observation['error_locations'] = [f'{Path(f.filename).name}:{f.lineno}:{f.name}'
-                        for f in traceback.extract_tb(error.__traceback__)]
+                    source_root = Path(__file__).resolve().parents[1]
+                    observation['error_locations'] = [
+                        f'{Path(f.filename).resolve().relative_to(source_root).as_posix()}:{f.lineno}'
+                        for f in traceback.extract_tb(error.__traceback__)
+                        if Path(f.filename).resolve().is_relative_to(source_root)]
                     if hasattr(error, 'tool_name'):
                         observation['unregistered_tool'] = error.tool_name
                         bindings = getattr(native_adapter, 'bindings', {})
@@ -528,8 +539,11 @@ class Gateway:
                         observation['event_type'] = event.get('type')
                     code = getattr(error, 'code', None) or ('GATEWAY_UNREGISTERED_TOOL'
                         if hasattr(error, 'tool_name') else 'GATEWAY_STREAM_ADAPTATION_FAILED')
-                    if getattr(error, 'code', None):
-                        observation['error_code'] = code
+                    observation['error_code'] = code
+                    if (type(error) is ValueError and error.args and isinstance(error.args[0], str)
+                            and error.args[0] in {
+                            'SUBSCRIPTION_AUTH_REQUIRED', 'STREAM_REQUIRED', 'INVALID_REQUEST_OBJECT'}):
+                        observation['error_code'] = error.args[0]
                     detail = None
                     if hasattr(error, 'tool_name'):
                         detail = {'request_id': observation['request_id'],
