@@ -52,7 +52,7 @@ class RuntimeTests(unittest.TestCase):
         self.context = ManagementContext(settings)
         self.manager = self.context.manager = Management(self.context, self.path, route, sse_events)
         self.runtime = ForwardingRuntime(self.context)
-        self.addCleanup(self.runtime.stop)
+        self.addCleanup(self.runtime.close)
         self.server = Server(('127.0.0.1', settings['management_port']), handler(self.context))
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -172,6 +172,175 @@ with DirectoryLock(p.parent):
         with self.request('/manage/api/runtime/recover', {}) as response:
             self.assertEqual(json.load(response)['status'], 'running')
         self.assertEqual((self.home/'config.toml').read_bytes(), before)
+
+    def wait_status(self, status, timeout=5):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.runtime.snapshot()['status'] == status:
+                return
+            time.sleep(.02)
+        self.fail(self.runtime.snapshot())
+
+    def test_crash_restarts_child_and_preserves_management(self):
+        self.runtime.RETRY_DELAYS = (.15, .15, .15)
+        self.switch('project')
+        original = self.runtime.process.pid
+        self.runtime.process.kill()
+        self.wait_status('recovering')
+        with self.request('/manage/api/state') as response:
+            self.assertEqual(json.load(response)['routing_mode'], 'project')
+        self.wait_status('running')
+        self.assertNotEqual(self.runtime.process.pid, original)
+        self.assertEqual(self.runtime.snapshot()['retry_attempt'], 1)
+        self.runtime.stop()
+        time.sleep(.25)
+        self.assertEqual(self.runtime.snapshot()['status'], 'stopped')
+
+    def test_stop_during_backoff_cancels_restart(self):
+        self.runtime.RETRY_DELAYS = (.3, .3, .3)
+        self.runtime.start()
+        self.runtime.process.kill()
+        self.wait_status('recovering')
+        self.runtime.stop()
+        time.sleep(.4)
+        self.assertEqual(self.runtime.snapshot()['status'], 'stopped')
+        self.assertIsNone(self.runtime.process)
+
+    def test_restart_bind_failure_stops_retrying(self):
+        self.runtime.RETRY_DELAYS = (.3, .3, .3)
+        self.runtime.start()
+        self.runtime.process.kill()
+        self.wait_status('recovering')
+        with socket.socket() as blocker:
+            blocker.bind(('127.0.0.1', self.context.settings['port']))
+            blocker.listen()
+            self.wait_status('fault')
+            time.sleep(.4)
+            self.assertEqual(self.runtime.snapshot()['error'], 'FORWARDING_START_FAILED')
+            self.assertIsNone(self.runtime.process)
+
+    def test_stable_operation_resets_retry_budget(self):
+        self.runtime.RETRY_DELAYS = (.05,)
+        self.runtime.start()
+        self.runtime.process.kill()
+        self.wait_status('recovering')
+        self.wait_status('running')
+        self.runtime.STABLE_SECONDS = 0
+        self.runtime.process.kill()
+        self.wait_status('recovering')
+        self.wait_status('running')
+        self.assertEqual(self.runtime.snapshot()['retry_attempt'], 1)
+
+    def test_repeated_crashes_stop_after_three_retries(self):
+        self.runtime.RETRY_DELAYS = (.05, .05, .05)
+        self.runtime.start()
+        for _ in range(3):
+            self.runtime.process.kill()
+            self.wait_status('recovering')
+            self.wait_status('running')
+        self.runtime.process.kill()
+        self.wait_status('fault')
+        self.assertEqual(self.runtime.snapshot()['error'], 'FORWARDING_RETRIES_EXHAUSTED')
+        self.runtime.start()
+        self.assertEqual(self.runtime.snapshot()['retry_attempt'], 0)
+
+    def test_child_observes_saved_settings_and_never_serves_management(self):
+        self.runtime.start()
+        settings = dict(self.context.settings, local_token='replacement-token')
+        self.path.write_text(json.dumps(settings))
+        url = f'http://127.0.0.1:{settings["port"]}'
+        for endpoint in ('/manage/api/state', '/manage/'):
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(url+endpoint, timeout=2)
+            self.assertIn(error.exception.code, (401, 404))
+            error.exception.close()
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(urllib.request.Request(url+'/responses', data=b'{}',
+                headers={'Content-Type': 'application/json',
+                         'X-Connected-Token': self.context.settings['local_token']}), timeout=2)
+        self.assertEqual(error.exception.code, 401)
+        error.exception.close()
+        with urllib.request.urlopen(urllib.request.Request(url+'/models',
+                headers={'X-Connected-Token': 'replacement-token'}), timeout=2) as response:
+            self.assertEqual(response.status, 200)
+
+    def test_request_error_does_not_restart_child_and_logs_are_forwarded(self):
+        records = []
+        self.context.record = records.append
+        self.runtime.start()
+        pid = self.runtime.process.pid
+        request = urllib.request.Request(f'http://127.0.0.1:{self.context.settings["port"]}/responses',
+            data=b'{"model":"not-configured"}', headers={'Content-Type': 'application/json',
+            'X-Connected-Token': self.context.settings['local_token']})
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=2)
+        error.exception.close()
+        deadline = time.monotonic()+2
+        while not records and time.monotonic()<deadline:
+            time.sleep(.02)
+        self.assertTrue(records)
+        self.assertEqual(self.runtime.process.pid, pid)
+        self.assertEqual(self.runtime.snapshot()['retry_attempt'], 0)
+        self.assertEqual(self.context.activity.snapshot()['active_requests'], 0)
+
+    def test_parent_death_stops_owned_child(self):
+        settings = dict(self.context.settings, management_port=free_port(), port=free_port())
+        self.path.write_text(json.dumps(settings))
+        process = subprocess.Popen([sys.executable, '-m', 'gateway.server', '--settings', str(self.path)],
+            env=dict(os.environ, PYTHONPATH=SRC), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic()+5
+            while True:
+                try:
+                    service.health(settings, ensure_forwarding=True)
+                    break
+                except OSError:
+                    if time.monotonic()>deadline:
+                        self.fail('Child did not start')
+                    time.sleep(.05)
+            process.kill()
+            process.wait(5)
+            deadline = time.monotonic()+5
+            while True:
+                try:
+                    with socket.create_connection(('127.0.0.1', settings['port']), timeout=.2):
+                        pass
+                except OSError:
+                    break
+                if time.monotonic()>deadline:
+                    self.fail('Orphaned forwarding listener')
+                time.sleep(.05)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(5)
+
+    def test_restarted_service_waits_for_user_recovery(self):
+        self.switch('project')
+        self.runtime.stop()
+        settings = dict(self.context.settings, management_port=free_port())
+        self.path.write_text(json.dumps(settings))
+        process = subprocess.Popen([sys.executable, '-m', 'gateway.server', '--settings', str(self.path)],
+            env=dict(os.environ, PYTHONPATH=SRC), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic()+5
+            url = f'http://127.0.0.1:{settings["management_port"]}/manage/api/state'
+            while True:
+                try:
+                    with urllib.request.urlopen(url, timeout=1) as response:
+                        state = json.load(response)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        self.fail('Service did not restart')
+                    time.sleep(.05)
+            self.assertEqual(state['forwarding']['status'], 'recovery_required')
+            self.assertEqual(state['routing_mode'], 'project')
+            with self.assertRaises(OSError):
+                socket.create_connection(('127.0.0.1', settings['port']), timeout=.2)
+        finally:
+            process.terminate()
+            process.wait(5)
 
     def test_cli_write_is_rejected_before_touching_configuration(self):
         before = self.path.read_bytes()

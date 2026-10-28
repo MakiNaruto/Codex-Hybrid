@@ -11,7 +11,7 @@ import time
 
 STATUSES = {'rejected', 'incompatible_request_or_stream', 'upstream_connection_failed',
             'upstream_http_error', 'client_disconnected', 'failed', 'incomplete',
-            'stream_ended_without_completion'}
+            'stream_ended_without_completion', 'forwarding_exited', 'forwarding_start_failed'}
 PHASES = {'read_request', 'route_request', 'connect_upstream', 'read_upstream', 'write_client', 'adapt_event'}
 
 

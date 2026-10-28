@@ -27,6 +27,15 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn('secret', json.dumps(result))
         self.assertNotIn('private', json.dumps(result))
 
+    def test_forwarding_faults_export_metadata_without_raw_failure(self):
+        self.log.write_text('\n'.join(json.dumps({'status': status, 'time': 123,
+            'message': 'private-details', 'settings': {'api_key': 'secret'}})
+            for status in ('forwarding_exited', 'forwarding_start_failed'))+'\n')
+        errors = recent_errors(self.directory)['errors']
+        self.assertEqual(len(errors), 2)
+        self.assertNotIn('private', json.dumps(errors))
+        self.assertNotIn('secret', json.dumps(errors))
+
     def test_malformed_records_and_fields_are_not_exported(self):
         self.log.write_text('\n'.join(['invalid', '[]', '{"status": {}}',
             json.dumps({'status': 'private-status'}), json.dumps({'status': 'completed'}),

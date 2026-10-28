@@ -465,9 +465,17 @@ setInterval(()=>{syncTicks++;if(!document.hidden&&(state?.mode==='cc_switch'||sy
 function renderForwarding(forwarding){
   if(!forwarding)return;
   const status=forwarding.status;
-  $('forwarding-status').textContent='管理服务可用 · 模型转发'+(status==='running'?'运行中':status==='fault'?'启动失败':'已停止')+(status==='running'&&state?.routing_mode==='openai'?'（接入已关闭，暂保留供运行中的客户端使用）':'');
-  $('recover-forwarding').hidden=state?.routing_mode!=='project'||status==='running';
+  const labels={running:'运行中',fault:'故障，自动恢复已停止',stopped:'已停止',recovering:'意外退出，正在自动恢复',recovery_required:'等待恢复'};
+  let detail=status==='recovering'?'（第 '+forwarding.retry_attempt+'/'+forwarding.retry_limit+' 次，预计 '+new Date(forwarding.retry_at*1000).toLocaleTimeString()+' 重试）':'';
+  if(status==='recovery_required')detail='：配置仍指向网关，请恢复接入或关闭下方“Codex 接入”以恢复原生配置。';
+  if(status==='running'&&state?.routing_mode==='openai')detail='（接入已关闭，暂保留供运行中的客户端使用）';
+  $('forwarding-status').textContent='管理服务可用 · 模型转发'+(labels[status]||'状态未知')+detail;
+  $('recover-forwarding').textContent=status==='recovery_required'?'恢复接入':'重试模型转发';
+  $('recover-forwarding').hidden=state?.routing_mode!=='project'||['running','recovering'].includes(status);
+  $('restore-native').hidden=state?.routing_mode!=='project'||!['fault','recovery_required'].includes(status);
+  $('restore-native').disabled=routingSaving;
 }
+$('restore-native').onclick=()=>$('routing-toggle').click();
 $('recover-forwarding').onclick=()=>action(async()=>{await api('runtime/recover',{});await refresh();message('模型转发已恢复。');});
 function renderGatewayActivity(activity){
   renderForwarding(activity?.forwarding);
@@ -512,7 +520,8 @@ $('detect-processes').onclick=refreshClientProcesses;
 const diagnosticStatuses={rejected:'请求未完成',incompatible_request_or_stream:'请求或流处理异常',
   upstream_connection_failed:'上游连接失败',upstream_http_error:'上游返回错误',
   client_disconnected:'客户端连接中断',failed:'响应失败',incomplete:'响应未完成',
-  stream_ended_without_completion:'流结束时缺少完成信号'};
+  stream_ended_without_completion:'流结束时缺少完成信号',
+  forwarding_exited:'网关进程意外退出',forwarding_start_failed:'网关进程启动失败'};
 function diagnosticTime(seconds){
   const date=new Date(seconds*1000);
   const pad=value=>String(value).padStart(2,'0');
