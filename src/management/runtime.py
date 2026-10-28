@@ -10,6 +10,13 @@ from gateway.transport import FreshProxyOpener
 from model_catalog.catalog import ConfigError
 
 
+FORWARDING_START_TIMEOUT = 10
+FORWARDING_CONTROL_TIMEOUT = 15  # Startup plus bounded failed-child cleanup.
+FAILURE_REASONS = {
+    'port_in_use', 'permission_denied', 'startup_timeout', 'worker_exited',
+    'invalid_configuration', 'process_start_failed', 'worker_error',
+}
+
 def management_port(settings):
     port = settings.get('management_port', settings['port'] + 1 if settings['port'] < 65535 else 65534)
     if type(port) is not int or not 1024 <= port <= 65535 or port == settings['port']:
@@ -30,6 +37,7 @@ class ManagementContext:
 
 
 class ForwardingRuntime:
+    START_TIMEOUT = FORWARDING_START_TIMEOUT
     RETRY_DELAYS = (1, 3, 10)
     STABLE_SECONDS = 60
 
@@ -44,6 +52,7 @@ class ForwardingRuntime:
         self.process = self.connection = None
         self.lock = threading.RLock()
         self.error = None
+        self.error_reason = None
         self.status = 'stopped'
         self.attempt = 0
         self.retry_at = None
@@ -52,13 +61,19 @@ class ForwardingRuntime:
         self.wanted = False
         self.wake = threading.Event()
         self.closed = False
+        self._publish()
         self.monitor = threading.Thread(target=self._watch, daemon=True)
         self.monitor.start()
 
+    def _publish(self):
+        # Replace an immutable snapshot while holding the lifecycle lock. Readers
+        # must remain responsive while spawn/handshake/cleanup is in progress.
+        self._state = {'status': self.status, 'error': self.error, 'error_reason': self.error_reason,
+                       'retry_attempt': self.attempt, 'retry_at': self.retry_at,
+                       'retry_limit': len(self.RETRY_DELAYS)}
+
     def snapshot(self):
-        with self.lock:
-            return {'status': self.status, 'error': self.error, 'retry_attempt': self.attempt,
-                    'retry_at': self.retry_at, 'retry_limit': len(self.RETRY_DELAYS)}
+        return dict(self._state)
 
     def _launch(self):
         from management.forwarding_worker import run
@@ -66,11 +81,21 @@ class ForwardingRuntime:
         manager = getattr(self.context, 'manager', None)
         path = str(manager.settings_path) if manager else None
         process = self.mp.Process(target=run, args=(child, self.context.settings, path, self.counter), daemon=True)
+        reason = 'process_start_failed'
+        self.status, self.error_reason = 'starting', None
+        self._publish()
         try:
             process.start()
             child.close()
-            if not parent.poll(10) or parent.recv()[0] != 'ready':
+            reason = 'startup_timeout'
+            if not parent.poll(self.START_TIMEOUT):
                 raise OSError('Child did not become ready')
+            reason = 'worker_exited'
+            kind, payload = parent.recv()
+            if kind != 'ready':
+                if isinstance(payload, dict) and payload.get('reason') in FAILURE_REASONS:
+                    reason = payload['reason']
+                raise OSError('Child startup failed')
         except (OSError, EOFError, ValueError):
             child.close()
             parent.close()
@@ -82,13 +107,16 @@ class ForwardingRuntime:
                     process.kill()
                     process.join()
                 process.close()
-            self._record({'status': 'forwarding_start_failed'})
+            self._record({'status': 'forwarding_start_failed', 'error_reason': reason})
             self.status, self.error, self.wanted = 'fault', 'FORWARDING_START_FAILED', False
             self.retry_at = None
+            self.error_reason = reason
+            self._publish()
             raise ConfigError(self.error) from None
         self.process, self.connection = process, parent
         self.status, self.error, self.retry_at = 'running', None, None
         self.started = time.monotonic()
+        self._publish()
 
     def start(self):
         with self.lock:
@@ -99,6 +127,8 @@ class ForwardingRuntime:
             self._dispose()
             self.attempt = 0
             self.wanted = True
+            self.status, self.error, self.error_reason = 'starting', None, None
+            self._publish()
             self._launch()
         self.wake.set()
 
@@ -130,6 +160,8 @@ class ForwardingRuntime:
             self._dispose()
             self.status, self.error = 'stopped', None
             self.attempt = 0
+            self.error_reason = None
+            self._publish()
         self.wake.set()
 
     def close(self):
@@ -174,6 +206,7 @@ class ForwardingRuntime:
                         else:
                             self.wanted = False
                             self.status, self.error = 'fault', 'FORWARDING_RETRIES_EXHAUSTED'
+                        self._publish()
                         self._record({'status': 'forwarding_exited', 'exit_code': exitcode,
                                       'retry_attempt': self.attempt})
                 if self.wanted and self.retry_at is not None and time.monotonic() >= self.retry_deadline:
@@ -247,6 +280,7 @@ def serve(settings_path, record):
             if manager.routing_state() == 'project':
                 runtime.status = 'recovery_required'
                 runtime.error = 'FORWARDING_RECOVERY_REQUIRED'
+                runtime._publish()
             manager.start_sync()
             record({'status': 'management_listening', 'time': int(time.time())})
             try:

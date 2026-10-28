@@ -29,3 +29,14 @@ test('exhausted retries leave manual recovery available', () => {
   assert.equal(view['restore-native'].hidden, false);
   assert.match(view['forwarding-status'].textContent, /自动恢复已停止/);
 });
+test('starting state remains connected and does not offer duplicate recovery', () => {
+  const view = display({status: 'starting'});
+  assert.match(view['forwarding-status'].textContent, /正在启动/);
+  assert.equal(view['recover-forwarding'].hidden, true);
+});
+test('safe fault reasons explain recovery without exposing unknown text', () => {
+  const known = display({status: 'fault', error_reason: 'port_in_use'});
+  assert.match(known['forwarding-status'].textContent, /端口.*占用/);
+  const unknown = display({status: 'fault', error_reason: 'secret-in-raw-exception'});
+  assert.doesNotMatch(unknown['forwarding-status'].textContent, /secret/);
+});

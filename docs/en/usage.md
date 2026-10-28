@@ -72,3 +72,10 @@ After upgrading, restart the service and run `manage-url`. Management defaults t
 OS-held `service.lock` prevents duplicate services for one data directory. `operation.lock` serializes management/CLI writes, `control.lock` serializes CLI lifecycle commands, and `.codex-hybrid.lock` protects migrations targeting the same Codex directory. Lock files remain after exit; do not delete them to unlock. External applications still require conflict checks.
 
 Process detection and switch previews only inspect whether Codex desktop, CLI and VS Code clients are running. Permission or identity failures remain unknown. Task status probing has been dropped: no task sockets, internal IPC or thread history are read. Process presence and zero gateway requests do not establish task idleness. Windows behavior still requires device validation.
+
+
+### Notification and startup reliability (2026-10-29)
+
+On macOS, CC Switch directory monitoring uses kqueue to observe writes to an open SQLite WAL without treating shared-memory read activity as configuration changes. Periodic synchronization remains the fallback if notifications are unavailable. Other platforms keep their native observer.
+
+Forwarding reports a starting state while management status queries remain available. Routing commits revalidate configuration and index revisions after startup. The worker readiness deadline is 10 seconds; CLI control calls allow 15 seconds including failed-child cleanup. Startup faults expose fixed categories (port occupied, permission denied, timeout, invalid configuration, early exit, or other startup error), never raw exception messages.

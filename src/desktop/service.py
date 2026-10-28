@@ -218,13 +218,13 @@ def health(settings, ensure_forwarding=False):
 
 
 def ensure_forwarding_ready(settings):
-    from management.runtime import management_port
+    from management.runtime import management_port, FORWARDING_CONTROL_TIMEOUT
     request = urllib.request.Request(
         f'http://127.0.0.1:{management_port(settings)}/manage/api/forwarding/ensure',
         data=b'{}', headers={'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + settings.get('management_token', '')})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=5) as response:
+    with opener.open(request, timeout=FORWARDING_CONTROL_TIMEOUT) as response:
         json.load(response)
 
 

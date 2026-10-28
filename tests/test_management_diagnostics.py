@@ -36,6 +36,13 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn('private', json.dumps(errors))
         self.assertNotIn('secret', json.dumps(errors))
 
+    def test_only_allowlisted_startup_reasons_are_exported(self):
+        self.log.write_text('\n'.join(json.dumps({'status': 'forwarding_start_failed', 'time': 123,
+            'error_reason': reason}) for reason in ('port_in_use', 'raw-secret-message'))+'\n')
+        errors = recent_errors(self.directory)['errors']
+        self.assertEqual(errors[0]['error_reason'], 'port_in_use')
+        self.assertNotIn('error_reason', errors[1])
+
     def test_malformed_records_and_fields_are_not_exported(self):
         self.log.write_text('\n'.join(['invalid', '[]', '{"status": {}}',
             json.dumps({'status': 'private-status'}), json.dumps({'status': 'completed'}),

@@ -91,7 +91,12 @@ def handle(handler, gateway, method):
                 runtime = getattr(gateway, 'runtime', None)
                 if runtime is None or manager.routing_state() != 'project':
                     raise ConfigError('FORWARDING_UNAVAILABLE')
-                runtime.start()
+            # No configuration write: do not hold the configuration lock during spawn.
+            runtime.start()
+            with manager.lock:
+                if manager.routing_state() != 'project':
+                    runtime.stop_if_safe(manager)
+                    raise ConfigError('FORWARDING_UNAVAILABLE')
                 result = runtime.snapshot()
         elif handler.path == '/manage/api/routing/preview':
             result = manager.preview_routing(body['mode'])

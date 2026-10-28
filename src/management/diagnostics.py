@@ -29,6 +29,8 @@ EXCEPTION_TYPES.update({'JSONDecodeError', 'TOMLDecodeError', 'HTTPError', 'URLE
                         'SSLZeroReturnError', 'SSLWantReadError', 'SSLWantWriteError'})
 
 SAFE_VALUES = {
+    'error_reason': {'port_in_use', 'permission_denied', 'startup_timeout', 'worker_exited',
+                     'invalid_configuration', 'process_start_failed', 'worker_error'},
     'error_kind': {'connection_error', 'incomplete_read', 'http_protocol_error', 'timeout',
                    'dns_error', 'tls_certificate_error', 'tls_error', 'connection_refused',
                    'connection_reset', 'broken_pipe'},

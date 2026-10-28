@@ -122,7 +122,9 @@ class RuntimeTests(unittest.TestCase):
                 self.switch('project')
             self.assertEqual((self.home/'config.toml').read_bytes(), original)
             with self.request('/manage/api/state') as response:
-                self.assertEqual(json.load(response)['forwarding']['status'], 'fault')
+                state = json.load(response)['forwarding']
+                self.assertEqual(state['status'], 'fault')
+                self.assertEqual(state['error_reason'], 'port_in_use')
 
     def test_management_cannot_forward_or_bypass_origin_checks(self):
         for path, body, headers, expected in [
@@ -135,6 +137,83 @@ class RuntimeTests(unittest.TestCase):
                 self.request(path, body, headers)
             self.assertEqual(error.exception.code, expected)
             error.exception.close()
+
+    def assert_state_available_while_starting(self, recover):
+        if recover:
+            self.switch('project')
+            self.runtime.stop()
+        entered, release = threading.Event(), threading.Event()
+        errors = []
+        original = self.runtime._launch
+
+        def delayed():
+            entered.set()
+            release.wait(8)
+            original()
+
+        def operation():
+            try:
+                if recover:
+                    with self.request('/manage/api/runtime/recover', {}) as response:
+                        response.read()
+                else:
+                    self.switch('project')
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(self.runtime, '_launch', side_effect=delayed):
+            thread = threading.Thread(target=operation)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                with self.request('/manage/api/state') as response:
+                    state = json.load(response)
+                self.assertEqual(state['forwarding']['status'], 'starting')
+            finally:
+                release.set()
+                thread.join(5)
+        self.assertFalse(errors, errors)
+
+    def test_state_available_during_routing_startup(self):
+        self.assert_state_available_while_starting(False)
+
+    def test_state_available_during_manual_recovery(self):
+        self.assert_state_available_while_starting(True)
+
+    def test_edit_during_startup_is_rejected_without_overwriting(self):
+        entered, release = threading.Event(), threading.Event()
+        errors = []
+        original = self.runtime._launch
+
+        def delayed():
+            entered.set()
+            release.wait(5)
+            original()
+
+        def operation():
+            try:
+                self.switch('project')
+            except ConfigError as error:
+                errors.append(error.code)
+
+        with patch.object(self.runtime, '_launch', side_effect=delayed):
+            thread = threading.Thread(target=operation)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                changed = 'model="official"\n# edited while starting\n'
+                (self.home/'config.toml').write_text(changed)
+            finally:
+                release.set()
+                thread.join(5)
+        self.assertEqual(errors, ['CLIENT_CONFIG_CHANGED'])
+        self.assertEqual((self.home/'config.toml').read_text(), changed)
+
+    def test_startup_timeout_reports_specific_safe_reason(self):
+        self.runtime.START_TIMEOUT = .001
+        with self.assertRaises(ConfigError):
+            self.runtime.start()
+        self.assertEqual(self.runtime.snapshot()['error_reason'], 'startup_timeout')
 
     def test_cli_readiness_can_start_stopped_forwarding(self):
         service.health(self.context.settings, ensure_forwarding=True)

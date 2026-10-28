@@ -231,8 +231,14 @@ class Management:
             if not isinstance(revision, str) or not hmac.compare_digest(revision, before[-1]):
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
             runtime = getattr(self.gateway, 'runtime', None)
-            if mode == 'project' and runtime is not None:
-                runtime.start()
+        if mode == 'project' and runtime is not None:
+            runtime.start()
+        with self.lock:
+            # Starting may take seconds; reject any configuration/index changes
+            # made while the management page remained available.
+            before = self.routing_plan(mode)
+            if not hmac.compare_digest(revision, before[-1]):
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
             target, outcome, should_launch = None, 'manual', False
             desktop_error = None
             if desktop_action:

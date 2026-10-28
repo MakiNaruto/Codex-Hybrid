@@ -30,7 +30,7 @@ class SharedActivity(Activity):
                 'gateway_status': 'busy' if active else 'no_activity', 'codex_status': 'unknown'}
 
 
-def run(connection, settings, settings_path, counter):
+def _serve(connection, settings, settings_path, counter):
     from gateway.server import Gateway, Server
     from management.runtime import ManagementContext
     from desktop.locking import DirectoryLock
@@ -69,8 +69,8 @@ def run(connection, settings, settings_path, counter):
 
     try:
         server = Server(('127.0.0.1', settings['port']), Handler)
-    except (OSError, ValueError):
-        send(('failed', 'FORWARDING_START_FAILED'))
+    except (OSError, ValueError) as error:
+        send(('failed', failure(error)))
         connection.close()
         return
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -87,3 +87,29 @@ def run(connection, settings, settings_path, counter):
         connection.close()
     # No in-flight request may outlive the process owner after shutdown.
     os._exit(0)
+
+
+def failure(error):
+    import errno
+    if isinstance(error, OSError):
+        code = getattr(error, 'winerror', None) or error.errno
+        reason = ('port_in_use' if code in {errno.EADDRINUSE, 10048} else
+                  'permission_denied' if code in {errno.EACCES, errno.EPERM, 10013} else 'worker_error')
+    elif isinstance(error, (ValueError, KeyError, TypeError)):
+        reason = 'invalid_configuration'
+    else:
+        reason = 'worker_error'
+    return {'reason': reason}
+
+
+def run(connection, settings, settings_path, counter):
+    try:
+        _serve(connection, settings, settings_path, counter)
+    except Exception as error:
+        # Only a fixed reason crosses the boundary; never serialize exception messages.
+        try:
+            connection.send(('failed', failure(error)))
+        except (EOFError, OSError):
+            pass
+        finally:
+            connection.close()
