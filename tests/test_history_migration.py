@@ -21,7 +21,7 @@ class HistoryMigrationTests(migration_tests.SessionMigrationTests):
         p = self.greeting()
         before = p.read_bytes()
         migration = plan(self.home, self.settings, 'openai')
-        backup = Path(apply(migration, self.runtime, {}))
+        backup = Path(self.saved_apply(migration, self.runtime, {}))
         after = p.read_bytes()
         self.assertNotEqual(after, before)
         old, new = [json.loads(x) for x in before.splitlines()], [json.loads(x) for x in after.splitlines()]
@@ -31,7 +31,8 @@ class HistoryMigrationTests(migration_tests.SessionMigrationTests):
         self.assertFalse(manifest['index_only'])
         self.assertEqual(manifest['history_compatibility'][0]['rule'], 'greeting-message-id-v1')
         self.assertEqual((backup / manifest['files'][0]['backup']).read_bytes(), before)
-        self.assertEqual(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}), None)
+        with patch('desktop.session_migration._cleanup_record'):
+            self.assertEqual(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}), None)
         manifest['status'] = 'applying'
         (backup / 'manifest.json').write_text(json.dumps(manifest))
         recover(backup)

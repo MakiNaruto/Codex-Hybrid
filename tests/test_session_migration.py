@@ -36,6 +36,80 @@ class SessionMigrationTests(unittest.TestCase):
         self.stopped.start()
         self.addCleanup(self.stopped.stop)
 
+    def saved_apply(self, migration, directory, extra_files):
+        with patch('desktop.session_migration._cleanup_record'):
+            apply(migration, directory, extra_files)
+        return next((Path(directory) / 'session-migrations').iterdir())
+
+    def test_baseline_is_stable_and_success_leaves_no_temporary_records(self):
+        self.session('one')
+        baseline = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        first = {p.name: p.read_bytes() for p in baseline.iterdir()}
+        self.assertEqual(list((self.runtime / 'session-migrations').iterdir()), [])
+        again = apply(plan(self.home, self.settings, 'codex-hybrid'), self.runtime, {})
+        self.assertEqual(str(baseline), again)
+        self.assertEqual(first, {p.name: p.read_bytes() for p in baseline.iterdir()})
+        self.assertEqual(list((self.runtime / 'session-migrations').iterdir()), [])
+
+    def test_missing_or_corrupt_baseline_blocks_until_explicit_reset(self):
+        from desktop.session_migration import reset_baseline
+        self.session('one')
+        baseline = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        (baseline / 'state.sqlite').unlink()
+        with self.assertRaisesRegex(ConfigError, 'SESSION_BASELINE_UNAVAILABLE'):
+            apply(plan(self.home, self.settings, 'codex-hybrid'), self.runtime, {})
+        self.assertEqual(self.rows()[0][1], 'openai')
+        reset_baseline(self.home, self.runtime)
+        apply(plan(self.home, self.settings, 'codex-hybrid'), self.runtime, {})
+        self.assertTrue((baseline / 'state.sqlite').is_file())
+
+    def test_baseline_precedes_index_completion(self):
+        path = self.session('one')
+        with contextlib.closing(sqlite3.connect(self.database)) as db, db:
+            db.execute('DELETE FROM threads')
+        def repair(*args):
+            with contextlib.closing(sqlite3.connect(self.database)) as db, db:
+                db.execute('INSERT INTO threads VALUES (?,?,?,?)', ('one', str(path), 'old', 'vendor/model'))
+        with patch('desktop.codex_index.repair_index', side_effect=repair):
+            baseline = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        with contextlib.closing(sqlite3.connect(baseline / 'state.sqlite')) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM threads').fetchone()[0], 0)
+
+    def test_cleanup_failure_is_retried_without_deleting_baseline(self):
+        from desktop.session_migration import _cleanup_record
+        self.session('one')
+        from pathlib import Path as FilePath
+        original_unlink = FilePath.unlink
+        def busy(path, *args, **kwargs):
+            if path.parent.parent.name == 'session-migrations' and path.exists():
+                raise OSError('busy')
+            return original_unlink(path, *args, **kwargs)
+        with patch.object(FilePath, 'unlink', busy):
+            baseline = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        record = next((self.runtime / 'session-migrations').iterdir())
+        self.assertTrue(record.exists())
+        apply(plan(self.home, self.settings, 'openai'), self.runtime, {})
+        self.assertFalse(record.exists())
+        self.assertTrue(baseline.exists())
+
+    def test_failed_rollback_retains_recoverable_record(self):
+        self.session('one')
+        config = self.home / 'config.toml'
+        config.write_bytes(b'before')
+        from desktop.session_migration import write
+        def fail(p, data):
+            if p == config:
+                raise OSError('disk error')
+            write(p, data)
+        with patch('desktop.session_migration.write', side_effect=fail):
+            with self.assertRaises(OSError):
+                apply(plan(self.home, self.settings, 'openai'), self.runtime, {config: (b'before', b'after')})
+        record = next((self.runtime / 'session-migrations').iterdir())
+        self.assertEqual(json.loads((record / 'manifest.json').read_text())['status'], 'applying')
+        recover(record)
+        self.assertFalse(record.exists())
+        self.assertEqual(config.read_bytes(), b'before')
+
     def session(self, name, provider='old', archived=False, base=None, model='vendor/model'):
         folder = 'archived_sessions' if archived else 'sessions/2026/10/27'
         path = self.home / folder / (name + '.jsonl')
@@ -146,7 +220,7 @@ class SessionMigrationTests(unittest.TestCase):
             with contextlib.closing(sqlite3.connect(self.database)) as db, db:
                 db.execute('INSERT INTO threads VALUES (?,?,?,?)', ('one', str(path), 'old', 'vendor/model'))
         with patch('desktop.codex_index.repair_index', side_effect=repair):
-            backup = Path(apply(migration, self.runtime, {}))
+            backup = Path(self.saved_apply(migration, self.runtime, {}))
         self.assertEqual(self.rows(), [('one', 'openai', 'gpt-6.1-sol')])
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(migration['index_repair_count'], 1)
@@ -175,7 +249,7 @@ class SessionMigrationTests(unittest.TestCase):
         with patch('desktop.codex_index.repair_index', side_effect=ConfigError('SESSION_INDEX_REPAIR_FAILED')):
             with self.assertRaisesRegex(ConfigError, 'SESSION_INDEX_REPAIR_FAILED'):
                 apply(migration, self.runtime, {})
-        self.assertFalse(self.runtime.exists())
+        self.assertFalse((self.runtime / 'session-migrations').exists())
 
     def test_stale_index_or_history_blocks_changes(self):
         path = self.session('one')
@@ -281,13 +355,15 @@ class SessionMigrationTests(unittest.TestCase):
     def test_interrupted_index_only_migration_can_be_recovered(self):
         path = self.session('one')
         before = path.read_bytes()
-        backup = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        backup = Path(self.saved_apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
         manifest = json.loads((backup/'manifest.json').read_bytes())
         manifest['status'] = 'applying'
+        backup.mkdir(exist_ok=True)
         (backup/'manifest.json').write_bytes(json.dumps(manifest).encode())
         with self.assertRaisesRegex(ConfigError, 'SESSION_MIGRATION_RECOVERY_REQUIRED'):
             apply(plan(self.home, self.settings, 'codex-hybrid'), self.runtime, {})
-        recover(backup)
+        with patch('desktop.session_migration._cleanup_record'):
+            recover(backup)
         self.assertEqual(path.read_bytes(), before)
         self.assertEqual(self.rows()[0][1:], ('old', 'vendor/model'))
 
@@ -296,16 +372,19 @@ class SessionMigrationTests(unittest.TestCase):
         with contextlib.closing(sqlite3.connect(self.database)) as db, db:
             db.execute('ALTER TABLE threads ADD COLUMN title TEXT')
             db.execute('UPDATE threads SET title="before"')
-        backup = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        backup = Path(self.saved_apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
         manifest = json.loads((backup/'manifest.json').read_bytes())
         manifest['status'] = 'applying'
+        backup.mkdir(exist_ok=True)
         (backup/'manifest.json').write_bytes(json.dumps(manifest).encode())
         with contextlib.closing(sqlite3.connect(self.database)) as db, db:
             db.execute('UPDATE threads SET title="after"')
-        recover(backup)
+        with patch('desktop.session_migration._cleanup_record'):
+            recover(backup)
         with contextlib.closing(sqlite3.connect(self.database)) as db:
             self.assertEqual(db.execute('SELECT title FROM threads').fetchone()[0], 'after')
         manifest['status'] = 'applying'
+        backup.mkdir(exist_ok=True)
         (backup/'manifest.json').write_bytes(json.dumps(manifest).encode())
         path.write_bytes(path.read_bytes()+b'\n')
         with self.assertRaisesRegex(ConfigError, 'SESSION_MIGRATION_CHANGED'):
@@ -314,7 +393,7 @@ class SessionMigrationTests(unittest.TestCase):
     def test_legacy_interrupted_backup_remains_recoverable(self):
         path = self.session('one')
         original = path.read_bytes()
-        backup = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        backup = Path(self.saved_apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
         manifest = json.loads((backup/'manifest.json').read_bytes())
         manifest.pop('index_only')
         manifest.pop('rollout_inventory')
@@ -325,7 +404,8 @@ class SessionMigrationTests(unittest.TestCase):
         manifest['files'].append({'path': str(path), 'backup': 'history.backup',
                                   'after_sha256': sha(path.read_bytes())})
         (backup/'manifest.json').write_bytes(json.dumps(manifest).encode())
-        recover(backup)
+        with patch('desktop.session_migration._cleanup_record'):
+            recover(backup)
         self.assertEqual(path.read_bytes(), original)
         self.assertEqual(self.rows()[0][1], 'old')
 

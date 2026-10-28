@@ -38,6 +38,9 @@ class Management:
         self.sse_events = sse_events
         from desktop.locking import ConfigurationLock
         self.lock = ConfigurationLock(self)
+        from desktop.session_migration import cleanup_completed_records
+        with self.lock:
+            cleanup_completed_records(self.directory)
         self.revision_secret = secrets.token_bytes(32)
         self.sync_error = None
         self.sync_stop = threading.Event()

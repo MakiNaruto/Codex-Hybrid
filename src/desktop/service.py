@@ -417,12 +417,12 @@ def _migrate_routing_locked(config_path, settings, state, data, activating, expe
         updates[path] = (before[path], after)
     backup = apply(migration, RUNTIME, updates)
     if migration['count']:
-        print(f"已迁移 {migration['count']} 个本机会话；备份：{backup}")
+        print(f"已迁移 {migration['count']} 个本机会话；首次基线：{backup}")
     return state
 
 
 ACTIONS = ('prepare', 'refresh-models', 'start', 'restart', 'stop', 'status',
-           'activate', 'rollback', 'uninstall', 'manage-url', 'recover-sessions')
+           'activate', 'rollback', 'uninstall', 'manage-url', 'recover-sessions', 'reset-session-baseline')
 
 
 def common_arguments(parser, defaults):
@@ -461,12 +461,18 @@ def main():
         RUNTIME = data_directory(args.data_dir)
     check_legacy_installation(RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
     from desktop.locking import DirectoryLock
-    mutation = args.action in {'prepare', 'refresh-models', 'activate', 'rollback', 'recover-sessions'}
+    mutation = args.action in {'prepare', 'refresh-models', 'activate', 'rollback', 'recover-sessions', 'reset-session-baseline'}
     with DirectoryLock(RUNTIME, 'operation.lock' if mutation else 'control.lock'):
         return run_action(args)
 
 
 def run_action(args):
+    from desktop.session_migration import cleanup_completed_records
+    cleanup_completed_records(RUNTIME)
+    if args.action == 'reset-session-baseline':
+        from desktop.session_migration import reset_baseline
+        reset_baseline(args.codex_home.expanduser().resolve(), RUNTIME)
+        return print('基线已重置；下一次实际修改前将重新备份当前状态。')
     if args.action == 'recover-sessions':
         from desktop.session_migration import recover
         if not args.backup.resolve().is_relative_to((RUNTIME / 'session-migrations').resolve()):

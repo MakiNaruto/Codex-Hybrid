@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import sqlite3
 import time
 
@@ -90,6 +91,15 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def _sync_directory(path):
+    if os.name != 'nt':
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
 def write(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -97,7 +107,10 @@ def write(path, data):
     try:
         with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as out:
             out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
         os.replace(temporary, path)
+        _sync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -276,7 +289,7 @@ def _complete_indexes(migration):
 def apply(migration, directory, extra_files, *, allow_running=False):
     """Back up first; leave an explicit recovery journal if interrupted mid-write."""
     from desktop.locking import DirectoryLock
-    with DirectoryLock(migration['home'], '.codex-hybrid.lock'):
+    with DirectoryLock(directory), DirectoryLock(migration['home'], '.codex-hybrid.lock'):
         return _apply_locked(migration, directory, extra_files, allow_running=allow_running)
 
 
@@ -320,6 +333,139 @@ def _official_history_repairs(migration):
     return originals, changes, repairs
 
 
+def _cleanup_record(path):
+    try:
+        # Keep the terminal manifest until all payloads are gone. A partial
+        # deletion must remain recognizable and retryable on the next start.
+        for child in path.iterdir():
+            if child.name == 'manifest.json':
+                continue
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        (path / 'manifest.json').unlink(missing_ok=True)
+        path.rmdir()
+    except OSError:
+        logging.warning('Migration cleanup deferred: %s', path)
+
+
+def cleanup_completed_records(directory):
+    """Retry terminal-record cleanup at startup; never touch active records."""
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(directory):
+        _cleanup_completed_records_locked(directory)
+
+
+def _cleanup_completed_records_locked(directory):
+    from desktop.locking import DirectoryLock
+    root = Path(directory) / 'session-migrations'
+    if not root.exists():
+        return
+    for record in root.iterdir():
+        if not record.is_dir():
+            continue
+        try:
+            if not any(record.iterdir()):
+                _cleanup_record(record)
+                continue
+            manifest = json.loads((record / 'manifest.json').read_text())
+            if manifest['status'] not in ('complete', 'rolled_back', 'recovered'):
+                continue
+            with DirectoryLock(manifest['home'], '.codex-hybrid.lock'):
+                current = json.loads((record / 'manifest.json').read_text())
+                if current['status'] in ('complete', 'rolled_back', 'recovered'):
+                    _cleanup_record(record)
+        except (OSError, ValueError, KeyError):
+            logging.warning('Migration cleanup deferred: %s', record)
+
+
+def _check_records(directory):
+    root = Path(directory) / 'session-migrations'
+    if root.exists():
+        for record in root.iterdir():
+            if not record.is_dir():
+                continue
+            if not any(record.iterdir()):
+                _cleanup_record(record)
+                continue
+            try:
+                status = json.loads((record / 'manifest.json').read_text())['status']
+            except (OSError, ValueError, KeyError):
+                raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED') from None
+            if status in ('preparing', 'complete', 'rolled_back', 'recovered'):
+                _cleanup_record(record)
+            else:
+                raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED')
+
+
+def _baseline_paths(home, directory):
+    key = sha(str(Path(home).resolve()).encode())[:24]
+    root = Path(directory) / 'session-baselines'
+    return root / key, root / (key + '.json')
+
+
+def _ensure_baseline(migration, directory, originals):
+    baseline, marker = _baseline_paths(migration['home'], directory)
+    if marker.exists():
+        try:
+            hashes = json.loads(marker.read_text())['hashes']
+            if (not isinstance(hashes, dict) or 'manifest.json' not in hashes
+                    or any(not isinstance(name, str) or Path(name).name != name
+                           or sha((baseline / name).read_bytes()) != digest
+                           for name, digest in hashes.items())):
+                raise ValueError()
+        except (OSError, ValueError, KeyError, TypeError):
+            raise ConfigError('SESSION_BASELINE_UNAVAILABLE') from None
+        return baseline
+    # An orphaned directory may be a partially published first backup. Never
+    # silently bless it or replace a previously established baseline.
+    if baseline.exists():
+        raise ConfigError('SESSION_BASELINE_UNAVAILABLE')
+    staging = baseline.with_name(baseline.name + '.preparing')
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True, mode=0o700)
+    info = {'status': 'baseline', 'home': str(migration['home']),
+            'database': str(migration['database']) if migration['database'] else None,
+            'history_compatibility': migration.get('baseline_history_repairs', []), 'files': []}
+    database = migration['database']
+    if database:
+        with contextlib.closing(sqlite3.connect(database)) as db:
+            with contextlib.closing(sqlite3.connect(staging / 'state.sqlite')) as saved:
+                db.backup(saved)
+        os.chmod(staging / 'state.sqlite', 0o600)
+    for i, (path, before) in enumerate(originals.items()):
+        name = str(i) + '.backup' if before is not None else None
+        if name:
+            write(staging / name, before)
+        info['files'].append({'path': str(path), 'backup': name})
+    write(staging / 'manifest.json', json.dumps(info).encode())
+    hashes = {p.name: sha(p.read_bytes()) for p in staging.iterdir()}
+    for path in staging.iterdir():
+        with path.open('rb') as stream:
+            os.fsync(stream.fileno())
+    _sync_directory(staging)
+    staging.rename(baseline)
+    _sync_directory(baseline.parent)
+    write(marker, json.dumps({'home': str(migration['home']), 'hashes': hashes}).encode())
+    return baseline
+
+
+def reset_baseline(home, directory):
+    """Explicitly discard an unusable baseline; next modification captures anew."""
+    from desktop.locking import DirectoryLock
+    with DirectoryLock(directory), DirectoryLock(home, '.codex-hybrid.lock'):
+        assert_stopped(home)
+        _check_records(directory)
+        baseline, marker = _baseline_paths(home, directory)
+        # Keep the marker until removal finishes, so an interruption cannot
+        # make an established but missing baseline appear uninitialized.
+        if baseline.exists():
+            shutil.rmtree(baseline)
+        marker.unlink(missing_ok=True)
+
+
 def _apply_locked(migration, directory, extra_files, *, allow_running=False):
     home = migration['home']
     originals = dict(migration['originals'])
@@ -332,17 +478,31 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
     if migration['count'] and not allow_running:
         assert_stopped(home)
     root = Path(directory) / 'session-migrations'
-    if root.exists():
-        for manifest in root.glob('*/manifest.json'):
-            if json.loads(manifest.read_text(encoding='utf-8')).get('status') == 'applying':
-                raise ConfigError('SESSION_MIGRATION_RECOVERY_REQUIRED')
-    _complete_indexes(migration)
+    _check_records(directory)
+    if plan(migration['home'], migration['settings'], migration['provider'],
+            best_effort=migration.get('skip_sessions', False))['revision'] != migration['revision']:
+        raise ConfigError('SESSION_MIGRATION_CHANGED')
     history_originals, history_changes, history_repairs = _official_history_repairs(migration)
     if history_changes and allow_running:
         # Index-only operations may opt out of stopping Codex; history cannot.
         assert_stopped(home)
     originals.update(history_originals)
     changes.update(history_changes)
+    # Capture before app-server index completion, which itself mutates SQLite.
+    initial_rows = any(before != after for before, after in
+                       zip(migration['rows'], migration.get('rows_after', [])))
+    if not changes and not initial_rows and not migration.get('unindexed'):
+        return None
+    for path, before in originals.items():
+        if (path.read_bytes() if path.exists() else None) != before:
+            raise ConfigError('SESSION_MIGRATION_CHANGED')
+    if migration['database'] and not migration.get('skip_sessions'):
+        with contextlib.closing(sqlite3.connect(migration['database'])) as check:
+            if _rows(check) != migration['rows']:
+                raise ConfigError('SESSION_MIGRATION_CHANGED')
+    migration['baseline_history_repairs'] = history_repairs
+    baseline = _ensure_baseline(migration, directory, originals)
+    _complete_indexes(migration)
     row_changes = [after for before, after in zip(migration['rows'], migration.get('rows_after', [])) if before != after]
     if not changes and not row_changes:
         return None
@@ -361,6 +521,7 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
                 'rollout_inventory': migration.get('inventory', []),
                 'rows_before': migration['rows'],
                 'rows_after': migration.get('rows_after', [])}
+    write(backup / 'manifest.json', json.dumps(manifest).encode())
     try:
         if database:
             db = sqlite3.connect(database, timeout=2)
@@ -391,8 +552,8 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
         for p, after in changes.items():
             if (p.read_bytes() if p.exists() else None) != originals[p]:
                 raise ConfigError('SESSION_MIGRATION_CHANGED')
-            write(p, after)
             written.append(p)
+            write(p, after)
         if db:
             db.executemany('UPDATE threads SET model_provider=?, model=? WHERE id=?',
                            [(row[2], row[3], row[0]) for row in row_changes])
@@ -401,6 +562,9 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
         manifest['status'] = 'complete'
         write(backup / 'manifest.json', json.dumps(manifest).encode())
     except BaseException:
+        if manifest['status'] == 'complete':
+            manifest['status'] = 'applying'
+            write(backup / 'manifest.json', json.dumps(manifest).encode())
         if db:
             db.rollback()
         if committed:
@@ -416,13 +580,18 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
             else:
                 p.unlink(missing_ok=True)
         if (backup / 'manifest.json').exists():
-            manifest['status'] = 'failed'
+            manifest['status'] = 'rolled_back'
             write(backup / 'manifest.json', json.dumps(manifest).encode())
+        if db:
+            db.close()
+            db = None
+        _cleanup_record(backup)
         raise
     finally:
         if db:
             db.close()
-    return str(backup)
+    _cleanup_record(backup)
+    return str(baseline)
 
 
 def recover(backup):
@@ -432,8 +601,15 @@ def recover(backup):
     if manifest['status'] != 'applying':
         raise ConfigError('SESSION_MIGRATION_NOT_INTERRUPTED')
     from desktop.locking import DirectoryLock
-    with DirectoryLock(manifest['home'], '.codex-hybrid.lock'):
+    with DirectoryLock(backup.parent.parent), DirectoryLock(manifest['home'], '.codex-hybrid.lock'):
         return _recover_locked(backup, manifest)
+
+
+def _recoverable_rows(rows, manifest):
+    before = {row[0]: row for row in manifest['rows_before']}
+    after = {row[0]: row for row in manifest['rows_after']}
+    return (len(rows) == len(before) and
+            all(row == before.get(row[0]) or row == after.get(row[0]) for row in rows))
 
 
 def _recover_locked(backup, manifest):
@@ -448,7 +624,7 @@ def _recover_locked(backup, manifest):
     if manifest['database']:
         with contextlib.closing(sqlite3.connect(Path(manifest['database']).as_uri() + '?mode=ro', uri=True)) as db:
             rows = [list(r) for r in _rows(db)]
-            if rows not in [manifest['rows_before'], manifest['rows_after']]:
+            if not _recoverable_rows(rows, manifest):
                 raise ConfigError('SESSION_MIGRATION_CHANGED')
     for item in manifest['files']:
         p = Path(item['path'])
@@ -460,7 +636,7 @@ def _recover_locked(backup, manifest):
         with contextlib.closing(sqlite3.connect(manifest['database'])) as db:
             db.execute('BEGIN IMMEDIATE')
             rows = [list(r) for r in _rows(db)]
-            if rows not in [manifest['rows_before'], manifest['rows_after']]:
+            if not _recoverable_rows(rows, manifest):
                 raise ConfigError('SESSION_MIGRATION_CHANGED')
             # Restore only fields owned by this migration; keep unrelated DB
             # tables, titles, timestamps and other metadata intact.
@@ -475,3 +651,4 @@ def _recover_locked(backup, manifest):
             p.unlink(missing_ok=True)
     manifest['status'] = 'recovered'
     write(backup / 'manifest.json', json.dumps(manifest).encode())
+    _cleanup_record(backup)

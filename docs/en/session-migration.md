@@ -58,7 +58,11 @@ Warnings appear in the confirmation and result. Confirmation writes them to `ses
 
 ## Backups and interrupted-migration recovery
 
-Each migration saves an index database snapshot, changed routing configuration, and a recovery manifest under `session-migrations/<backup-id>/` in the instance data directory. New backups do not copy history files. They contain private index summaries and configuration and are not automatically deleted.
+Before the first actual modification, including missing-index population, a fixed baseline is stored under `session-baselines/<codex-home-id>/` in the instance directory. It contains the index database, configuration to be changed, and history files affected by that operation's compatibility repairs, rather than all chat history. Each Codex home has a separate baseline and checksum marker; subsequent switches neither replace nor delete it. A missing or corrupt baseline blocks switching.
+
+To explicitly replace a baseline with the current state, stop the relevant Codex clients and run `codex-hybrid reset-session-baseline --codex-home /codex/home --data-dir /instance/directory`. The next actual modification captures a new baseline. This is diagnostic material, not an automatic historical database restore.
+
+Each migration temporarily saves the existing full recovery format under `session-migrations/<backup-id>/`. Success or a fully completed rollback deletes the temporary record. Cleanup failures are retried on startup and the next switch without failing a successful switch. Interrupted or incomplete rollbacks retain their records and block switching. Backups contain private configuration, indexes, and any history affected by repairs.
 
 An ordinary write failure restores routing configuration and rolls back index updates. If interruption leaves the manifest in `applying`, subsequent switches stop. Keep Codex closed and run:
 
