@@ -5,12 +5,81 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import queue
 import threading
 import time
 
 
 LOG_BYTES = 2 * 1024 * 1024
 LOG_BACKUPS = 3
+
+
+def bounded_record(observation):
+    observation = dict(observation)
+    if len(json.dumps(observation).encode('utf-8')) <= 16384:
+        return observation
+    compact = {'record_truncated': True}
+    for key in ('time', 'timestamp', 'status', 'phase', 'request_id', 'http_status',
+                'elapsed_ms', 'error_kind', 'error_reason', 'exit_code', 'retry_attempt'):
+        value = observation.get(key)
+        if type(value) in (int, float, bool) or value is None:
+            compact[key] = value
+        elif isinstance(value, str):
+            compact[key] = value[:128]
+    return compact
+
+
+class AsyncRecords:
+    """Best-effort records: bounded backlog, no sink I/O on producer threads."""
+    def __init__(self, output, capacity=256, dropped_counter=None):
+        self.output = output
+        self.queue = queue.Queue(maxsize=capacity)
+        self.lock = threading.Lock()
+        self.closed = threading.Event()
+        self.dropped = 0
+        self.dropped_counter = dropped_counter
+        self.thread = threading.Thread(target=self._write, daemon=True)
+        self.thread.start()
+
+    def _drop(self):
+        # Called under the local lock; only this process writes its shared counter.
+        self.dropped += 1
+        if self.dropped_counter is not None:
+            self.dropped_counter.value += 1
+
+    def emit(self, observation):
+        try:
+            observation = bounded_record(observation)
+        except (TypeError, ValueError, RecursionError):
+            with self.lock:
+                self._drop()
+            return
+        with self.lock:
+            if self.closed.is_set():
+                self._drop()
+                return
+            try:
+                self.queue.put_nowait(observation)
+            except queue.Full:
+                self._drop()
+
+    def _write(self):
+        while not self.closed.is_set() or not self.queue.empty():
+            try:
+                observation = self.queue.get(timeout=.05)
+            except queue.Empty:
+                continue
+            try:
+                self.output(observation)
+            except Exception:
+                # Disk and IPC failures must not disable subsequent logging or callers.
+                with self.lock:
+                    self._drop()
+
+    def close(self, timeout=.2):
+        with self.lock:
+            self.closed.set()
+        self.thread.join(timeout)
 
 
 class PrivateRotatingHandler(RotatingFileHandler):
@@ -78,17 +147,7 @@ class RuntimeLog:
         observation = dict(observation)
         observation.setdefault('time', time.time())
         observation['timestamp'] = datetime.fromtimestamp(observation['time'], timezone.utc).isoformat()
-        encoded = json.dumps(observation)
-        if len(encoded.encode('utf-8')) > 16384:
-            # An unusually large tool list must not defeat the per-file limit.
-            compact = {'record_truncated': True}
-            for key in ('time', 'timestamp', 'status', 'phase', 'request_id', 'http_status', 'elapsed_ms', 'error_kind'):
-                value = observation.get(key)
-                if type(value) in (int, float, bool) or value is None:
-                    compact[key] = value
-                elif isinstance(value, str):
-                    compact[key] = value[:128]
-            encoded = json.dumps(compact)
+        encoded = json.dumps(bounded_record(observation))
         self.events.handle(logging.makeLogRecord({'msg': encoded, 'levelno': logging.INFO}))
 
     def close(self):

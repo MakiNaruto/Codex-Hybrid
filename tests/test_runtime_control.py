@@ -180,6 +180,113 @@ class RuntimeTests(unittest.TestCase):
     def test_state_available_during_manual_recovery(self):
         self.assert_state_available_while_starting(True)
 
+    def assert_state_available_during_desktop(self, phase):
+        from desktop import client
+        entered, release = threading.Event(), threading.Event()
+        errors, results = [], []
+
+        def delayed(_):
+            entered.set()
+            release.wait(8)
+            return True if phase == 'closing' else 'started'
+
+        def operation(preview):
+            try:
+                results.append(self.manager.set_routing('project', preview['revision'], True,
+                    True, True, preview['desktop_ticket']))
+            except Exception as error:
+                errors.append(error)
+
+        with patch.object(client, 'discover', return_value={'executable': 'fixture'}), \
+                patch.object(client, 'processes', return_value=[object()]), \
+                patch.object(client, 'close', side_effect=delayed if phase == 'closing' else None,
+                             return_value=True), \
+                patch.object(client, 'launch', side_effect=delayed if phase == 'launching' else None,
+                             return_value='started'):
+            preview = self.manager.preview_routing('project')
+            thread = threading.Thread(target=operation, args=(preview,))
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(3))
+                with self.request('/manage/api/state') as response:
+                    state = json.load(response)
+                self.assertEqual(state['routing_operation']['phase'], phase)
+                self.assertEqual(state['routing_mode'], 'openai' if phase == 'closing' else 'project')
+                with self.request('/manage/api/activity') as response:
+                    self.assertEqual(json.load(response)['routing_operation']['phase'], phase)
+                # A second tab cannot reverse or duplicate an operation still in progress.
+                mode = 'project' if phase == 'closing' else 'openai'
+                next_preview = self.manager.preview_routing(mode)
+                with self.assertRaisesRegex(ConfigError, 'INSTANCE_BUSY'):
+                    self.manager.set_routing(mode, next_preview['revision'], True)
+            finally:
+                release.set()
+                thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertFalse(errors, errors)
+        self.assertEqual(results[0]['desktop_result'], 'started')
+        self.assertIsNone(self.manager.view()['routing_operation'])
+
+    def test_state_available_during_desktop_close(self):
+        self.assert_state_available_during_desktop('closing')
+
+    def test_state_available_during_desktop_launch(self):
+        self.assert_state_available_during_desktop('launching')
+
+    def test_blocked_logging_does_not_delay_crash_recovery_or_stop(self):
+        entered, release = threading.Event(), threading.Event()
+
+        def blocked_record(value):
+            entered.set()
+            release.wait(8)
+
+        self.context.record = blocked_record
+        self.runtime.RETRY_DELAYS = (.05, .05, .05)
+        self.runtime.start()
+        original_pid = self.runtime.process.pid
+        request = urllib.request.Request(f'http://127.0.0.1:{self.context.settings["port"]}/responses',
+            data=b'{"model":"not-configured"}', headers={'Content-Type': 'application/json',
+            'X-Connected-Token': self.context.settings['local_token']})
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(request, timeout=2)
+            error.exception.close()
+            self.assertTrue(entered.wait(2))
+            self.runtime.process.kill()
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                if (self.runtime.snapshot()['status'] == 'running'
+                        and self.runtime.process and self.runtime.process.pid != original_pid):
+                    break
+                time.sleep(.02)
+            else:
+                self.fail('A blocked log sink stalled process recovery')
+            stopped = threading.Event()
+            thread = threading.Thread(target=lambda: (self.runtime.stop(), stopped.set()))
+            thread.start()
+            self.assertTrue(stopped.wait(2), 'A blocked log sink stalled stop')
+            thread.join(2)
+        finally:
+            release.set()
+
+    def test_full_child_log_pipe_does_not_accumulate_request_threads(self):
+        import psutil
+        self.runtime.start()
+        url = f'http://127.0.0.1:{self.context.settings["port"]}/responses'
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        # Pause the reader to fill the real IPC pipe and the child's bounded queue.
+        with self.runtime.lock:
+            for _ in range(450):
+                request = urllib.request.Request(url, data=b'{"model":"not-configured"}',
+                    headers={'Content-Type': 'application/json',
+                             'X-Connected-Token': self.context.settings['local_token']})
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    opener.open(request, timeout=2)
+                error.exception.close()
+            self.assertGreater(self.runtime.snapshot()['log_dropped_records'], 0)
+            self.assertLess(psutil.Process(self.runtime.process.pid).num_threads(), 20)
+        self.assertEqual(self.runtime.snapshot()['status'], 'running')
+
     def test_edit_during_startup_is_rejected_without_overwriting(self):
         entered, release = threading.Event(), threading.Event()
         errors = []

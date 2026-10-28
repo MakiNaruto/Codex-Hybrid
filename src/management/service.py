@@ -48,6 +48,8 @@ class Management:
         self.cc_catalog = None
         self.last_synced_at = None
         self.sync_mode = 'periodic'
+        self.routing_lock = threading.Lock()
+        self.routing_operation = None
 
     def cache_cc(self, catalog):
         self.cc_catalog = catalog
@@ -200,6 +202,7 @@ class Management:
         runtime = getattr(self.gateway, 'runtime', None)
         if runtime is not None:
             result['forwarding'] = runtime.snapshot()
+        result['routing_operation'] = self.routing_operation
         return result
 
     def desktop_preferences(self):
@@ -221,77 +224,95 @@ class Management:
 
     def set_routing(self, mode, revision=None, confirm_activity=False, desktop_action=False,
                     desktop_was_running=False, desktop_ticket=None):
-        from desktop import client as desktop_client
         if type(desktop_action) is not bool or type(desktop_was_running) is not bool:
             raise ConfigError('INVALID_DESKTOP_ACTION')
         if type(confirm_activity) is not bool:
             raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
+        # Serialize switches, including OS waits, without blocking configuration reads.
+        if not self.routing_lock.acquire(blocking=False):
+            raise ConfigError('INSTANCE_BUSY')
+        self.routing_operation = {'mode': mode, 'phase': 'preparing'}
+        try:
+            return self._set_routing(mode, revision, confirm_activity, desktop_action,
+                                     desktop_was_running, desktop_ticket)
+        finally:
+            self.routing_operation = None
+            self.routing_lock.release()
+
+    def _set_routing(self, mode, revision, confirm_activity, desktop_action,
+                     desktop_was_running, desktop_ticket):
+        from desktop import client as desktop_client
         with self.lock:
             before = self.routing_plan(mode)
             if not isinstance(revision, str) or not hmac.compare_digest(revision, before[-1]):
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
-            runtime = getattr(self.gateway, 'runtime', None)
-        if mode == 'project' and runtime is not None:
-            runtime.start()
-        with self.lock:
-            # Starting may take seconds; reject any configuration/index changes
-            # made while the management page remained available.
-            before = self.routing_plan(mode)
-            if not hmac.compare_digest(revision, before[-1]):
-                raise ConfigError('CLIENT_CONFIG_CHANGED')
-            target, outcome, should_launch = None, 'manual', False
-            desktop_error = None
             if desktop_action:
                 ticket = hmac.new(self.revision_secret,
                                   (revision + str(desktop_was_running)).encode(), hashlib.sha256).hexdigest()
                 if not isinstance(desktop_ticket, str) or not hmac.compare_digest(ticket, desktop_ticket):
                     raise ConfigError('INVALID_DESKTOP_ACTION')
-                try:
-                    target = desktop_client.discover(before[-2]['home'])
-                    if target is None:
-                        outcome = 'unavailable'
+            runtime = getattr(self.gateway, 'runtime', None)
+        if mode == 'project' and runtime is not None:
+            runtime.start()
+        with self.lock:
+            # Reject config/index edits made during forwarding startup, before touching Codex.
+            before = self.routing_plan(mode)
+            if not hmac.compare_digest(revision, before[-1]):
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
+        target, outcome, should_launch = None, 'manual', False
+        desktop_error = None
+        if desktop_action:
+            self.routing_operation = {'mode': mode, 'phase': 'closing'}
+            try:
+                target = desktop_client.discover(before[-2]['home'])
+                if target is None:
+                    outcome = 'unavailable'
+                else:
+                    running = bool(desktop_client.processes(target))
+                    if running and not desktop_was_running:
+                        outcome = 'state_changed'
+                    elif running:
+                        closed = desktop_client.close(target)
+                        should_launch = bool(closed)
+                        desktop_error = getattr(closed, 'reason', None) or None
+                        outcome = 'closed' if should_launch else 'close_failed'
                     else:
-                        running = bool(desktop_client.processes(target))
-                        if running and not desktop_was_running:
-                            outcome = 'state_changed'
-                        elif running:
-                            closed = desktop_client.close(target)
-                            should_launch = bool(closed)
-                            desktop_error = getattr(closed, 'reason', None) or None
-                            outcome = 'closed' if should_launch else 'close_failed'
-                        else:
-                            should_launch = mode == 'project'
-                            outcome = 'manual' if should_launch else 'not_running'
-                except desktop_client.DesktopControlError as error:
-                    outcome, should_launch = 'close_failed', False
-                    desktop_error = str(error)
-                except Exception:
-                    outcome, should_launch = 'unknown', False
-            # Closing may flush sessions. Replan those indexes, but never accept external config edits.
+                        should_launch = mode == 'project'
+                        outcome = 'manual' if should_launch else 'not_running'
+            except desktop_client.DesktopControlError as error:
+                outcome, should_launch = 'close_failed', False
+                desktop_error = str(error)
+            except Exception:
+                outcome, should_launch = 'unknown', False
+        self.routing_operation = {'mode': mode, 'phase': 'applying'}
+        with self.lock:
+            # Closing can flush indexes. Accept those changes, but never external config edits.
             after = self.routing_plan(mode)
             if before[:5] != after[:5]:
                 raise ConfigError('CLIENT_CONFIG_CHANGED')
             result = self._apply_routing(mode, after[-1], confirm_activity)
-            if should_launch:
-                try:
-                    outcome = desktop_client.launch(target)
-                except Exception:
-                    outcome = 'launch_unconfirmed'
-            if mode == 'openai' and runtime is not None:
+        if should_launch:
+            self.routing_operation = {'mode': mode, 'phase': 'launching'}
+            try:
+                outcome = desktop_client.launch(target)
+            except Exception:
+                outcome = 'launch_unconfirmed'
+        if mode == 'openai' and runtime is not None:
+            with self.lock:
                 try:
                     result['forwarding_retained'] = not runtime.stop_if_safe(self)
                 except (OSError, ValueError):
                     result['forwarding_retained'] = True
-            result['desktop_result'] = outcome
-            result['desktop_error'] = desktop_error
-            record = getattr(self.gateway, 'record', None)
-            if record and desktop_action:
-                try:
-                    record({'status': 'desktop_operation', 'phase': 'desktop_control',
-                            'routing_mode': mode, 'desktop_result': outcome, 'desktop_error': desktop_error})
-                except OSError:
-                    pass  # Logging failure must not turn an applied switch into an API failure.
-            return result
+        result['desktop_result'] = outcome
+        result['desktop_error'] = desktop_error
+        record = getattr(self.gateway, 'record', None)
+        if record and desktop_action:
+            try:
+                record({'status': 'desktop_operation', 'phase': 'desktop_control',
+                        'routing_mode': mode, 'desktop_result': outcome, 'desktop_error': desktop_error})
+            except OSError:
+                pass  # Logging failure must not turn an applied switch into an API failure.
+        return result
 
     def _apply_routing(self, mode, revision=None, confirm_activity=False):
         with self.lock:
@@ -391,6 +412,7 @@ class Management:
             result['last_synced_at'] = self.last_synced_at
             result['sync_mode'] = self.sync_mode
             result['desktop_preferences'] = self.desktop_preferences()
+            result['routing_operation'] = self.routing_operation
             runtime = getattr(self.gateway, 'runtime', None)
             result['forwarding'] = runtime.snapshot() if runtime is not None else {'status': 'running', 'error': None}
             if mode == 'cc_switch':

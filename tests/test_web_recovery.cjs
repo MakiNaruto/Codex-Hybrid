@@ -40,3 +40,8 @@ test('safe fault reasons explain recovery without exposing unknown text', () => 
   const unknown = display({status: 'fault', error_reason: 'secret-in-raw-exception'});
   assert.doesNotMatch(unknown['forwarding-status'].textContent, /secret/);
 });
+
+test('dropped logs remain visible after forwarding recovers', () => {
+  const view = display({status: 'running', log_dropped_records: 12});
+  assert.match(view['forwarding-status'].textContent, /已丢弃 12 条日志/);
+});

@@ -93,6 +93,8 @@ class WebWorkflowTests(unittest.TestCase):
 
     def test_config_failure_never_reopens_closed_desktop(self):
         self.desktop_switch('project', running=True, failure=True)
+        self.assertIsNone(self.manager.view()['routing_operation'])
+        self.assertEqual(self.desktop_switch('project')['desktop_result'], 'started')
 
     def test_launch_timeout_preserves_applied_config(self):
         result = self.desktop_switch('project', launch='launch_unconfirmed')

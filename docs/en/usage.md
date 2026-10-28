@@ -79,3 +79,10 @@ Process detection and switch previews only inspect whether Codex desktop, CLI an
 On macOS, CC Switch directory monitoring uses kqueue to observe writes to an open SQLite WAL without treating shared-memory read activity as configuration changes. Periodic synchronization remains the fallback if notifications are unavailable. Other platforms keep their native observer.
 
 Forwarding reports a starting state while management status queries remain available. Routing commits revalidate configuration and index revisions after startup. The worker readiness deadline is 10 seconds; CLI control calls allow 15 seconds including failed-child cleanup. Startup faults expose fixed categories (port occupied, permission denied, timeout, invalid configuration, early exit, or other startup error), never raw exception messages.
+
+
+### Desktop switching and logging backpressure (2026-10-29)
+
+Management status remains available while waiting for Codex desktop to quit or launch. The page reports preparation, graceful exit, configuration application, and launch progress. Concurrent routing switches are rejected until the current operation finishes. Desktop system calls run outside the configuration lock; commits recheck configuration and replan indexes flushed during exit. Configuration changes stop the write and prevent the subsequent desktop launch.
+
+The forwarding child sends records through a background writer, and the management process writes records through another background writer. Each queue holds at most 256 pending records, with each record reduced to at most 16 KiB of metadata before enqueueing. Full queues drop new records; raised sink errors also count as known drops. `forwarding.log_dropped_records` in status and diagnostics reports known drops on both sides for the current management-service lifetime, including across child restarts. Backpressure and disk stalls do not block supervision, crash recovery, or request threads. Each supervision pass reads at most 64 records. Shutdown allows at most 0.2 seconds per writer to drain; trailing and crash-time in-flight records may be lost.

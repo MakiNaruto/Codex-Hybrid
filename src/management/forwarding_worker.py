@@ -30,10 +30,11 @@ class SharedActivity(Activity):
                 'gateway_status': 'busy' if active else 'no_activity', 'codex_status': 'unknown'}
 
 
-def _serve(connection, settings, settings_path, counter):
+def _serve(connection, settings, settings_path, counter, log_drops=None):
     from gateway.server import Gateway, Server
     from management.runtime import ManagementContext
     from desktop.locking import DirectoryLock
+    from gateway.runtime_log import AsyncRecords
     send_lock = threading.Lock()
 
     def send(value):
@@ -42,7 +43,8 @@ def _serve(connection, settings, settings_path, counter):
 
     context = ManagementContext(settings)
     context.activity = SharedActivity(counter)
-    context.record = lambda value: send(('record', value))
+    records = AsyncRecords(lambda value: send(('record', value)), dropped_counter=log_drops)
+    context.record = records.emit
     gateway = Gateway(settings, context=context)
     base = gateway.handler()
 
@@ -71,6 +73,7 @@ def _serve(connection, settings, settings_path, counter):
         server = Server(('127.0.0.1', settings['port']), Handler)
     except (OSError, ValueError) as error:
         send(('failed', failure(error)))
+        records.close()
         connection.close()
         return
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -84,6 +87,7 @@ def _serve(connection, settings, settings_path, counter):
     finally:
         server.shutdown()
         server.server_close()
+        records.close()
         connection.close()
     # No in-flight request may outlive the process owner after shutdown.
     os._exit(0)
@@ -102,9 +106,9 @@ def failure(error):
     return {'reason': reason}
 
 
-def run(connection, settings, settings_path, counter):
+def run(connection, settings, settings_path, counter, log_drops=None):
     try:
-        _serve(connection, settings, settings_path, counter)
+        _serve(connection, settings, settings_path, counter, log_drops)
     except Exception as error:
         # Only a fixed reason crosses the boundary; never serialize exception messages.
         try:

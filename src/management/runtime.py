@@ -5,6 +5,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler
 
+from gateway.runtime_log import AsyncRecords
 from gateway.activity import Activity
 from gateway.transport import FreshProxyOpener
 from model_catalog.catalog import ConfigError
@@ -46,6 +47,7 @@ class ForwardingRuntime:
         from management.forwarding_worker import SharedActivity
         self.mp = multiprocessing.get_context('spawn')
         self.counter = self.mp.Value('i', 0, lock=False)
+        self.log_drops = self.mp.Value('q', 0, lock=False)
         self.context = context
         context.runtime = self
         context.activity = SharedActivity(self.counter)
@@ -61,6 +63,7 @@ class ForwardingRuntime:
         self.wanted = False
         self.wake = threading.Event()
         self.closed = False
+        self.records = AsyncRecords(lambda value: self.context.record(value))
         self._publish()
         self.monitor = threading.Thread(target=self._watch, daemon=True)
         self.monitor.start()
@@ -73,14 +76,14 @@ class ForwardingRuntime:
                        'retry_limit': len(self.RETRY_DELAYS)}
 
     def snapshot(self):
-        return dict(self._state)
+        return {**self._state, 'log_dropped_records': self.records.dropped + self.log_drops.value}
 
     def _launch(self):
         from management.forwarding_worker import run
         parent, child = self.mp.Pipe()
         manager = getattr(self.context, 'manager', None)
         path = str(manager.settings_path) if manager else None
-        process = self.mp.Process(target=run, args=(child, self.context.settings, path, self.counter), daemon=True)
+        process = self.mp.Process(target=run, args=(child, self.context.settings, path, self.counter, self.log_drops), daemon=True)
         reason = 'process_start_failed'
         self.status, self.error_reason = 'starting', None
         self._publish()
@@ -165,17 +168,15 @@ class ForwardingRuntime:
         self.wake.set()
 
     def close(self):
-        self.stop()
-        self.closed = True
+        with self.lock:
+            self.closed = True
+            self.stop()
         self.wake.set()
         self.monitor.join(2)
+        self.records.close()
 
     def _record(self, value):
-        try:
-            self.context.record(value)
-        except Exception:
-            # A diagnostic sink failure must not disable process supervision.
-            pass
+        self.records.emit({'time': time.time(), **value})
 
     def _watch(self):
         while not self.closed:
@@ -184,7 +185,10 @@ class ForwardingRuntime:
             with self.lock:
                 if self.connection:
                     try:
-                        while self.connection.poll():
+                        # Bound each drain so sustained traffic cannot starve lifecycle work.
+                        for _ in range(64):
+                            if not self.connection.poll():
+                                break
                             kind, value = self.connection.recv()
                             if kind == 'record':
                                 self._record(value)

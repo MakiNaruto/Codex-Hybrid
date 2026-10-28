@@ -366,12 +366,30 @@ async function refresh(automatic=false){
 for(const mode of ['independent','cc_switch'])$(mode).onclick=()=>changeSource(mode);
 function renderRouting(){
   renderForwarding(state?.forwarding);
+  const operation=state?.routing_operation;
+  const busy=routingSaving||!!operation;
+  const phases={preparing:'正在准备切换…',closing:'正在请求 Codex 桌面端正常退出，请稍候…',applying:'正在应用接入配置和会话索引…',launching:'正在启动 Codex 桌面端，请稍候…'};
+  const progress=operation&&Object.hasOwn(phases,operation.phase)?phases[operation.phase]:'';
   const toggle=$('routing-toggle');
   toggle.setAttribute('aria-checked',String(state?.routing_mode==='project'));
-  toggle.disabled=routingSaving||!['project','openai'].includes(state?.routing_mode);
-  toggle.setAttribute('aria-busy',String(routingSaving));
-  $('routing-status').textContent=routingSaving?'正在准备或切换…':routingError||(
-    state?.routing_mode==='project'?'已开启':state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置');
+  toggle.disabled=busy||!['project','openai'].includes(state?.routing_mode);
+  toggle.setAttribute('aria-busy',String(busy));
+  $('routing-status').textContent=progress||(routingSaving?'正在准备或切换…':routingError||(
+    state?.routing_mode==='project'?'已开启':state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置'));
+  if(progress&&routingSaving&&$('routing-dialog').open&&$('routing-dialog-confirm').disabled){
+    $('routing-dialog-description').textContent=progress;
+  }
+}
+let routingPolling=false;
+async function refreshRoutingProgress(){
+  if(routingPolling)return;
+  routingPolling=true;
+  try{
+    const activity=await api('activity');
+    if(!routingSaving)return;
+    if(state){state.routing_operation=activity.routing_operation;state.forwarding=activity.forwarding;}
+    renderRouting();
+  }finally{routingPolling=false;}
 }
 function confirmRouting(mode,preview){
   const dialog=$('routing-dialog'),verb=mode==='project'?'开启':'关闭';
@@ -425,7 +443,7 @@ for(const mode of ['project','openai'])$('desktop-'+mode).onchange=()=>action(as
   finally{syncDesktopSelect($('desktop-'+mode));}
 });
 $('routing-toggle').onclick=async()=>{
-  if(routingSaving)return;
+  if(routingSaving||state?.routing_operation)return;
   const mode=state.routing_mode==='project'?'openai':'project';
   routingSaving=true;routingError='';renderRouting();
   try{
@@ -435,7 +453,7 @@ $('routing-toggle').onclick=async()=>{
     $('routing-dialog-confirm').textContent=choice.desktop_action?(choice.desktop_was_running?'正在切换并重启…':'正在切换并启动…'):'正在切换…';
     $('routing-dialog-cancel').hidden=true;$('desktop-action').disabled=true;
     if(choice.desktop_action&&choice.desktop_was_running){
-      $('routing-dialog-description').textContent='正在通过 Windows 向 Codex 桌面端发送后台正常退出请求，无需切换到前台。退出完成后将应用配置并启动桌面端。';
+      $('routing-dialog-description').textContent='正在请求 Codex 桌面端正常退出。退出完成后将应用配置并启动桌面端。';
       $('routing-dialog-warning').hidden=false;
       $('routing-dialog-warning').textContent='仅请求正常退出一次，不强制结束进程。若应用拒绝退出，将应用配置并提示手动处理。';
     }
@@ -460,7 +478,12 @@ $('add-provider').onclick=()=>{const card=providerCard('');$('providers').prepen
 action(refresh);
 
 let syncTicks=0;
-setInterval(()=>{syncTicks++;if(!document.hidden&&(state?.mode==='cc_switch'||syncTicks%5===0))action(()=>refresh(true));},1000);
+setInterval(()=>{
+  syncTicks++;
+  if(document.hidden)return;
+  if(routingSaving)action(refreshRoutingProgress);
+  else if(state?.mode==='cc_switch'||syncTicks%5===0)action(()=>refresh(true));
+},1000);
 
 function renderForwarding(forwarding){
   if(!forwarding)return;
@@ -471,11 +494,13 @@ function renderForwarding(forwarding){
   if(status==='fault'&&Object.hasOwn(reasons,forwarding.error_reason))detail='：'+reasons[forwarding.error_reason];
   if(status==='recovery_required')detail='：配置仍指向网关，请恢复接入或关闭下方“Codex 接入”以恢复原生配置。';
   if(status==='running'&&state?.routing_mode==='openai')detail='（接入已关闭，暂保留供运行中的客户端使用）';
+  if(Number.isSafeInteger(forwarding.log_dropped_records)&&forwarding.log_dropped_records>0)detail+=' · 已丢弃 '+forwarding.log_dropped_records+' 条日志（积压或写入失败）';
   $('forwarding-status').textContent='管理服务可用 · 模型转发'+(labels[status]||'状态未知')+detail;
   $('recover-forwarding').textContent=status==='recovery_required'?'恢复接入':'重试模型转发';
   $('recover-forwarding').hidden=state?.routing_mode!=='project'||['running','recovering','starting'].includes(status);
   $('restore-native').hidden=state?.routing_mode!=='project'||!['fault','recovery_required'].includes(status);
-  $('restore-native').disabled=routingSaving;
+  $('restore-native').disabled=routingSaving||!!state?.routing_operation;
+  $('recover-forwarding').disabled=routingSaving||!!state?.routing_operation;
 }
 $('restore-native').onclick=()=>$('routing-toggle').click();
 $('recover-forwarding').onclick=()=>action(async()=>{await api('runtime/recover',{});await refresh();message('模型转发已恢复。');});
