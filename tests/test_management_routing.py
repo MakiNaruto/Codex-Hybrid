@@ -30,6 +30,11 @@ class RoutingTests(unittest.TestCase):
                          'local_token': 'test-token', 'disable_legacy_plugin': True}
         self.manager = Management(SimpleNamespace(settings=self.settings),
                                   self.directory / 'settings.json', None, None)
+        # Catalog publication has its own integration tests; this fixture models
+        # routing transactions without a model source or a forwarding service.
+        publication = patch.object(self.manager, 'publish')
+        publication.start()
+        self.addCleanup(publication.stop)
         self.initialize('model = "gpt-test"\r\n[features]\r\nexample = true\r\n')
 
     def initialize(self, native):

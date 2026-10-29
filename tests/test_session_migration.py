@@ -163,7 +163,13 @@ class SessionMigrationTests(unittest.TestCase):
         state = {'config_path': str(config), 'original_sha256': digest(native.encode()),
                  'candidate_sha256': digest(candidate.encode()), 'activated': False}
         (self.runtime/'state.json').write_text(json.dumps(state))
-        return Management(SimpleNamespace(settings=self.settings), self.runtime/'settings.json', None, None)
+        manager = Management(SimpleNamespace(settings=self.settings), self.runtime/'settings.json', None, None)
+        # Keep these migration fixtures independent of catalog publication.
+        # Full source/publication/routing integration is covered by runtime tests.
+        publication = patch.object(manager, 'publish')
+        publication.start()
+        self.addCleanup(publication.stop)
+        return manager
 
     def test_enable_preserves_every_model_and_all_history_bytes(self):
         for name, model in [('official', 'gpt-6-astra'), ('third-party', 'vendor/model'),
