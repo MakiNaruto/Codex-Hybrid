@@ -133,7 +133,7 @@ class Catalog:
                     {'protocol', 'base_url', 'credentials', 'models'})
             if spec['protocol'] not in {'openai_chat_completions', 'openai_responses'}:
                 fail('CONFIG_UNSUPPORTED_PROTOCOL')
-            compatibility = spec.get('responses_compatibility', 'native')
+            compatibility = spec.get('responses_compatibility', 'portable' if spec['protocol'] == 'openai_responses' else 'native')
             if compatibility not in ('native', 'portable'):
                 fail('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
             history_migration = enabled(spec.get('history_migration', False))
@@ -182,17 +182,24 @@ class Catalog:
                 fail('CONFIG_MODELS_REQUIRED')
             for alias, model in spec['models'].items():
                 (string if source_identifiers else identifier)(alias)
-                mapping(model, {'model_id', 'display_name', 'max_output_tokens', 'context_window', 'enabled', 'parameters'},
+                mapping(model, {'model_id', 'display_name', 'max_output_tokens', 'context_window', 'enabled', 'parameters', 'responses_compatibility'},
                         {'model_id'})
                 key = provider_id + '/' + alias
                 if key in self.models:
                     fail('CONFIG_DUPLICATE_MODEL_KEY')
                 model_enabled = enabled(model.get('enabled', True))
+                model_compatibility = model.get('responses_compatibility', compatibility)
+                if model_compatibility not in ('native', 'portable'):
+                    fail('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
+                if provider['protocol'] != 'openai_responses' and model_compatibility != 'native':
+                    fail('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
                 output_limit = optional_positive(model.get('max_output_tokens'), MAX_OUTPUT_TOKENS)
                 self.models[key] = {'key': key, 'provider': provider_id,
                     'protocol': provider['protocol'], 'model_id': string(model['model_id']),
                     'display_name': string(model.get('display_name', key)),
                     'enabled': provider['enabled'] and model_enabled,
+                    'source_enabled': provider['enabled'] and model_enabled,
+                    'responses_compatibility': model_compatibility,
                     'max_output_tokens': output_limit,
                     'output_limit_configured': output_limit is not None,
                     'context_window': positive(model.get('context_window', DEFAULT_CONTEXT_WINDOW),
@@ -214,13 +221,14 @@ class Catalog:
         if not self.models[selected]['enabled']:
             fail('MODEL_DISABLED')
         model = self.models[selected]
-        return model, self.providers[model['provider']]
+        return model, {**self.providers[model['provider']],
+                       'responses_compatibility': model['responses_compatibility']}
 
     def listing(self, include_disabled=False):
         # Credentials and paths never enter the public model directory.
         return [{key: model[key] for key in ('key', 'provider', 'protocol', 'model_id',
                   'display_name', 'enabled', 'max_output_tokens', 'output_limit_configured',
-                  'context_window')} |
+                  'context_window', 'source_enabled', 'responses_compatibility')} |
                 {'default': model['key'] == self.default_model, 'validation': 'not_checked'}
                 for model in self.models.values() if include_disabled or model['enabled']]
 

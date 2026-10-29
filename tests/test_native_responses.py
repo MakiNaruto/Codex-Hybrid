@@ -26,7 +26,7 @@ class NativeResponsesTests(unittest.TestCase):
         return Catalog('unused.yaml', data={'version': 1, 'providers': {'vendor': {
             'protocol': 'openai_responses', 'base_url': 'https://vendor.invalid/v1',
             'credentials': {'api_key': 'test-only'}, 'models': {'model': {'model_id': 'upstream'}},
-            **options}}})
+            'responses_compatibility': 'native', **options}}})
 
     def routed(self, catalog):
         settings = {'source': {'type': 'yaml'}, 'models': ['vendor/model'], 'official_models': []}
@@ -112,18 +112,20 @@ class NativeResponsesTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, 'CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS'):
             self.catalog(protocol='openai_chat_completions', history_migration=True)
 
-    def test_cc_switch_defaults_native_and_reads_explicit_options(self):
+    def test_cc_switch_defaults_portable_and_reads_explicit_options(self):
         import json
         provider = {'base_url': 'https://vendor.invalid/v1', 'wire_api': 'responses'}
         raw = {'auth': {'OPENAI_API_KEY': 'test-only'}, 'config': {
             'model_provider': 'custom', 'model': 'upstream', 'model_providers': {'custom': provider}}}
         parsed = decode('codex', json.dumps(raw))
-        self.assertEqual(parsed['responses_compatibility'], 'native')
+        self.assertEqual(parsed['responses_compatibility'], 'portable')
         self.assertFalse(parsed['history_migration'])
         provider.update(responses_compatibility='portable', history_migration=True)
         parsed = decode('codex', json.dumps(raw))
         self.assertEqual(parsed['responses_compatibility'], 'portable')
         self.assertTrue(parsed['history_migration'])
+        provider['responses_compatibility'] = 'native'
+        self.assertEqual(decode('codex', json.dumps(raw))['responses_compatibility'], 'native')
 
     def test_cc_switch_catalog_routes_and_reloads_explicit_compatibility(self):
         from contextlib import closing

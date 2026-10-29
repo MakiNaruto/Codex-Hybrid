@@ -8,6 +8,7 @@
   <title>Codex Hybrid · 模型管理</title>
   <link rel="stylesheet" href="/manage/style.css">
   <script src="/manage/app.js" defer></script>
+  <script src="/manage/models.js" defer></script>
 </head>
 <body>
 <main>
@@ -18,9 +19,21 @@
         <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-16.2-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
       </button>
     </div>
-    <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1>模型管理</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
-    <p class="intro">管理厂商连接，为客户端配置合适的模型。</p>
+    <nav class="page-nav" aria-label="管理页面"><a href="#access" data-page="access">接入与运行</a><a href="#models" data-page="models" aria-current="page">模型管理</a><a href="#diagnostics" data-page="diagnostics">运行与诊断</a></nav>
+    <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1 id="page-title" tabindex="-1">模型管理</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
+    <p id="page-intro" class="intro">选择要在 Codex 中使用的模型，连接与兼容设置集中管理。</p>
   </header>
+  <div id="page-models" class="management-page">
+  <section class="providers-section" aria-labelledby="providers-heading">
+    <div class="section-head"><div class="section-title"><h2 id="providers-heading">已添加模型</h2><span id="model-count" class="count-badge">0 个模型</span></div><div class="toolbar"><button id="publish" class="secondary" type="button">更新客户端模型列表</button><button id="refresh" class="secondary" type="button">刷新</button><button id="manage-connections" class="secondary" type="button">管理连接</button><button id="add-models" type="button">＋ 添加模型</button></div></div>
+    <div class="catalog-notes"><span id="source-note" class="source-label"></span><span id="catalog-status" class="hint" role="status"></span><button type="button" class="help-trigger" aria-label="模型列表更新说明" aria-expanded="false" data-help="新增、删除模型或修改显示名称、上下文窗口后，请更新客户端模型列表并重启客户端。仅修改 Key 或 API 地址时，下一轮调用即生效。">?</button><span id="sync-status" class="hint" aria-live="off"></span></div>
+    <div class="provider-filters"><label for="model-search">搜索已添加模型<input id="model-search" type="search" placeholder="厂商、模型名称或 ID" autocomplete="off"></label><label for="model-filter" hidden>显示范围<select id="model-filter"><option value="all">全部</option><option value="enabled">已启用</option><option value="disabled">含未启用模型</option></select></label><span id="unsaved-status" class="hint" role="status"></span></div>
+    <p id="search-empty" class="hint" hidden>没有匹配的厂商或模型。</p>
+    <div id="enabled-models" class="enabled-models" aria-label="已添加模型"></div>
+    <p class="hint model-membership-note">只有已添加的第三方模型才会进入客户端列表，并可供子 agent 调用。官方模型保持原有管理方式。</p>
+  </section>
+  </div>
+  <div id="page-access" class="management-page" hidden>
   <section class="overview" aria-labelledby="overview-heading">
     <div class="section-head"><h2 id="overview-heading">使用准备</h2><span id="readiness-summary" class="hint" role="status">正在读取配置…</span></div>
     <ol id="readiness-steps" class="readiness-steps"></ol>
@@ -51,20 +64,10 @@
       </details>
       <p class="routing-footnote">切换前预览影响，并确认是否重启桌面端。</p>
     </section>
-    <section class="source" aria-labelledby="source-heading">
-      <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>
-      <div class="mode-buttons"><button id="independent" type="button" aria-pressed="false">独立管理 <small>在这里维护厂商和模型</small></button><button id="cc_switch" type="button" aria-pressed="false">CC Switch <small>只读复用已有配置</small></button></div>
 
-      <div id="cc-path" hidden><div class="field-caption"><label for="db-path">数据库位置</label><button type="button" class="help-trigger" aria-label="数据库位置说明" aria-expanded="false" data-help="只读访问 CC Switch 数据库，不回写、不切换当前厂商。每轮调用读取最新 API Key。">?</button></div><div class="path-control"><input id="db-path" spellcheck="false"><button id="save-path" class="secondary" type="button">更新位置</button></div></div>
-    </section>
   </div>
-  <section class="providers-section" aria-labelledby="providers-heading">
-    <div class="section-head"><div class="section-title"><h2 id="providers-heading">厂商与模型</h2><span id="model-count" class="count-badge">0 个模型</span></div><div class="toolbar"><button id="publish" class="secondary" type="button">更新客户端模型列表</button><button id="refresh" class="secondary" type="button">刷新</button><button id="add-provider" type="button">＋ 添加厂商</button></div></div>
-    <div class="catalog-notes"><span id="source-note" class="source-label"></span><span id="catalog-status" class="hint" role="status"></span><button type="button" class="help-trigger" aria-label="模型列表更新说明" aria-expanded="false" data-help="新增、删除模型或修改显示名称、上下文窗口后，请更新客户端模型列表并重启客户端。仅修改 Key 或 API 地址时，下一轮调用即生效。">?</button><span id="sync-status" class="hint" aria-live="off"></span></div>
-    <div class="provider-filters"><label for="model-search">查找厂商或模型<input id="model-search" type="search" placeholder="厂商、模型名称或 ID" autocomplete="off"></label><label for="model-filter">显示范围<select id="model-filter"><option value="all">全部</option><option value="enabled">已启用</option><option value="disabled">含未启用模型</option></select></label><span id="unsaved-status" class="hint" role="status"></span></div>
-    <p id="search-empty" class="hint" hidden>没有匹配的厂商或模型。</p>
-    <div id="providers"></div>
-  </section>
+  </div>
+  <div id="page-diagnostics" class="management-page" hidden>
   <section class="diagnostics-section" aria-labelledby="diagnostics-heading">
     <div class="section-head"><h2 id="diagnostics-heading">运行与诊断</h2><div class="toolbar"><button id="refresh-diagnostics" class="secondary" type="button">刷新 ↻</button><button id="export-diagnostics" class="secondary" type="button">下载诊断 ↓</button></div></div>
     <div class="diagnostic-statusbar"><p id="service-status" role="status">正在读取服务运行状态…</p><span id="diagnostic-updated" class="hint"></span></div>
@@ -80,7 +83,41 @@
     <p id="diagnostic-coverage" class="hint" role="status" hidden></p>
     <ul id="diagnostic-errors" aria-label="最近请求错误摘要" aria-live="polite"><li class="diagnostic-empty">正在读取错误记录…</li></ul>
   </section>
+  </div>
 </main>
+<dialog id="connections-dialog" class="connections-dialog" aria-labelledby="connections-title">
+  <div class="model-dialog-heading"><div><p class="eyebrow">工作空间 / 连接</p><h2 id="connections-title">管理连接</h2></div><button id="close-connections" class="icon-button secondary" type="button" aria-label="关闭连接管理">×</button></div>
+    <section class="source" aria-labelledby="source-heading">
+      <div class="section-title"><h2 id="source-heading">配置来源</h2><button type="button" class="help-trigger" aria-label="配置来源说明" aria-expanded="false" data-help="独立管理：配置保存在本工具的私有运行目录。CC Switch：只读同步已有 OpenAI / Codex 第三方配置，参数修改请前往 CC Switch。">?</button></div>
+      <div class="mode-buttons"><button id="independent" type="button" aria-pressed="false">独立管理 <small>在这里维护厂商和模型</small></button><button id="cc_switch" type="button" aria-pressed="false">CC Switch <small>只读复用已有配置</small></button></div>
+
+      <div id="cc-path" hidden><div class="field-caption"><label for="db-path">数据库位置</label><button type="button" class="help-trigger" aria-label="数据库位置说明" aria-expanded="false" data-help="只读访问 CC Switch 数据库，不回写、不切换当前厂商。每轮调用读取最新 API Key。">?</button></div><div class="path-control"><input id="db-path" spellcheck="false"><button id="save-path" class="secondary" type="button">更新位置</button></div></div>
+    </section>
+  <div class="connection-toolbar"><span class="hint">模型选择与兼容设置保存在 Hybrid；CC Switch 配置只读。</span><button id="add-provider" type="button">＋ 添加厂商</button></div>
+  <div id="providers"></div>
+</dialog>
+<dialog id="add-models-dialog" class="add-models-dialog" aria-labelledby="add-models-title">
+  <div class="model-dialog-heading"><div><p class="eyebrow">可用模型</p><h2 id="add-models-title">添加到你的模型</h2></div><button id="close-add-models" class="icon-button secondary" type="button" aria-label="关闭添加模型">×</button></div>
+  <p class="hint">从当前配置来源选择模型，支持批量添加。</p>
+  <input id="available-search" type="search" placeholder="搜索厂商、模型名称或 ID" aria-label="搜索可添加模型">
+  <div id="available-models" class="available-models"></div>
+  <p id="available-empty" class="hint" role="status" hidden>没有匹配的可添加模型。</p>
+  <p id="add-models-error" class="error" role="alert"></p>
+  <div class="dialog-actions"><button id="cancel-add-models" class="secondary" type="button">取消</button><button id="confirm-add-models" type="button" disabled>添加所选模型</button></div>
+</dialog>
+<dialog id="model-detail-dialog" class="model-detail-dialog" aria-labelledby="model-detail-title">
+  <div class="model-dialog-heading"><span class="eyebrow">模型详情</span><button id="close-model-detail" class="icon-button secondary" type="button" aria-label="关闭模型详情">×</button></div>
+  <h2 id="model-detail-title"></h2><p id="model-detail-provider" class="hint"></p>
+  <dl class="model-detail-meta" id="model-detail-meta"></dl>
+  <div id="model-compatibility-setting" class="model-setting">
+    <div class="model-setting-heading"><div><h3 id="model-compatibility-label">兼容模式 <span class="badge">推荐</span></h3><p class="hint">Portable · Responses</p></div><button id="model-compatibility" class="routing-toggle" type="button" role="switch" aria-checked="true" aria-labelledby="model-compatibility-label" aria-describedby="model-compatibility-help"><span class="routing-thumb" aria-hidden="true"></span></button></div>
+    <p id="model-compatibility-help" class="hint">转换任务消息、工具与历史格式，改善第三方协作兼容性。关闭后保留原生消息格式。此设置仅影响当前模型，下一轮调用生效。</p>
+  </div>
+  <p id="model-detail-protocol" class="hint"></p><div id="model-detail-test"></div>
+  <p id="model-detail-error" class="error" role="alert"></p>
+  <p class="hint">移除只影响 Hybrid 的可用列表，原始连接配置仍会保留。</p>
+  <div class="dialog-actions model-detail-actions"><button id="remove-model" class="text-danger" type="button">移除模型</button><button id="save-model-detail" type="button">保存设置</button></div>
+</dialog>
 <dialog id="routing-dialog" aria-labelledby="routing-dialog-title" aria-describedby="routing-dialog-description">
   <form method="dialog">
     <h2 id="routing-dialog-title"></h2>

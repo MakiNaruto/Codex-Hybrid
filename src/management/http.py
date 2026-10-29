@@ -43,6 +43,7 @@ def handle(handler, gateway, method):
               '/manage/entry.js': ('entry.js', 'application/javascript; charset=utf-8'),
               '/manage/theme.js': ('theme.js', 'application/javascript; charset=utf-8'),
               '/manage/app.js': ('app.js', 'application/javascript; charset=utf-8'),
+              '/manage/models.js': ('models.js', 'application/javascript; charset=utf-8'),
               '/manage/style.css': ('style.css', 'text/css; charset=utf-8')}
     if method == 'GET' and handler.path in static:
         name, mime = static[handler.path]
@@ -108,6 +109,8 @@ def handle(handler, gateway, method):
                                          body.get('desktop_was_running', False), body.get('desktop_ticket'))
         elif handler.path == '/manage/api/source':
             result = manager.set_source(body['mode'], body.get('cc_db_path'))
+        elif handler.path == '/manage/api/models':
+            result = manager.save_models(body.get('source_id'), body.get('updates'))
         elif handler.path == '/manage/api/provider':
             result = manager.save_provider(body['id'], body.get('spec'), body.get('api_key'), body.get('delete', False))
         elif handler.path == '/manage/api/publish':

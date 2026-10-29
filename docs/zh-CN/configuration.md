@@ -46,19 +46,19 @@
 
 管理页将协议标为“供应商接口协议”，并在手动配置和 CC Switch 厂商卡片中持续展示实际转发方式。选择 Chat Completions 时，本工具保留 Responses → Chat Completions 转换；部分工具类型、独立工具通知和推理历史可能降级或不受支持，连接测试通过不代表全部桌面功能兼容。该配置需要通过本工具接入，不能据此认定 Codex 可以直连 Chat Completions。
 
-自行配置或 CC Switch 选择 Responses 后，默认保留原生协议结构；失败不会自动转为 Chat Completions。Chat Completions 继续走兼容转换。仅支持部分 Responses 特性的端点可能拒绝原生请求，此时应检查具体错误，再显式选择兼容模式。
+自行配置或 CC Switch 选择 Responses 后，默认使用 Portable 兼容转换；用户可在模型详情关闭，或显式配置 native 保留原生结构。不会自动切换为 Chat Completions 协议；Chat Completions 使用其现有转换。
 
 独立 YAML 可在厂商层配置（管理页“高级参数”也提供这两个选项）：
 
 ```yaml
 protocol: openai_responses
-responses_compatibility: native  # 默认；portable 显式启用原有历史与工具转换
+responses_compatibility: portable  # 默认；native 保留原生结构
 history_migration: false        # true 仅移除可按完整内容重放的历史项 ID
 ```
 
 `portable` 会归并系统指令、展开工具定义、将独立工具输出降级为 user 上下文，并将可读推理转为历史文本、移除不透明推理；它已包含历史项 ID 重放。`history_migration` 本身不会解密推理或还原纯 ID 引用。两个服务都使用 Responses，不代表加密状态与文件资源可以互用。
 
-CC Switch 模式从所选 `model_providers.<厂商>` TOML 配置读取同名字段；本项目只读其数据库，不代写这些选项。未填写时使用 `native` 和 `false`。协议仍由 CC Switch 的 `meta.apiFormat` 优先于 `wire_api` 决定。Chat Completions 不接受 `portable` 或开启历史迁移这两个 Responses 专属设置。
+CC Switch 模式从所选 `model_providers.<厂商>` TOML 配置读取同名字段；本项目只读其数据库，不代写这些选项。未填写时使用 `portable` 和 `false`。协议仍由 CC Switch 的 `meta.apiFormat` 优先于 `wire_api` 决定。Chat Completions 不接受 `portable` 或开启历史迁移这两个 Responses 专属设置。
 
 旧版单厂商 `.env` 路由也默认走原生 Responses；需要 Portable 时请改用上述 YAML 或 CC Switch 配置。
 
@@ -211,3 +211,9 @@ http_headers = { "X-Connected-Token" = "从生成的候选配置复制实际本�
 `model_provider` 选中网关；`base_url` 指向网关监听地址；`model_catalog_json` 指向生成的绝对路径；`X-Connected-Token` 必须与 `settings.json` 的 `local_token` 一致，不能使用供应商 Key。自定义端口时按候选配置填写。Windows 路径建议直接复制候选配置中的 TOML 转义形式。
 
 推荐使用生成的完整候选配置和 `activate`，以保留备份与校验。自己编辑后，`status` 可能显示 `modified_since_prepare`，自动启用 / 回滚可能因防覆盖校验而拒绝；恢复时需人工对照备份合并。不要在配置已发生其他修改后直接覆盖整个文件。
+
+### 模型级设置与添加名单
+
+管理页的模型详情可单独开关兼容模式。Hybrid 将覆盖值和已添加名单保存到私有 `settings.json` 的 `model_preferences`，不回写 CC Switch。YAML 的每个模型也可设置 `responses_compatibility`；优先级为 Hybrid 模型覆盖 → YAML 模型设置 → 厂商设置 → Responses 默认 portable。Chat 不显示此开关。
+
+已添加名单同时限制客户端目录与实时调用。升级首次发布保留已有模型；之后新发现模型需手动添加。不同 CC Switch 数据库的名单独立，切回原来源恢复其选择。通过独立管理保存新模型视为明确添加；仅在来源文件中出现的新模型不会自动加入。

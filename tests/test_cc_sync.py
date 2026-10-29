@@ -33,7 +33,10 @@ class CCSyncTests(unittest.TestCase):
         self.assertTrue(self.manager.sync_cc())
         settings = self.gateway.settings
         self.assertEqual(set(settings['cc_snapshot']['bindings']), {'record-a/model-b', 'record-a/model-c'})
-        self.assertEqual(set(settings['models']), {'official', 'record-a/model-b', 'record-a/model-c'})
+        self.assertEqual(set(settings['models']), {'official', 'record-a/model-b'})
+        self.assertIn('record-a/model-c', {model['key'] for model in self.manager.view()['models']})
+        self.manager.save_models(self.manager.view()['source_id'], [{'key': 'record-a/model-c', 'added': True}])
+        settings = self.gateway.settings
         self.assertNotIn(old_key, settings['models'])
         directory = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))
         self.assertEqual(settings['cc_snapshot']['models'], directory['models'])
@@ -101,7 +104,10 @@ class CCSyncTests(unittest.TestCase):
         self.assertTrue(self.manager.set_source('cc_switch', str(database))['saved'])
         self.assertEqual(self.gateway.settings['source']['path'], str(database))
         self.assertEqual(set(self.gateway.settings['models']),
-                         {'official', 'record-b/model-a', 'record-b/model-b'})
+                         {'official'})
+        self.assertEqual(len(self.manager.view()['models']), 2)
+        self.manager.save_models(self.manager.view()['source_id'], [{'key': 'record-b/model-a', 'added': True}])
+        self.assertEqual(set(self.gateway.settings['models']), {'official', 'record-b/model-a'})
 
     def test_placeholder_missing_config_recovers_existing_managed_models(self):
         managed = self.fixture.root / 'managed-models.yaml'
@@ -112,7 +118,10 @@ class CCSyncTests(unittest.TestCase):
             'type': 'yaml', 'path': str(self.fixture.root/'models.yaml')}
         self.manager.set_source('independent')
         self.assertEqual(self.gateway.settings['source']['path'], str(managed))
-        self.assertEqual(self.gateway.settings['models'], ['official', 'saved/exact'])
+        self.assertEqual(self.gateway.settings['models'], ['official'])
+        self.assertEqual(self.manager.view()['models'][0]['key'], 'saved/exact')
+        self.manager.save_models(self.manager.view()['source_id'], [{'key': 'saved/exact', 'added': True}])
+        self.assertIn('saved/exact', self.gateway.settings['models'])
         self.assertEqual(self.manager.view()['credential_status'], {'saved': 'available'})
 
     def test_missing_explicit_independent_file_does_not_get_replaced_with_empty_config(self):
@@ -152,7 +161,8 @@ class CCSyncTests(unittest.TestCase):
         self.fixture.write_provider(identifier='invalid-record')
         self.assertTrue(self.manager.sync_cc())
         self.assertIsNone(self.manager.sync_error)
-        self.assertIn('invalid-record/model-a', self.gateway.settings['models'])
+        self.assertNotIn('invalid-record/model-a', self.gateway.settings['models'])
+        self.assertIn('invalid-record/model-a', {m['key'] for m in self.manager.view()['models']})
 
     def test_database_read_failure_preserves_snapshot(self):
         previous = self.path.read_bytes()
@@ -203,7 +213,8 @@ class CCSyncTests(unittest.TestCase):
             self.fixture.write_provider(default=None, models=('background-model',))
             self.assertTrue(synced.wait(3), 'background sync did not publish the changed record')
             self.manager.stop_sync()
-        self.assertEqual(self.gateway.settings['models'], ['official', 'record-a/background-model'])
+        self.assertEqual(self.gateway.settings['models'], ['official'])
+        self.assertEqual(self.manager.view()['models'][0]['key'], 'record-a/background-model')
 
     def test_startup_repairs_directory_from_the_persisted_snapshot(self):
         path = Path(self.gateway.settings['catalog'])

@@ -70,7 +70,7 @@ def decode(app, raw, meta=None):
         if protocol is None:
             raise ConfigError('CC_PROTOCOL_NOT_SUPPORTED')
     return {'protocol': protocol, 'base_url': provider.get('base_url'),
-            'responses_compatibility': provider.get('responses_compatibility', 'native'),
+            'responses_compatibility': provider.get('responses_compatibility', 'portable' if protocol == 'openai_responses' else 'native'),
             'history_migration': provider.get('history_migration', False),
             'models': list(models.values()), 'key': key}
 

@@ -44,17 +44,17 @@ The wizard generates `setup-models.yaml` and `provider.env`, then asks whether t
 
 The management page labels the choice as the provider API protocol and persistently explains the forwarding mode for both manual and CC Switch provider cards. Chat Completions retains Responses-to-Chat conversion through this gateway. Some tool types, standalone notifications and reasoning history may be downgraded or unsupported; a passing connection test does not establish full desktop compatibility. This configuration requires the gateway rather than a direct Codex connection to Chat Completions.
 
-Responses defaults to native transport for both YAML and CC Switch sources. Failures do not trigger Chat Completions fallback. Chat retains its existing conversion. Provider-level YAML options (also available under Advanced settings in management) are:
+Responses defaults to portable compatibility for both YAML and CC Switch sources. Explicit native settings remain supported. Failures do not trigger Chat Completions fallback. Chat retains its existing conversion. Provider-level YAML options (also available under Advanced settings in management) are:
 
 ```yaml
 protocol: openai_responses
-responses_compatibility: native  # default; portable enables the existing conversion bridge
+responses_compatibility: portable  # default; native preserves protocol structure
 history_migration: false        # true removes only replayable top-level history item IDs
 ```
 
 Portable mode consolidates instructions, flattens tools, converts standalone tool outputs to user context, converts readable reasoning to historical text, and omits opaque reasoning. It already includes item-ID replay. History migration alone cannot decrypt reasoning or resolve bare item references. Responses support does not make encrypted state or file resources portable between services.
 
-For CC Switch, these fields are read from the selected `model_providers.<provider>` TOML table; the database remains read-only. Defaults are `native` and `false`. CC Switch `meta.apiFormat` still overrides `wire_api`. Chat configurations reject `portable` or enabled history migration, which are Responses-specific. Legacy single-provider `.env` routing also defaults to native Responses; use YAML or CC Switch for portable compatibility.
+For CC Switch, these fields are read from the selected `model_providers.<provider>` TOML table; the database remains read-only. Defaults are `portable` and `false`. CC Switch `meta.apiFormat` still overrides `wire_api`. Chat configurations reject `portable` or enabled history migration, which are Responses-specific. Legacy single-provider `.env` routing also defaults to native Responses; use YAML or CC Switch for portable compatibility.
 
 ### Catalog and synchronization
 
@@ -202,3 +202,9 @@ These retry and SSE idle values match the documented Codex defaults. Codex handl
 `model_provider` selects the gateway, `base_url` selects its listening address, and `model_catalog_json` is the generated catalog's absolute path. `X-Connected-Token` must match `local_token` in `settings.json`; it is not a provider API key. Use the generated candidate's port and TOML-escaped Windows paths.
 
 Prefer the complete generated candidate and `activate` to retain backup and integrity checks. After manual edits, `status` may show `modified_since_prepare`, and automatic activation or rollback may refuse overwrite. Merge against the backup manually when needed. Do not overwrite the entire file after other settings have changed.
+
+### Model membership and overrides
+
+Model details offers a per-model compatibility switch. Hybrid stores this override and the added-model list in its private settings.json (`model_preferences`), without writing to CC Switch. YAML models may also specify responses_compatibility. Precedence: Hybrid model override → YAML model setting → provider setting → portable default for Responses. Chat does not expose this switch.
+
+Membership controls both publication and live routing. The first upgrade publication retains previously advertised models; later discoveries require adding explicitly. CC Switch database selections are scoped separately and restored when switching back. Saving a new model in independent management counts as an explicit Add; external source-file additions do not.

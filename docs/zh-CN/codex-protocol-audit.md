@@ -1,6 +1,6 @@
 # Codex 桌面独立工具输出：源码与最终请求审计
 
-> 实现更新：第三方 Responses 现默认保留原生结构；本文“当前网关”的对比记录的是审计时的旧实现。该降级现仅用于 Chat Completions 和显式选择 `responses_compatibility: portable` 的 Responses。独立的 `history_migration` 选项及配置方法见[配置说明](configuration.md#responses-原生与兼容模式)。
+> 实现更新：第三方 Responses 现默认开启 Portable；可在模型详情关闭或显式选择 `responses_compatibility: native` 保留原生结构。本文“当前网关”的对比是历史审计记录。配置与优先级见[配置说明](configuration.md#responses-原生与兼容模式)。
 
 ## 结论
 

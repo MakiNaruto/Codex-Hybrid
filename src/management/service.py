@@ -13,7 +13,7 @@ import urllib.request
 
 import yaml
 
-from model_catalog.sources import Catalog, ConfigError, load_source, merged_catalog, update_cc_snapshot
+from model_catalog.sources import Catalog, ConfigError, load_source, merged_catalog, update_cc_snapshot, apply_preferences, source_key
 from model_catalog.catalog import identifier, read_yaml, string
 
 
@@ -403,11 +403,18 @@ class Management:
     def publish(self, source=None, catalog=None, extra=None):
         with self.lock:
             settings = copy.deepcopy(self.gateway.settings)
+            old_source_key = source_key(settings['source'])
+            settings.setdefault('model_preferences', {}).setdefault(old_source_key, {
+                'added': [key for key in settings['models'] if key not in settings['official_models']],
+                'compatibility': {}})
             if source is not None:
                 settings['source'] = source
             if extra:
                 settings.update(extra)
             external = catalog if catalog is not None else load_source(settings)
+            settings['model_preferences'].setdefault(source_key(settings['source']), {
+                'added': [], 'compatibility': {}})
+            external = apply_preferences(external, settings)
             official = self.official()
             merged = merged_catalog(official, external)
             settings['official_models'] = [model['slug'] for model in official]
@@ -447,7 +454,7 @@ class Management:
                       'config': {'version': 1, 'providers': {}}, 'inventory': [], 'models': [],
                       'source_error': self.sync_error, 'sync_revision': None, 'catalog_pending': False,
                       'native_routing': True, 'official_model_count': len(settings['official_models']),
-                      'credential_status': {}}
+                      'credential_status': {}, 'source_id': source_key(source)}
             result['last_synced_at'] = self.last_synced_at
             result['sync_mode'] = self.sync_mode
             result['desktop_preferences'] = self.desktop_preferences()
@@ -515,6 +522,48 @@ class Management:
             return self.publish({'type': 'cc-switch', 'path': db}, extra={
                 'cc_db_path': db, 'standalone_source': standalone})
 
+    def save_models(self, source_id, updates):
+        """Hybrid-only membership/compatibility; never write to CC Switch."""
+        with self.lock:
+            settings = copy.deepcopy(self.gateway.settings)
+            key = source_key(settings['source'])
+            if source_id != key:
+                raise ConfigError('MODEL_SOURCE_CHANGED')
+            if not isinstance(updates, list) or not updates or len(updates) > 1000:
+                raise ConfigError('INVALID_MODEL_PREFERENCES')
+            catalog = load_source(settings)
+            preferences = settings.setdefault('model_preferences', {}).setdefault(key, {
+                'added': [key for key, model in catalog.models.items() if model['enabled']], 'compatibility': {}})
+            added = set(preferences['added'])
+            seen = set()
+            for update in updates:
+                if (not isinstance(update, dict) or set(update) - {'key', 'added', 'responses_compatibility'}
+                        or not isinstance(update.get('key'), str) or update['key'] in seen):
+                    raise ConfigError('INVALID_MODEL_PREFERENCES')
+                model_key = update['key']
+                seen.add(model_key)
+                if model_key not in catalog.models:
+                    raise ConfigError('MODEL_NOT_CONFIGURED')
+                model = catalog.models[model_key]
+                if 'added' in update:
+                    if type(update['added']) is not bool:
+                        raise ConfigError('CONFIG_INVALID_ENABLED')
+                    if update['added']:
+                        if not model['source_enabled']:
+                            raise ConfigError('MODEL_DISABLED_AT_SOURCE')
+                        added.add(model_key)
+                    else:
+                        added.discard(model_key)
+                if 'responses_compatibility' in update:
+                    value = update['responses_compatibility']
+                    if value not in ('native', 'portable'):
+                        raise ConfigError('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
+                    if model['protocol'] != 'openai_responses':
+                        raise ConfigError('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
+                    preferences['compatibility'][model_key] = value
+            preferences['added'] = sorted(added)
+            return self.publish(extra={'model_preferences': settings['model_preferences']})
+
     def save_provider(self, provider_id, spec=None, api_key=None, delete=False):
         identifier(provider_id)
         if type(delete) is not bool:
@@ -555,10 +604,23 @@ class Management:
                     credentials['env_file'] = str((source_path.parent/Path(credentials['env_file']).expanduser()).resolve())
             target = self.directory/'managed-models.yaml'
             catalog = Catalog(target, data=raw)
+            preferences = copy.deepcopy(settings.get('model_preferences', {}))
+            preference_key = source_key(settings['source'])
+            preference = preferences.setdefault(preference_key, {
+                'added': [key for key, model in load_source(settings).models.items() if model['enabled']],
+                'compatibility': {}})
+            if not delete:
+                old_models = old.get('models', {})
+                for alias, model in spec['models'].items():
+                    model_key = provider_id + '/' + alias
+                    if alias not in old_models and model.get('enabled', True):
+                        preference['added'].append(model_key)
+            preference['added'] = sorted(set(preference['added']) & set(catalog.models))
             merged_catalog(self.official(), catalog)  # Validate publication before writing Key/config.
             private_write(target, yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
             return self.publish({'type': 'yaml', 'path': str(target)}, catalog=catalog,
-                                extra={'standalone_source': {'type': 'yaml', 'path': str(target)}})
+                                extra={'standalone_source': {'type': 'yaml', 'path': str(target)},
+                                       'model_preferences': preferences})
 
     def test_connection(self, key):
         began = time.monotonic()
