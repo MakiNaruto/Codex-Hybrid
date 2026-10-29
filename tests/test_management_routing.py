@@ -63,6 +63,14 @@ class RoutingTests(unittest.TestCase):
         self.switch('openai')
         self.assertEqual(tomllib.loads(self.path.read_text(encoding='utf-8')), expected)
 
+    def test_repeated_routing_switches_do_not_accumulate_blank_lines(self):
+        for _ in range(4):
+            self.switch('project')
+            self.switch('openai')
+        text = self.path.read_text(encoding='utf-8')
+        self.assertNotIn('\n\n\n', text)
+        self.assertEqual(tomllib.loads(text)['features'], {'example': True})
+
     def test_original_catalog_restored(self):
         self.initialize('model_provider = "openai"\nmodel_catalog_json = "custom.json"\n')
         self.switch('project')

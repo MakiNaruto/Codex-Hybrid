@@ -114,9 +114,15 @@ def candidate_config(original, settings):
     root, tables = original[:boundary], original[boundary:]
     for key in ['model_provider', 'model_catalog_json']:
         root = re.sub(r'^' + key + r'\s*=.*(?:\n|$)', '', root, flags=re.MULTILINE)
+    # Normalize only the separators we own. Without this, removing the old
+    # provider and adding a fresh one on every activation accumulates blank
+    # lines around the root/table boundary.
+    root = root.rstrip('\r\n')
+    tables = tables.strip('\r\n')
     result = ('# Codex Hybrid; rollback with ./scripts/codex-hybrid.sh rollback\n'
               f'model_provider = "{PROVIDER}"\nmodel_catalog_json = {json.dumps(settings["catalog"])}\n' +
-              root + '\n' + tables + '\n' +
+              root + ('\n' if root else '') +
+              (tables + '\n' if tables else '') +
               f'\n[model_providers.{PROVIDER}]\nname = "Codex Hybrid"\n'
               f'base_url = "http://127.0.0.1:{settings["port"]}"\n'
               'wire_api = "responses"\nrequires_openai_auth = true\nsupports_websockets = false\n'

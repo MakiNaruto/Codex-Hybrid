@@ -18,6 +18,7 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertEqual(parsed['model'], 'gpt-6.1-sol')
         # Updating a generated config must not duplicate provider tables.
         self.assertEqual(tomllib.loads(candidate_config(result, self.settings)), parsed)
+        self.assertEqual(candidate_config(result, self.settings), result)
 
     def test_legacy_config_upgrades_and_both_formats_can_be_removed(self):
         current = candidate_config('model = "gpt-6.1-sol"\n', self.settings)

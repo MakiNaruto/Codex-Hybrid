@@ -38,7 +38,12 @@ def restore(current, baseline):
         following = re.search(r'^\s*\[', baseline[match.end():], re.MULTILINE)
         end = match.end() + following.start() if following else len(baseline)
         tables += '\n' + baseline[match.start():end]
-    result = values + root + tables
+    # The root/table separators belong to this rewrite. Keep them stable
+    # across repeated enable/disable cycles instead of retaining empty lines
+    # left by the removed provider table.
+    root = root.rstrip('\r\n')
+    tables = tables.strip('\r\n')
+    result = values + root + ('\n' if root else '') + (tables + '\n' if tables else '')
     expected = copy.deepcopy(before)
     for key in ROOT_KEYS:
         expected.pop(key, None)
