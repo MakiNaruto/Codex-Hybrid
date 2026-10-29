@@ -1,62 +1,12 @@
 """Small, previewable configuration switch shared by the browser management UI."""
-import copy
+import hashlib
+import hmac
 import json
-import re
 import tomllib
 from pathlib import Path
 
-from desktop.service import PROVIDER, candidate_config, digest, remove_bridge_provider_table
+from desktop.configuration import PROVIDER, candidate_config, digest, managed, restore
 from model_catalog.catalog import ConfigError
-
-
-ROOT_KEYS = ('model_provider', 'model_catalog_json')
-
-
-def managed(config):
-    return {**{key: config.get(key) for key in ROOT_KEYS},
-            'provider': config.get('model_providers', {}).get(PROVIDER)}
-
-
-def restore(current, baseline):
-    """Restore owned fields while retaining unrelated user edits and comments."""
-    before = tomllib.loads(current)
-    native = tomllib.loads(baseline)
-    result, _ = remove_bridge_provider_table(current)
-    boundary = re.search(r'^\s*\[', result, re.MULTILINE)
-    root, tables = (result[:boundary.start()], result[boundary.start():]) if boundary else (result, '')
-    for key in ROOT_KEYS:
-        root = re.sub(r'^' + key + r'\s*=.*(?:\n|$)', '', root, flags=re.MULTILINE)
-    values = ''.join(f'{key} = {json.dumps(native[key], ensure_ascii=False)}\n'
-                     for key in ROOT_KEYS if key in native)
-    # An inactive bridge table may have existed before this switch.
-    provider = native.get('model_providers', {}).get(PROVIDER)
-    if provider is not None:
-        # Use the exact generated table syntax, including its original values.
-        match = re.search(r'^\[model_providers\.(?:"codex-hybrid"|codex-hybrid)\][^\n]*\n', baseline, re.MULTILINE)
-        if not match:
-            raise ConfigError('CLIENT_CONFIG_REWRITE_UNSAFE')
-        following = re.search(r'^\s*\[', baseline[match.end():], re.MULTILINE)
-        end = match.end() + following.start() if following else len(baseline)
-        tables += '\n' + baseline[match.start():end]
-    # The root/table separators belong to this rewrite. Keep them stable
-    # across repeated enable/disable cycles instead of retaining empty lines
-    # left by the removed provider table.
-    root = root.rstrip('\r\n')
-    tables = tables.strip('\r\n')
-    result = values + root + ('\n' if root else '') + (tables + '\n' if tables else '')
-    expected = copy.deepcopy(before)
-    for key in ROOT_KEYS:
-        expected.pop(key, None)
-        if key in native:
-            expected[key] = native[key]
-    expected.get('model_providers', {}).pop(PROVIDER, None)
-    if provider is not None:
-        expected.setdefault('model_providers', {})[PROVIDER] = provider
-    if expected.get('model_providers') == {}:
-        expected.pop('model_providers')
-    if tomllib.loads(result) != expected:
-        raise ConfigError('CLIENT_CONFIG_REWRITE_UNSAFE')
-    return result
 
 
 def snapshot(directory, name):
@@ -95,3 +45,60 @@ def prepare(directory, settings, mode):
             raise ConfigError('CLIENT_CONFIG_CHANGED')
         result = restore(current, baseline)
     return state, path, current, baseline, result
+
+
+def plan(directory, settings, mode, revision_secret):
+    """Bind the config rewrite and session migration to one preview revision."""
+    state, path, current, baseline, result = prepare(directory, settings, mode)
+    from desktop.session_migration import plan as plan_migration
+    provider = 'codex-hybrid' if mode == 'project' else 'openai'
+    migration = plan_migration(path.parent, settings, provider, best_effort=True)
+    revision = hmac.new(revision_secret,
+        json.dumps([mode, str(path), state, current, baseline, result, migration['revision']]).encode(),
+        hashlib.sha256).hexdigest()
+    return state, path, current, baseline, result, migration, revision
+
+
+def commit(directory, settings, mode, revision_secret, revision, confirm_activity=False):
+    """Commit config, recovery metadata and indexes as one recoverable operation.
+
+    The caller must hold its ConfigurationLock through planning and commit.
+    Desktop shutdown/startup and forwarding waits stay outside this transaction.
+    """
+    if type(confirm_activity) is not bool:
+        raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
+    controls = {directory/name: ((directory/name).read_bytes()
+                if (directory/name).exists() else None)
+                for name in ('state.json', 'original-config.toml', 'desktop-config.toml')}
+    state, path, current, baseline, result, migration, expected = plan(directory, settings, mode, revision_secret)
+    if not isinstance(revision, str) or not hmac.compare_digest(revision, expected):
+        raise ConfigError('CLIENT_CONFIG_CHANGED')
+    if path.read_bytes().decode('utf-8') != current:
+        raise ConfigError('CLIENT_CONFIG_CHANGED')
+    from desktop.session_migration import apply, log_warnings
+    updates = {}
+
+    def update(file, value):
+        file = Path(file)
+        updates[file] = (controls[file], value.encode())
+
+    # Routing config, recovery metadata and thread indexes form one recoverable operation.
+    if mode == 'project':
+        update(directory/'original-config.toml', baseline)
+        state['original_sha256'] = digest(baseline.encode())
+        update(directory/'desktop-config.toml', result)
+        state['candidate_sha256'] = digest(result.encode())
+    else:
+        update(directory/'original-config.toml', result)
+        state['original_sha256'] = digest(result.encode())
+    state['activated'] = mode == 'project'
+    update(directory/'state.json', json.dumps(state))
+    updates[path] = (current.encode(), result.encode())
+    warning_log = log_warnings(migration, directory)
+    backup = apply(migration, directory, updates,
+                   allow_running=confirm_activity)
+    return {'saved': True, 'routing_mode': mode, 'restart_client': True,
+            'session_count': migration['count'], 'model_change_count': migration['model_change_count'],
+            'index_repair_count': len(migration['unindexed']) or migration['index_repair_count'],
+            'session_backup': backup, 'warnings': migration['warnings'],
+            'warning_log': warning_log}

@@ -169,21 +169,14 @@ class Management:
             if config.get('profile'):
                 return 'unsupported'
             provider = config.get('model_provider', 'openai')
-            from desktop.service import PROVIDER
+            from desktop.configuration import PROVIDER
             return 'project' if provider == PROVIDER else 'openai' if provider == 'openai' else 'unsupported'
         except (OSError, ValueError, KeyError):
             return 'unavailable'
 
     def routing_plan(self, mode):
-        from management.routing import prepare
-        state, path, current, baseline, result = prepare(self.directory, self.gateway.settings, mode)
-        from desktop.session_migration import plan
-        provider = 'codex-hybrid' if mode == 'project' else 'openai'
-        migration = plan(path.parent, self.gateway.settings, provider, best_effort=True)
-        revision = hmac.new(self.revision_secret,
-            json.dumps([mode, str(path), state, current, baseline, result, migration['revision']]).encode(),
-            hashlib.sha256).hexdigest()
-        return state, path, current, baseline, result, migration, revision
+        from management.routing import plan
+        return plan(self.directory, self.gateway.settings, mode, self.revision_secret)
 
     def preview_routing(self, mode):
         with self.lock:
@@ -345,45 +338,10 @@ class Management:
         return result
 
     def _apply_routing(self, mode, revision=None, confirm_activity=False):
+        from management.routing import commit
         with self.lock:
-            if type(confirm_activity) is not bool:
-                raise ConfigError('INVALID_ACTIVITY_CONFIRMATION')
-            from desktop.service import digest
-            controls = {self.directory/name: ((self.directory/name).read_bytes()
-                        if (self.directory/name).exists() else None)
-                        for name in ('state.json', 'original-config.toml', 'desktop-config.toml')}
-            state, path, current, baseline, result, migration, expected = self.routing_plan(mode)
-            if not isinstance(revision, str) or not hmac.compare_digest(revision, expected):
-                raise ConfigError('CLIENT_CONFIG_CHANGED')
-            if path.read_bytes().decode('utf-8') != current:
-                raise ConfigError('CLIENT_CONFIG_CHANGED')
-            from desktop.session_migration import apply, log_warnings
-            updates = {}
-
-            def update(file, value):
-                file = Path(file)
-                updates[file] = (controls[file], value.encode())
-
-            # Routing config, recovery metadata and thread indexes form one recoverable operation.
-            if mode == 'project':
-                update(self.directory/'original-config.toml', baseline)
-                state['original_sha256'] = digest(baseline.encode())
-                update(self.directory/'desktop-config.toml', result)
-                state['candidate_sha256'] = digest(result.encode())
-            else:
-                update(self.directory/'original-config.toml', result)
-                state['original_sha256'] = digest(result.encode())
-            state['activated'] = mode == 'project'
-            update(self.directory/'state.json', json.dumps(state))
-            updates[path] = (current.encode(), result.encode())
-            warning_log = log_warnings(migration, self.directory)
-            backup = apply(migration, self.directory, updates,
-                           allow_running=confirm_activity)
-            return {'saved': True, 'routing_mode': mode, 'restart_client': True,
-                    'session_count': migration['count'], 'model_change_count': migration['model_change_count'],
-                    'index_repair_count': len(migration['unindexed']) or migration['index_repair_count'],
-                    'session_backup': backup, 'warnings': migration['warnings'],
-                    'warning_log': warning_log}
+            return commit(self.directory, self.gateway.settings, mode, self.revision_secret,
+                          revision, confirm_activity)
 
     def official(self):
         settings = self.gateway.settings
