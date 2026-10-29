@@ -105,13 +105,60 @@ class PlatformProxyTests(unittest.TestCase):
         with patch('gateway.transport.sys.platform', 'win32'), \
                 patch('urllib.request.getproxies_registry', create=True, return_value={'https': 'http://127.0.0.1:7897'}), \
                 patch('urllib.request.getproxies_environment', return_value={'no': 'localhost'}):
-            self.assertEqual(discover_proxies(), {'https': 'http://127.0.0.1:7897', 'no': 'localhost'})
+            self.assertEqual(discover_proxies(), {'https': 'http://127.0.0.1:7897'})
 
-    def test_windows_environment_overrides_registry(self):
+    def test_windows_system_proxy_overrides_inherited_environment(self):
         with patch('gateway.transport.sys.platform', 'win32'), \
                 patch('urllib.request.getproxies_registry', create=True, return_value={'https': 'http://127.0.0.1:7897'}), \
                 patch('urllib.request.getproxies_environment', return_value={'https': 'http://127.0.0.1:7898'}):
-            self.assertEqual(discover_proxies()['https'], 'http://127.0.0.1:7898')
+            self.assertEqual(discover_proxies()['https'], 'http://127.0.0.1:7897')
+
+    def test_windows_requests_follow_system_changes_despite_all_overrides(self):
+        destinations = []
+
+        def connect(handler, connection_type, request, **kwargs):
+            destinations.append((request.host, request._tunnel_host))
+            return upstream_response(request.full_url)
+
+        transport = FreshProxyOpener('http://127.0.0.1:18099')
+        with patch('gateway.transport.sys.platform', 'win32'), \
+                patch('urllib.request.getproxies_registry', create=True, side_effect=[
+                    {'https': 'http://127.0.0.1:18001'},
+                    {'https': 'http://127.0.0.1:18002'}, {}]), \
+                patch('urllib.request.getproxies_environment', return_value={
+                    'https': 'http://127.0.0.1:18098', 'no': '*'}), \
+                patch('urllib.request.proxy_bypass_registry', create=True, return_value=False), \
+                patch('urllib.request.AbstractHTTPHandler.do_open', new=connect):
+            for _ in range(3):
+                with transport.open(urllib.request.Request('https://upstream.example/responses')):
+                    pass
+        self.assertEqual(destinations, [
+            ('127.0.0.1:18001', 'upstream.example'),
+            ('127.0.0.1:18002', 'upstream.example'),
+            ('upstream.example', None),
+        ])
+
+    def test_windows_system_bypass_keeps_local_requests_direct(self):
+        with patch('gateway.transport.sys.platform', 'win32'), \
+                patch('urllib.request.getproxies_registry', create=True, return_value={
+                    'http': 'http://127.0.0.1:18001'}), \
+                patch('urllib.request.proxy_bypass_registry', create=True, return_value=True), \
+                patch('urllib.request.AbstractHTTPHandler.do_open', return_value=
+                      upstream_response('http://localhost/')):
+            request = urllib.request.Request('http://localhost/')
+            with FreshProxyOpener().open(request):
+                self.assertEqual(request.host, 'localhost')
+                self.assertIsNone(request._tunnel_host)
+
+    def test_macos_keeps_explicit_upstream_proxy(self):
+        with patch('gateway.transport.sys.platform', 'darwin'), \
+                patch('urllib.request.proxy_bypass', return_value=False), \
+                patch('urllib.request.AbstractHTTPHandler.do_open', return_value=
+                      upstream_response('https://upstream.example/')):
+            request = urllib.request.Request('https://upstream.example/')
+            with FreshProxyOpener('http://127.0.0.1:18001').open(request):
+                self.assertEqual(request.host, '127.0.0.1:18001')
+                self.assertEqual(request._tunnel_host, 'upstream.example')
 
     def test_macos_keeps_native_discovery(self):
         with patch('gateway.transport.sys.platform', 'darwin'), \

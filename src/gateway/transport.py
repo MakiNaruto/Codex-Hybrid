@@ -1,10 +1,12 @@
 """Shared streaming transport for OpenAI-compatible Chat Completions."""
 import errno
+import base64
 import json
 import socket
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -16,12 +18,29 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def discover_proxies():
     if sys.platform != 'win32':
         return urllib.request.getproxies()
-    # Windows urllib uses environment OR registry. A lone NO_PROXY entry
-    # otherwise suppresses every Windows system proxy. Merge per protocol;
-    # environment overrides registry, while ProxyHandler retains bypass rules.
-    proxies = urllib.request.getproxies_registry()
-    proxies.update(urllib.request.getproxies_environment())
-    return proxies
+    # Windows follows the user's current system proxy switch. Environment
+    # variables inherited at service startup must not keep an old proxy alive.
+    return urllib.request.getproxies_registry()
+
+
+class WindowsSystemProxyHandler(urllib.request.ProxyHandler):
+    """Use Windows bypass rules too, without consulting inherited NO_PROXY."""
+
+    def proxy_open(self, request, proxy, protocol):
+        if request.host and urllib.request.proxy_bypass_registry(request.host):
+            return None
+        parsed = urllib.parse.urlsplit(proxy if '://' in proxy else 'http://' + proxy)
+        if parsed.username and parsed.password:
+            credentials = '{}:{}'.format(urllib.parse.unquote(parsed.username),
+                                         urllib.parse.unquote(parsed.password))
+            encoded = base64.b64encode(credentials.encode()).decode('ascii')
+            request.add_header('Proxy-Authorization', 'Basic ' + encoded)
+        hostport = urllib.parse.unquote(parsed.netloc.rsplit('@', 1)[-1])
+        original_protocol = request.type
+        request.set_proxy(hostport, parsed.scheme)
+        if original_protocol != parsed.scheme and original_protocol != 'https':
+            return self.parent.open(request, timeout=request.timeout)
+        return None
 
 
 class FreshProxyOpener:
@@ -37,12 +56,13 @@ class FreshProxyOpener:
         self.upstream_proxy = upstream_proxy
 
     def open(self, request, timeout=120):
+        windows = sys.platform == 'win32'
         proxies = ({'http': self.upstream_proxy, 'https': self.upstream_proxy}
-                   if self.upstream_proxy else discover_proxies())
+                   if self.upstream_proxy and not windows else discover_proxies())
         # Record only presence, never proxy URLs, credentials or bypass lists.
         request.connected_proxy_configured = bool(proxies.get(request.type))
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler(proxies), NoRedirect())
+        handler = WindowsSystemProxyHandler if windows else urllib.request.ProxyHandler
+        opener = urllib.request.build_opener(handler(proxies), NoRedirect())
         return opener.open(request, timeout=timeout)
 
 

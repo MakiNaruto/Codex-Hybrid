@@ -14,6 +14,8 @@ Each confirmed operation requests cooperative Windows background shutdown once t
 
 ## Test a model connection
 
+On Windows, each upstream request reads the current user's system HTTP/HTTPS proxy and bypass rules again. Changing or disabling the system proxy takes effect without restarting the service; disabling it uses a direct connection, whose availability depends on the network. Inherited proxy environment variables and `upstream_proxy` do not override the Windows system selection. This does not control network-level forwarding such as Clash TUN or evaluate PAC scripts. macOS retains the existing explicit `upstream_proxy` override and Python environment/system proxy discovery behavior.
+
 Open the management page, save and enable a model, then click **Test connection**. The test sends `Reply with exactly hello and nothing else.` with an output budget of at most 8192 tokens, or the model's lower configured limit.
 
 Success means this basic request completed. Full Codex sessions and tool calls need separate verification. The 8192-token limit is an output budget, not a guarantee of total usage or cost.
