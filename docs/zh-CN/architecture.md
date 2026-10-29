@@ -53,7 +53,9 @@ Chat Completions 使用现有兼容转换。Responses 默认（或显式设置 `
 | `adapters/chat.py` | 在共用 Portable 转换之上处理 Chat 消息和流事件 |
 | `adapters/coordination.py` | 原生协作 namespace 映射和请求内 spawn 名称一致性，独立于 Portable 转换 |
 | `adapters/request_compat.py` | 历史重放、路由上下文和脱敏错误转换 |
-| `management/` | 配置发布、管理 HTTP 接口、路由操作和转发进程生命周期 |
-| `desktop/` | 客户端配置、会话迁移与按平台分开的桌面控制 |
+| `management/` | 配置发布、管理 HTTP 接口和转发进程生命周期；服务层持有锁与配置快照，`routing.py` 组织路由预览与可恢复事务 |
+| `desktop/configuration.py` | CLI 与管理路由共用的纯 TOML 转换：生成、识别、恢复受管字段和保留当前模型，不读写文件或调用操作系统 |
+| `desktop/` | 客户端命令与服务、会话迁移和按平台分开的桌面控制 |
+| `management/web/` | `app.js` 提供公共交互与接入编排，`models.js` 处理模型页面，`diagnostics.js` 在独立作用域内管理诊断时间范围与请求状态 |
 
 Portable 请求按固定顺序处理：先注册本次请求和历史中发现的全部工具，再转换历史，随后检查重复工具的执行结构，最后生成实际可调用的协作工具说明。不要把工具发现移到历史转换之后：历史调用可能依赖后面才出现的工具定义。

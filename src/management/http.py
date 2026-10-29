@@ -44,6 +44,7 @@ def handle(handler, gateway, method):
               '/manage/theme.js': ('theme.js', 'application/javascript; charset=utf-8'),
               '/manage/app.js': ('app.js', 'application/javascript; charset=utf-8'),
               '/manage/models.js': ('models.js', 'application/javascript; charset=utf-8'),
+              '/manage/diagnostics.js': ('diagnostics.js', 'application/javascript; charset=utf-8'),
               '/manage/style.css': ('style.css', 'text/css; charset=utf-8')}
     if method == 'GET' and handler.path in static:
         name, mime = static[handler.path]

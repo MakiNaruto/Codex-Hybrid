@@ -51,7 +51,9 @@ Hybrid stores membership and per-model compatibility overrides in its own settin
 | `adapters/chat.py` | Chat messages and stream conversion on top of the shared Portable rules |
 | `adapters/coordination.py` | Native collaboration namespace mapping and request-scoped spawn naming, independent of Portable conversion |
 | `adapters/request_compat.py` | History replay, routing context and sanitized errors |
-| `management/` | Configuration publication, management HTTP, routing operations and forwarding process lifecycle |
-| `desktop/` | Client configuration, session migration and platform-specific desktop control |
+| `management/` | Publication, management HTTP and forwarding lifecycle; the service owns locks and settings snapshots while `routing.py` plans and commits recoverable routing transactions |
+| `desktop/configuration.py` | Pure TOML transformations shared by CLI and management: generate, recognize and restore owned fields and retain the current model, without file writes or OS calls |
+| `desktop/` | Client commands and services, session migration and platform-specific desktop control |
+| `management/web/` | `app.js` provides shared interactions and access orchestration, `models.js` owns the model page, and `diagnostics.js` scopes diagnostic periods and request state to its page |
 
 Portable requests register all current and discovered tools before mapping history, then validate duplicate execution schemas and generate guidance for the registered coordination aliases. Preserve this order: historical calls can depend on tool definitions that appear later in the request.
