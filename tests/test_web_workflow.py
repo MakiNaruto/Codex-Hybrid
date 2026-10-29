@@ -2,6 +2,7 @@ import json
 from contextlib import closing
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -30,6 +31,7 @@ class WebWorkflowTests(unittest.TestCase):
         settings_path = self.runtime/'settings.json'
         self.gateway = Gateway(json.loads(settings_path.read_text()), settings_path)
         self.manager = self.gateway.manager
+        self.addCleanup(self.manager.close)
 
     def switch(self, mode):
         preview = self.manager.preview_routing(mode)
@@ -87,6 +89,8 @@ class WebWorkflowTests(unittest.TestCase):
         with patch.object(self.gateway, 'record', side_effect=OSError('log unavailable')):
             result = self.desktop_switch('project', running=True,
                                          close=CloseResult(False, 'restart_manager_shutdown_failed'))
+            self.manager.desktop_records.close(timeout=1)
+            self.assertEqual(self.manager.desktop_records.dropped, 1)
         self.assertEqual(result['desktop_result'], 'close_failed')
         self.assertEqual(result['desktop_error'], 'restart_manager_shutdown_failed')
         self.assertEqual(self.manager.routing_state(), 'project')
@@ -95,6 +99,39 @@ class WebWorkflowTests(unittest.TestCase):
         self.desktop_switch('project', running=True, failure=True)
         self.assertIsNone(self.manager.view()['routing_operation'])
         self.assertEqual(self.desktop_switch('project')['desktop_result'], 'started')
+
+    def test_blocked_desktop_result_logging_does_not_hold_switch_open(self):
+        entered, release, done = threading.Event(), threading.Event(), threading.Event()
+        errors, results = [], []
+
+        def blocked_record(value):
+            entered.set()
+            release.wait(5)
+
+        def switch():
+            try:
+                results.append(self.desktop_switch('project'))
+            except Exception as error:
+                errors.append(error)
+            finally:
+                done.set()
+
+        with patch.object(self.gateway, 'record', side_effect=blocked_record):
+            thread = threading.Thread(target=switch)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertTrue(done.wait(.5), 'Logging held the completed switch open')
+                self.assertEqual(self.manager.view()['routing_mode'], 'project')
+                self.assertIsNone(self.manager.view()['routing_operation'])
+                self.assertEqual(results[0]['desktop_result'], 'started')
+                # The routing guard must already be available for another switch.
+                self.switch('openai')
+                self.assertEqual(self.manager.routing_state(), 'openai')
+            finally:
+                release.set()
+                thread.join(3)
+        self.assertFalse(errors, errors)
 
     def test_launch_timeout_preserves_applied_config(self):
         result = self.desktop_switch('project', launch='launch_unconfirmed')

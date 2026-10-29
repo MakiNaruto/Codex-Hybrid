@@ -30,7 +30,7 @@ def bounded_record(observation):
 
 
 class AsyncRecords:
-    """Best-effort records: bounded backlog, no sink I/O on producer threads."""
+    """Bounded background records; a sink exception or explicit False counts as a drop."""
     def __init__(self, output, capacity=256, dropped_counter=None):
         self.output = output
         self.queue = queue.Queue(maxsize=capacity)
@@ -70,7 +70,9 @@ class AsyncRecords:
             except queue.Empty:
                 continue
             try:
-                self.output(observation)
+                if self.output(observation) is False:
+                    with self.lock:
+                        self._drop()
             except Exception:
                 # Disk and IPC failures must not disable subsequent logging or callers.
                 with self.lock:
@@ -83,7 +85,63 @@ class AsyncRecords:
 
 
 class PrivateRotatingHandler(RotatingFileHandler):
+    def __init__(self, *args, **kwargs):
+        # Keep disk I/O off Handler.lock: logging.shutdown() acquires that lock
+        # at interpreter exit even after RuntimeLog.close() has returned.
+        self.io_lock = threading.RLock()
+        self.close_guard = threading.Lock()
+        self.closing = threading.Event()
+        self.close_thread = None
+        super().__init__(*args, **kwargs)
+
+    def handle(self, record):
+        accepted = self.filter(record)
+        if isinstance(accepted, logging.LogRecord):
+            record = accepted
+        if accepted:
+            with self.io_lock:
+                if self.closing.is_set():
+                    record.runtime_write_failed = True
+                    return False
+                self.emit(record)
+        return accepted
+
+    def flush(self):
+        # Once close starts, only the cleanup thread may flush or close files.
+        if not self.closing.is_set():
+            with self.io_lock:
+                if self.stream and not self.closing.is_set():
+                    self.stream.flush()
+
+    def _close_file(self, final_record):
+        try:
+            with self.io_lock:
+                try:
+                    if final_record is not None and self.stream:
+                        self.emit(final_record)
+                finally:
+                    stream, self.stream = self.stream, None
+                    if stream:
+                        stream.close()
+        except OSError:
+            pass  # Shutdown is best effort; never log recursively during cleanup.
+        finally:
+            logging.Handler.close(self)
+
+    def close(self, timeout=.2, final_record=None):
+        with self.close_guard:
+            if self.close_thread is None:
+                self.closing.set()
+                self.close_thread = threading.Thread(target=self._close_file,
+                    args=(final_record,), daemon=True)
+                self.close_thread.start()
+            thread = self.close_thread
+        thread.join(timeout)
+
     def handleError(self, record):
+        # Python logging swallows stream/rotation failures. Mark this record so
+        # callers can count the failure without throwing into business code.
+        record.runtime_write_failed = True
         # Do not recursively log a disk/rotation failure through redirected stderr.
         try:
             os.write(2, b'Codex Hybrid: unable to write runtime log.\n')
@@ -110,11 +168,14 @@ class ErrorStream:
         self.buffer = ''
         self.lock = threading.RLock()
 
-    def emit_line(self, line):
+    def _record(self, line):
         now = time.time()
         record = {'time': now, 'timestamp': datetime.fromtimestamp(now, timezone.utc).isoformat(),
                   'message': line}
-        self.output.handle(logging.makeLogRecord({'msg': json.dumps(record), 'levelno': logging.ERROR}))
+        return logging.makeLogRecord({'msg': json.dumps(record), 'levelno': logging.ERROR})
+
+    def emit_line(self, line):
+        self.output.handle(self._record(line))
 
     def write(self, value):
         with self.lock:
@@ -133,6 +194,18 @@ class ErrorStream:
                 self.buffer = ''
             self.output.flush()
 
+    def close(self, timeout=.2):
+        # A blocked stderr write can own this lock. Trailing data is best effort.
+        final_record = None
+        if self.lock.acquire(blocking=False):
+            try:
+                if self.buffer:
+                    final_record = self._record(self.buffer)
+                    self.buffer = ''
+            finally:
+                self.lock.release()
+        self.output.close(timeout=timeout, final_record=final_record)
+
     def isatty(self):
         return False
 
@@ -148,9 +221,12 @@ class RuntimeLog:
         observation.setdefault('time', time.time())
         observation['timestamp'] = datetime.fromtimestamp(observation['time'], timezone.utc).isoformat()
         encoded = json.dumps(bounded_record(observation))
-        self.events.handle(logging.makeLogRecord({'msg': encoded, 'levelno': logging.INFO}))
+        record = logging.makeLogRecord({'msg': encoded, 'levelno': logging.INFO})
+        self.events.handle(record)
+        return not getattr(record, 'runtime_write_failed', False)
 
-    def close(self):
-        self.stderr.flush()
-        self.events.close()
-        self.errors.close()
+    def close(self, timeout=.2):
+        deadline = time.monotonic() + timeout
+        self.events.close(timeout=0)
+        self.stderr.close(timeout=max(0, deadline - time.monotonic()))
+        self.events.close(timeout=max(0, deadline - time.monotonic()))

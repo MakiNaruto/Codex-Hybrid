@@ -290,5 +290,5 @@ def serve(settings_path, record):
             try:
                 server.serve_forever()
             finally:
-                manager.stop_sync()
+                manager.close()
                 runtime.close()

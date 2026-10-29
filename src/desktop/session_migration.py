@@ -14,6 +14,23 @@ import time
 from model_catalog.catalog import ConfigError
 
 
+BACKUP_TIMEOUT = 5
+
+
+def _backup_database(source, destination):
+    # sqlite3's connection timeout does not bound backup()'s SQLITE_BUSY retries.
+    deadline = time.monotonic() + BACKUP_TIMEOUT
+    previous_timeout = source.execute('PRAGMA busy_timeout').fetchone()[0]
+    source.execute('PRAGMA busy_timeout=50')
+    def progress(status, remaining, total):
+        if time.monotonic() >= deadline:
+            raise ConfigError('SESSION_BACKUP_TIMEOUT')
+    try:
+        source.backup(destination, pages=128, progress=progress, sleep=.05)
+    finally:
+        source.execute(f'PRAGMA busy_timeout={previous_timeout}')
+
+
 def _zstd():
     # Python 3.14 includes Zstandard; older supported Python versions use the
     # dependency, only when a nonstandard compressed filename needs metadata.
@@ -433,7 +450,7 @@ def _ensure_baseline(migration, directory, originals):
     if database:
         with contextlib.closing(sqlite3.connect(database)) as db:
             with contextlib.closing(sqlite3.connect(staging / 'state.sqlite')) as saved:
-                db.backup(saved)
+                _backup_database(db, saved)
         os.chmod(staging / 'state.sqlite', 0o600)
     for i, (path, before) in enumerate(originals.items()):
         name = str(i) + '.backup' if before is not None else None
@@ -528,7 +545,7 @@ def _apply_locked(migration, directory, extra_files, *, allow_running=False):
             # A coherent backup must precede the write transaction (backup on a
             # connection holding BEGIN IMMEDIATE would block).
             with contextlib.closing(sqlite3.connect(backup / 'state.sqlite')) as saved:
-                db.backup(saved)
+                _backup_database(db, saved)
             os.chmod(backup / 'state.sqlite', 0o600)
             db.execute('BEGIN IMMEDIATE')
             if _rows(db) != migration['rows']:

@@ -59,3 +59,13 @@ test('a late progress response cannot overwrite the completed operation', async 
   await pending;
   assert.equal(view.context.state.routing_operation, null);
 });
+
+test('backup timeout explains that routing was not switched and can be retried', () => {
+  const errorHelpers = source.slice(source.indexOf('function errorMessage('), source.indexOf('async function action('));
+  const context = vm.createContext({state: {}});
+  vm.runInContext(errorHelpers, context);
+  const text = context.errorMessage({message: 'SESSION_BACKUP_TIMEOUT'});
+  assert.match(text, /备份.*超时/);
+  assert.match(text, /尚未切换/);
+  assert.match(text, /重试/);
+});

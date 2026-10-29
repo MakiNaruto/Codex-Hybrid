@@ -50,6 +50,7 @@ class Management:
         self.sync_mode = 'periodic'
         self.routing_lock = threading.Lock()
         self.routing_operation = None
+        self.desktop_records = None
 
     def cache_cc(self, catalog):
         self.cc_catalog = catalog
@@ -138,6 +139,11 @@ class Management:
         self.sync_stop.set()
         if self.sync_thread is not None:
             self.sync_thread.join(timeout=5)
+
+    def close(self):
+        self.stop_sync()
+        if self.desktop_records is not None:
+            self.desktop_records.close()
 
     def routing_state(self):
         try:
@@ -305,13 +311,18 @@ class Management:
                     result['forwarding_retained'] = True
         result['desktop_result'] = outcome
         result['desktop_error'] = desktop_error
-        record = getattr(self.gateway, 'record', None)
-        if record and desktop_action:
-            try:
-                record({'status': 'desktop_operation', 'phase': 'desktop_control',
-                        'routing_mode': mode, 'desktop_result': outcome, 'desktop_error': desktop_error})
-            except OSError:
-                pass  # Logging failure must not turn an applied switch into an API failure.
+        if desktop_action:
+            if runtime is not None:
+                records = runtime.records
+            else:
+                # Compatibility for a standalone Gateway management listener.
+                # Routing serialization also protects this lazy initialization.
+                if self.desktop_records is None:
+                    from gateway.runtime_log import AsyncRecords
+                    self.desktop_records = AsyncRecords(self.gateway.record)
+                records = self.desktop_records
+            records.emit({'time': time.time(), 'status': 'desktop_operation', 'phase': 'desktop_control',
+                          'routing_mode': mode, 'desktop_result': outcome, 'desktop_error': desktop_error})
         return result
 
     def _apply_routing(self, mode, revision=None, confirm_activity=False):

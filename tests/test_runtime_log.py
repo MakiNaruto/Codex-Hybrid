@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -59,3 +62,40 @@ class RuntimeLogTests(unittest.TestCase):
             path = Path(temp)/'service.jsonl'
             self.assertLess(path.stat().st_size, 16384)
             self.assertTrue(json.loads(path.read_text())['record_truncated'])
+
+    def test_process_exit_is_bounded_even_with_a_stuck_event_or_stderr_writer(self):
+        script = """import sys, threading
+from pathlib import Path
+from gateway.runtime_log import RuntimeLog
+log = RuntimeLog(Path(sys.argv[1]))
+entered = threading.Event()
+def blocked(record):
+    entered.set()
+    threading.Event().wait(30)
+    return False
+output = log.events if sys.argv[2] == 'events' else log.errors
+output.shouldRollover = blocked
+def write():
+    if sys.argv[2] == 'events':
+        log.emit({'status': 'probe'})
+    else:
+        log.stderr.write('probe\\n')
+threading.Thread(target=write, daemon=True).start()
+assert entered.wait(1)
+log.close()
+print('closed', flush=True)
+"""
+        for kind in ('events', 'stderr'):
+            with self.subTest(kind=kind), TemporaryDirectory() as directory:
+                result = subprocess.run([sys.executable, '-c', script, directory, kind],
+                    env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]/'src')),
+                    capture_output=True, text=True, timeout=2)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('closed', result.stdout)
+
+    def test_close_flushes_a_final_unterminated_stderr_line(self):
+        with TemporaryDirectory() as directory:
+            log = RuntimeLog(Path(directory))
+            log.stderr.write('last fragment')
+            log.close()
+            self.assertEqual(json.loads((Path(directory)/'service.stderr').read_text())['message'], 'last fragment')

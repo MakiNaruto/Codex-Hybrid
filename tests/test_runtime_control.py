@@ -269,6 +269,28 @@ class RuntimeTests(unittest.TestCase):
         finally:
             release.set()
 
+    def test_managed_desktop_logging_uses_existing_queue_and_counts_disk_failures(self):
+        from desktop import client
+        from gateway.runtime_log import RuntimeLog
+        log = RuntimeLog(self.directory)
+        self.addCleanup(log.close)
+        self.context.record = log.emit
+        with patch.object(client, 'discover', return_value={'executable': 'fixture'}), \
+                patch.object(client, 'processes', return_value=[]), \
+                patch.object(client, 'launch', return_value='started'), \
+                patch.object(log.events, 'shouldRollover', side_effect=OSError('disk failure')):
+            preview = self.manager.preview_routing('project')
+            result = self.manager.set_routing('project', preview['revision'], True,
+                True, False, preview['desktop_ticket'])
+            self.assertEqual(result['desktop_result'], 'started')
+            deadline = time.monotonic() + 2
+            while self.runtime.snapshot()['log_dropped_records'] == 0 and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertEqual(self.runtime.snapshot()['log_dropped_records'], 1)
+            self.assertEqual((self.directory/'service.jsonl').stat().st_size, 0)
+            with self.request('/manage/api/diagnostics') as response:
+                self.assertEqual(json.load(response)['activity']['forwarding']['log_dropped_records'], 1)
+
     def test_full_child_log_pipe_does_not_accumulate_request_threads(self):
         import psutil
         self.runtime.start()
