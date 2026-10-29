@@ -244,7 +244,18 @@ class ResponsesAdapter:
                 continue
             if kind in {'function_call','custom_tool_call'}:
                 alias = self.alias(item.get('namespace'),item['name'])
-                self.call_bindings[item['call_id']] = self.bindings[alias]
+                expected_type = 'custom' if kind == 'custom_tool_call' else 'function'
+                binding = self.bindings.get(alias)
+                if binding is None and not item.get('namespace'):
+                    # Host history can omit the namespace. Only recover a name
+                    # from a unique registered tool of the same call kind.
+                    candidates = [(key, value) for key, value in self.bindings.items()
+                                  if value['name'] == item['name'] and value['type'] == expected_type]
+                    if len(candidates) == 1:
+                        alias, binding = candidates[0]
+                if binding is None or binding['type'] != expected_type:
+                    raise UnregisteredToolError(alias)
+                self.call_bindings[item['call_id']] = binding
                 if kind == 'custom_tool_call':
                     item['arguments'] = json.dumps({'input':item.pop('input')})
                     item['type'] = 'function_call'
@@ -254,10 +265,14 @@ class ResponsesAdapter:
                 item['type'] = 'function_call_output'
             converted.append(item)
         request['input'] = converted
-        # Search results can repeat definitions already present in additional_tools.
+        # Model switches can update descriptions of the same historical tool.
+        # Execution schemas must still agree; keep the latest guidance text.
         unique = {}
         for tool in tools:
-            if tool['name'] in unique and unique[tool['name']] != tool:
+            previous = unique.get(tool['name'])
+            if previous is not None and (
+                    {k: v for k, v in previous.items() if k != 'description'} !=
+                    {k: v for k, v in tool.items() if k != 'description'}):
                 raise ValueError('Conflicting tool definitions')
             unique[tool['name']] = tool
         request['tools'] = list(unique.values())

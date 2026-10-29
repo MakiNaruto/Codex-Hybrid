@@ -7,7 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from adapters.chat import ChatAdapter
-from adapters.responses import ResponsesAdapter
+from adapters.responses import ResponsesAdapter, UnregisteredToolError
+from adapters.native_responses import NativeResponsesAdapter
 from gateway.server import adapted_stream, sse_events
 from gateway.transport import records
 from management.service import Management
@@ -98,7 +99,96 @@ class PortableHistoryTests(unittest.TestCase):
         self.assertEqual(chat['messages'][1], {'role': 'tool', 'tool_call_id': 'c1', 'content': 'result'})
 
 
+class HistoricalToolBindingTests(unittest.TestCase):
+    def body(self, kind='custom', namespaces=('functions',), call_namespace=None):
+        call = {'type': kind + '_tool_call' if kind == 'custom' else 'function_call',
+                'name': 'exec', 'call_id': 'history_1'}
+        call.update({'input': 'print(137*29)'} if kind == 'custom' else {'arguments': '{"n":137}'})
+        if call_namespace is not None:
+            call['namespace'] = call_namespace
+        return {'model': 'test', 'tools': [], 'input': [
+            {'type': 'additional_tools', 'tools': [
+                {'type': 'namespace', 'name': ns, 'tools': [
+                    {'type': kind, 'name': 'exec', 'parameters': {'type': 'object'}}]}
+                for ns in namespaces]}, call,
+            {'type': 'custom_tool_call_output' if kind == 'custom' else 'function_call_output',
+             'call_id': 'history_1', 'output': '3973'}]}
+
+    def test_missing_namespace_preserves_call_result_pairs_in_both_protocols(self):
+        for kind in ('custom', 'function'):
+            with self.subTest(kind=kind):
+                body = self.body(kind)
+                before = copy.deepcopy(body)
+                adapter = ResponsesAdapter()
+                result = adapter.request(body)
+                call, output = result['input']
+                self.assertEqual(call['name'], 'functions__exec')
+                self.assertEqual(call['type'], 'function_call')
+                self.assertEqual((call['call_id'], output['call_id']), ('history_1', 'history_1'))
+                self.assertEqual(output['output'], '3973')
+                expected = {'input': 'print(137*29)'} if kind == 'custom' else {'n': 137}
+                self.assertEqual(json.loads(call['arguments']), expected)
+                self.assertEqual(adapter.call_bindings['history_1']['namespace'], 'functions')
+                chat = ChatAdapter('test').request(body)
+                self.assertEqual(chat['messages'][0]['tool_calls'][0]['function']['name'], 'functions__exec')
+                self.assertEqual(chat['messages'][1]['tool_call_id'], 'history_1')
+                self.assertEqual(body, before)
+                self.assertEqual(NativeResponsesAdapter().request(body), before)
+
+    def test_ambiguous_missing_namespace_is_rejected(self):
+        for kind in ('custom', 'function'):
+            for adapter in (ResponsesAdapter(), ChatAdapter('test')):
+                with self.subTest(kind=kind, protocol=type(adapter).__name__):
+                    with self.assertRaises(UnregisteredToolError):
+                        adapter.request(self.body(kind, namespaces=('one', 'two')))
+
+    def test_explicit_namespace_selects_exact_binding_and_never_falls_back(self):
+        result = ResponsesAdapter().request(self.body(namespaces=('one', 'two'), call_namespace='two'))
+        self.assertEqual(result['input'][0]['name'], 'two__exec')
+        with self.assertRaises(UnregisteredToolError):
+            ResponsesAdapter().request(self.body(call_namespace='unknown'))
+
+    def test_unknown_name_or_mismatched_tool_kind_is_rejected(self):
+        unknown = self.body()
+        unknown['input'][1]['name'] = 'unregistered'
+        wrong_kind = self.body()
+        wrong_kind['input'][0]['tools'][0]['tools'][0]['type'] = 'function'
+        exact_wrong_kind = self.body(call_namespace='functions')
+        exact_wrong_kind['input'][0]['tools'][0]['tools'][0]['type'] = 'function'
+        for body in (unknown, wrong_kind, exact_wrong_kind):
+            with self.subTest(body=body):
+                with self.assertRaises(UnregisteredToolError):
+                    ResponsesAdapter().request(body)
+
+
 class ToolRegistryTests(unittest.TestCase):
+    def test_history_description_updates_keep_latest_text_without_changing_schema(self):
+        first = {'type': 'function', 'name': 'lookup', 'description': 'Earlier guidance',
+                 'parameters': {'type': 'object', 'properties': {'n': {'type': 'integer'}}}}
+        latest = dict(first, description='Current guidance')
+        body = {'model': 'test', 'tools': [], 'input': [
+            {'type': 'additional_tools', 'tools': [first]},
+            {'type': 'additional_tools', 'tools': [latest]},
+            {'type': 'function_call', 'name': 'lookup', 'call_id': 'c1', 'arguments': '{"n":7}'},
+            {'type': 'function_call_output', 'call_id': 'c1', 'output': '49'}]}
+        before = copy.deepcopy(body)
+        responses = ResponsesAdapter().request(body)
+        self.assertEqual(responses['tools'], [latest])
+        self.assertEqual(responses['input'][0]['call_id'], 'c1')
+        chat = ChatAdapter('test').request(body)
+        self.assertEqual(chat['tools'][0]['function']['description'], 'Current guidance')
+        self.assertEqual(body, before)
+
+    def test_duplicate_tool_schemas_still_must_agree(self):
+        body = {'model': 'test', 'tools': [{'type': 'function', 'name': 'lookup', 'parameters': {
+            'type': 'object', 'properties': {'n': {'type': 'integer'}}}}], 'input': [
+            {'type': 'additional_tools', 'tools': [{'type': 'function', 'name': 'lookup',
+                'parameters': {'type': 'object', 'properties': {'n': {'type': 'string'}}}}]}]}
+        for adapter in (ResponsesAdapter(), ChatAdapter('test')):
+            with self.subTest(protocol=type(adapter).__name__):
+                with self.assertRaisesRegex(ValueError, 'Conflicting tool definitions'):
+                    adapter.request(body)
+
     def test_process_wait_is_not_advertised_as_agent_coordination(self):
         body = {'input': [], 'tools': [{'type': 'namespace', 'name': 'functions', 'tools': [
             {'type': 'function', 'name': 'wait', 'parameters': {

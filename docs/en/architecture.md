@@ -32,6 +32,10 @@ History migration is separate. Native Responses supports `history_migration: tru
 
 Portable instruction consolidation applies to messages, not developer-role tool metadata. Native transport preserves named standalone outputs without a `call_id`; only the compatibility bridge converts them to user context with source attribution. Real tool results retain their call identities.
 
+When replayed tool history omits a namespace and has no exact registered alias, portable conversion resolves the short name only if exactly one registered tool of the same call kind matches. Explicit namespaces are never redirected. Unknown, ambiguous or mismatched tool kinds fail before forwarding; call IDs, arguments and results are preserved. This rule is shared by portable Responses and Chat Completions and does not change native transport or platform-specific behavior.
+
+Repeated definitions may update a tool's description; the last encountered description is retained when the execution schema is identical. Conflicting parameter schemas or bindings are still rejected.
+
 Both protocols share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. There is no automatic protocol switching. Native Responses does not retry generations; portable Responses retains its existing unknown-tool retry mechanism. Portable coordination guidance uses the request-scoped tool registry; ambiguous short tool names are not guessed.
 
 Hybrid stores membership and per-model compatibility overrides in its own settings.json, scoped by source; CC Switch remains read-only. Both directory publication and live routing enforce membership. Upgrade preserves previously published models; newly discovered models require an Add action. Hybrid model overrides take precedence over YAML model options and provider defaults. Explicit native is preserved; unspecified Responses compatibility defaults to portable.
