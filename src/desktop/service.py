@@ -259,7 +259,9 @@ def start_service(settings):
         return print('本机服务已在运行')
     # Keep inherited startup stderr separate: Windows cannot rotate an inherited open file.
     with (RUNTIME / 'service.startup.stderr').open('wb') as err:
-        options = ({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        # Suppress the console throughout Windows venv interpreter redirection.
+        # DETACHED_PROCESS can let the redirected console executable create a new window.
+        options = ({'creationflags': subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
                    if WINDOWS else {'start_new_session': True})
         entry = ([str(ROOT / 'src/gateway/entry.py')] if (ROOT / 'src/gateway/entry.py').is_file()
                  else ['-m', 'gateway.server'])
