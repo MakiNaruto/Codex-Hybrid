@@ -199,10 +199,14 @@ base_url = "http://127.0.0.1:18891"
 wire_api = "responses"
 requires_openai_auth = true
 supports_websockets = false
-request_max_retries = 0
-stream_max_retries = 0
+request_max_retries = 4
+stream_max_retries = 5
+stream_idle_timeout_ms = 300000
 http_headers = { "X-Connected-Token" = "从生成的候选配置复制实际本地令牌" }
 ```
+
+以上重试次数和 SSE 空闲超时与 Codex 文档默认值一致。HTTP 重试及流中断恢复由 Codex 处理，网关不自动重放失败的上游 POST。官方上游的 socket 超时为 300 秒，不是整轮对话的总时限；第三方厂商继续使用其 `timeout_seconds` 配置。
+
 
 `model_provider` 选中网关；`base_url` 指向网关监听地址；`model_catalog_json` 指向生成的绝对路径；`X-Connected-Token` 必须与 `settings.json` 的 `local_token` 一致，不能使用供应商 Key。自定义端口时按候选配置填写。Windows 路径建议直接复制候选配置中的 TOML 转义形式。
 

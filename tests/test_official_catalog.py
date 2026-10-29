@@ -14,6 +14,37 @@ from gateway.server import (Gateway, Server, route, cached_directory, authentica
 
 
 class OfficialCatalogTests(unittest.TestCase):
+    def test_official_stream_uses_300_second_socket_timeout(self):
+        settings = {'source': {'type': 'yaml'}, 'models': ['gpt-6.1-sol'],
+                    'official_models': ['gpt-6.1-sol'], 'cc_snapshot': {'models': []},
+                    'local_token': 'test-token', 'max_concurrent_requests': 1}
+        gateway = Gateway(settings)
+        gateway.record = lambda record: None
+        captured = []
+
+        class Opener:
+            def open(self, request, timeout):
+                captured.append(timeout)
+                return io.BytesIO(b'data: {"type":"response.completed","response":'
+                                  b'{"status":"completed","output":[]}}\n\n')
+
+        gateway.opener = Opener()
+        server = Server(('127.0.0.1', 0), gateway.handler())
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f'http://127.0.0.1:{server.server_port}/responses',
+                data=json.dumps({'model': 'gpt-6.1-sol', 'stream': True, 'input': []}).encode(),
+                headers={'Authorization': 'Bearer subscription-token', 'X-Connected-Token': 'test-token'})
+            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request) as response:
+                self.assertIn(b'response.completed', response.read())
+            self.assertEqual(captured, [300])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_filtered_refresh_retains_official_models_and_they_remain_routable(self):
         settings = {'source': {'type': 'yaml'},
                     'models': ['gpt-6.1-sol'], 'official_models': ['gpt-6.1-sol'],

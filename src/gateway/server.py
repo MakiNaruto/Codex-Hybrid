@@ -35,6 +35,9 @@ OPENAI_URL = 'https://chatgpt.com/backend-api/codex/responses'
 OPENAI_MODELS_URL = 'https://chatgpt.com/backend-api/codex/models'
 MAX_BODY = 32 * 1024 * 1024
 MAX_UNKNOWN_TOOL_RETRIES = 2
+# Match Codex's documented 300000 ms SSE idle default on the official hop.
+# urllib applies this to blocking socket operations, not total turn duration.
+OFFICIAL_UPSTREAM_TIMEOUT_SECONDS = 300
 
 # Hop-by-hop and local-only fields never reach an upstream provider.
 OFFICIAL_HEADER_DENY = {
@@ -519,7 +522,7 @@ class Gateway:
                     converter = getattr(adapter_owner, 'adapt', adapt)
                     protocol_adapter = getattr(converter, '__self__', adapter_owner)
                     native_adapter = getattr(protocol_adapter, 'native', protocol_adapter)
-                    timeout = getattr(protocol_adapter, 'timeout_seconds', 120)
+                    timeout = getattr(protocol_adapter, 'timeout_seconds', OFFICIAL_UPSTREAM_TIMEOUT_SECONDS)
                     observation['protocol'] = ('openai_chat_completions' if
                         isinstance(protocol_adapter, ChatAdapter) else 'openai_responses')
                     observation.update(upstream_host=target.hostname, upstream_port=target.port,

@@ -190,10 +190,14 @@ base_url = "http://127.0.0.1:18891"
 wire_api = "responses"
 requires_openai_auth = true
 supports_websockets = false
-request_max_retries = 0
-stream_max_retries = 0
+request_max_retries = 4
+stream_max_retries = 5
+stream_idle_timeout_ms = 300000
 http_headers = { "X-Connected-Token" = "COPY_THE_LOCAL_TOKEN_FROM_THE_GENERATED_CONFIG" }
 ```
+
+These retry and SSE idle values match the documented Codex defaults. Codex handles HTTP retries and stream recovery; the gateway does not replay failed upstream POSTs. The official upstream socket timeout is 300 seconds, rather than a total turn deadline. Third-party providers retain their configured `timeout_seconds`.
+
 
 `model_provider` selects the gateway, `base_url` selects its listening address, and `model_catalog_json` is the generated catalog's absolute path. `X-Connected-Token` must match `local_token` in `settings.json`; it is not a provider API key. Use the generated candidate's port and TOML-escaped Windows paths.
 

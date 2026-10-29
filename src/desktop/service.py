@@ -46,13 +46,19 @@ def is_bridge_provider(provider):
     headers = provider.get('http_headers', {}) if isinstance(provider, dict) else {}
     return (isinstance(provider, dict)
             and provider.get('name') == 'Codex Hybrid'
-            and set(provider) == fields
+            # Recognize both the original no-retry format and the current
+            # explicit Codex defaults, so upgrades and rollback stay safe.
+            and ((set(provider) == fields
+                  and provider.get('request_max_retries') == 0
+                  and provider.get('stream_max_retries') == 0)
+                 or (set(provider) == fields | {'stream_idle_timeout_ms'}
+                     and provider.get('request_max_retries') == 4
+                     and provider.get('stream_max_retries') == 5
+                     and provider.get('stream_idle_timeout_ms') == 300000))
             and str(provider.get('base_url', '')).startswith('http://127.0.0.1:')
             and provider.get('wire_api') == 'responses'
             and provider.get('requires_openai_auth') is True
             and provider.get('supports_websockets') is False
-            and provider.get('request_max_retries') == 0
-            and provider.get('stream_max_retries') == 0
             and isinstance(headers, dict)
             and set(headers) == {'X-Connected-Token'}
             and isinstance(headers['X-Connected-Token'], str)
@@ -114,7 +120,7 @@ def candidate_config(original, settings):
               f'\n[model_providers.{PROVIDER}]\nname = "Codex Hybrid"\n'
               f'base_url = "http://127.0.0.1:{settings["port"]}"\n'
               'wire_api = "responses"\nrequires_openai_auth = true\nsupports_websockets = false\n'
-              'request_max_retries = 0\nstream_max_retries = 0\n'
+              'request_max_retries = 4\nstream_max_retries = 5\nstream_idle_timeout_ms = 300000\n'
               f'http_headers = {{ "X-Connected-Token" = {json.dumps(settings["local_token"])} }}\n')
     legacy_plugin = 'connected-models@connected-local'
     disable_legacy = settings.get('disable_legacy_plugin', True) and legacy_plugin in parsed.get('plugins', {})
