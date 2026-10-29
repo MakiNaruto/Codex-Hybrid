@@ -1,0 +1,38 @@
+{
+  "before": {
+    "active_requests": 0,
+    "observed_at": 1793285994.6501,
+    "gateway_status": "no_activity",
+    "codex_status": "unknown",
+    "forwarding": {
+      "status": "running",
+      "error": null,
+      "error_reason": null,
+      "retry_attempt": 0,
+      "retry_at": null,
+      "retry_limit": 3,
+      "log_dropped_records": 0
+    },
+    "routing_operation": null
+  },
+  "started": 1793285994.650857,
+  "exit_code": 0,
+  "config_unchanged": true,
+  "settings_unchanged": true,
+  "after": {
+    "active_requests": 0,
+    "observed_at": 1793285995.3653738,
+    "gateway_status": "no_activity",
+    "codex_status": "unknown",
+    "forwarding": {
+      "status": "starting",
+      "error": null,
+      "error_reason": null,
+      "retry_attempt": 0,
+      "retry_at": 1793285995.17346,
+      "retry_limit": 3,
+      "log_dropped_records": 0
+    },
+    "routing_operation": null
+  }
+}

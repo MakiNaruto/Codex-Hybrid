@@ -1,0 +1,26 @@
+{
+  "tests": 338,
+  "errors": [
+    "test_gateway_transport.PlatformProxyTests.test_windows_requests_follow_system_changes_despite_all_overrides",
+    "test_gateway_transport.PlatformProxyTests.test_windows_system_bypass_keeps_local_requests_direct",
+    "test_history_migration.HistoryMigrationTests.test_empty_home_does_not_insert_default_model",
+    "test_history_migration.HistoryMigrationTests.test_incomplete_index_repair_does_not_switch_config",
+    "test_history_migration.HistoryMigrationTests.test_management_roundtrip_preserves_model_configuration_and_history",
+    "test_management_routing.RoutingTests.test_authenticated_preview_and_commit",
+    "test_management_routing.RoutingTests.test_corrupt_baseline_rejected",
+    "test_management_routing.RoutingTests.test_existing_inactive_bridge_table_is_restored",
+    "test_management_routing.RoutingTests.test_managed_conflict_rejected",
+    "test_management_routing.RoutingTests.test_original_catalog_restored",
+    "test_management_routing.RoutingTests.test_preview_and_cancel_do_not_write",
+    "test_management_routing.RoutingTests.test_profiles_and_other_providers_rejected",
+    "test_management_routing.RoutingTests.test_repeated_routing_switches_do_not_accumulate_blank_lines",
+    "test_management_routing.RoutingTests.test_round_trip_restores_absent_fields_and_retains_other_edits",
+    "test_management_routing.RoutingTests.test_stale_preview_rejected_without_writes",
+    "test_management_routing.RoutingTests.test_utf8_config_state_survives_switch_with_non_ascii_comments",
+    "test_session_migration.SessionMigrationTests.test_empty_home_does_not_insert_default_model",
+    "test_session_migration.SessionMigrationTests.test_incomplete_index_repair_does_not_switch_config",
+    "test_session_migration.SessionMigrationTests.test_management_roundtrip_preserves_model_configuration_and_history"
+  ],
+  "skips": 2,
+  "baseline_error_set_identical": true
+}

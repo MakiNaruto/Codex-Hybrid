@@ -1,0 +1,34 @@
+[
+  {
+    "time": 1793285871,
+    "timestamp": "2026-10-29T14:57:51+00:00",
+    "model": "df8072ea-0283-426b-99e0-417a011d3d5c/glm-5.3-flash",
+    "route_type": "external",
+    "request_id": "f0c83f4f0f2f4dcba7c7bc355f94340d",
+    "phase": "route_request",
+    "status": "incompatible_request_or_stream",
+    "error_type": "ValueError",
+    "error_code": "GATEWAY_STREAM_ADAPTATION_FAILED",
+    "error_locations": [
+      "gateway/server.py:518",
+      "gateway/server.py:261",
+      "adapters/responses.py:272"
+    ]
+  },
+  {
+    "time": 1793286017,
+    "timestamp": "2026-10-29T15:00:17+00:00",
+    "model": "df8072ea-0283-426b-99e0-417a011d3d5c/glm-5.3-flash",
+    "returned_model": "glm-5.3-flash",
+    "route_type": "external",
+    "request_id": "9a04a675bef1482f8ab12e03c410ad43",
+    "phase": "read_upstream",
+    "status": "completed",
+    "usage": {
+      "input_tokens": 56874,
+      "output_tokens": 12,
+      "total_tokens": 56886,
+      "cached_tokens": 0
+    }
+  }
+]
