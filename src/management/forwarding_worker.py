@@ -46,6 +46,7 @@ def _serve(connection, settings, settings_path, counter, log_drops=None):
     records = AsyncRecords(lambda value: send(('record', value)), dropped_counter=log_drops)
     context.record = records.emit
     gateway = Gateway(settings, context=context)
+    gateway.settings_path = Path(settings_path) if settings_path else None
     base = gateway.handler()
 
     class Handler(base):
@@ -56,6 +57,7 @@ def _serve(connection, settings, settings_path, counter, log_drops=None):
                 try:
                     with DirectoryLock(Path(settings_path).parent):
                         context.settings = json.loads(Path(settings_path).read_text(encoding='utf-8'))
+                        gateway.settings = context.settings
                 except ConfigError as error:
                     if error.code != 'INSTANCE_BUSY':
                         raise

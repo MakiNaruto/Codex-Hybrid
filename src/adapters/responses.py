@@ -132,6 +132,10 @@ class NativeCoordinationAdapter:
 
 
 class ResponsesAdapter:
+    """Explicit portable compatibility bridge, also used by ChatAdapter.
+
+    Native Responses routes use NativeResponsesAdapter instead.
+    """
     def __init__(self):
         self.bindings = {}
         self.call_bindings = {}

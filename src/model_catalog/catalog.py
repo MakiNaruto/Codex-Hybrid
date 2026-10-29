@@ -95,7 +95,7 @@ def read_yaml(path):
 
 # These fields belong to the bridge, not to vendor-specific parameters.
 RESERVED_PARAMETERS = frozenset({
-    'model', 'messages', 'tools', 'stream', 'n', 'max_tokens',
+    'model', 'input', 'messages', 'tools', 'stream', 'n', 'max_tokens',
     'max_completion_tokens', 'max_output_tokens',
     'store', 'instructions',
     'api_key', 'base_url', 'headers', 'authorization',
@@ -128,10 +128,18 @@ class Catalog:
         for provider_id, spec in providers.items():
             (string if source_identifiers else identifier)(provider_id)
             mapping(spec, {'protocol', 'base_url', 'credentials', 'models', 'enabled',
-                           'timeout_seconds', 'token_limit_field', 'parameters'},
+                           'timeout_seconds', 'token_limit_field', 'parameters',
+                           'responses_compatibility', 'history_migration'},
                     {'protocol', 'base_url', 'credentials', 'models'})
             if spec['protocol'] not in {'openai_chat_completions', 'openai_responses'}:
                 fail('CONFIG_UNSUPPORTED_PROTOCOL')
+            compatibility = spec.get('responses_compatibility', 'native')
+            if compatibility not in ('native', 'portable'):
+                fail('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
+            history_migration = enabled(spec.get('history_migration', False))
+            if spec['protocol'] != 'openai_responses' and (
+                    compatibility != 'native' or history_migration):
+                fail('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
             base = string(spec['base_url']).rstrip('/')
             try:
                 url = urlsplit(base)
@@ -164,6 +172,7 @@ class Catalog:
                 fail('CONFIG_INVALID_TOKEN_FIELD')
             suffix = '/responses' if spec['protocol'] == 'openai_responses' else '/chat/completions'
             provider = {'protocol': spec['protocol'], 'endpoint': base + suffix,
+                'responses_compatibility': compatibility, 'history_migration': history_migration,
                 'api_key': inline_key, 'api_key_env': key_env, 'env_file': env_file,
                 'enabled': enabled(spec.get('enabled', True)),
                 'timeout_seconds': positive(spec.get('timeout_seconds', 180), 3600),

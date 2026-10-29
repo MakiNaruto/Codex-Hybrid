@@ -556,6 +556,7 @@ def run_action(args):
                 args.cc_db if args.source == 'cc-switch' else args.models_config).expanduser().resolve())}
         external = load_source(settings)
         merged = merged_catalog(original_models, external)
+        settings['official_catalog'] = original_models
         settings['official_models'] = [m['slug'] for m in original_models]
         settings['models'] = [m['slug'] for m in merged['models']]
         update_cc_snapshot(settings, merged, external)

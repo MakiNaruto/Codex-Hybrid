@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local desktop provider. Tool execution stays inside the official Codex backend."""
 import argparse
+from contextlib import nullcontext
 import hmac
 import http.client
 import http.server
@@ -23,13 +24,15 @@ from model_catalog.legacy_config import load_config
 from gateway.transport import FreshProxyOpener, records as sse_events
 from adapters.responses import (ResponsesAdapter, UnregisteredToolError,
                                  plaintext_collaboration_schema, NativeCoordinationAdapter)
-from model_catalog.sources import load_source
+from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
 from model_catalog.catalog import ConfigError, resolve_api_key
 from adapters.chat import ChatAdapter
+from adapters.native_responses import NativeResponsesAdapter
 from adapters.request_compat import normalize_history, external_context, upstream_error
 from model_catalog.agent_catalog import expose_spawn_catalog
 
 OPENAI_URL = 'https://chatgpt.com/backend-api/codex/responses'
+OPENAI_MODELS_URL = 'https://chatgpt.com/backend-api/codex/models'
 MAX_BODY = 32 * 1024 * 1024
 MAX_UNKNOWN_TOOL_RETRIES = 2
 
@@ -72,6 +75,116 @@ def official_header_passthrough(settings):
     if os.environ.get('CONNECTED_OFFICIAL_HEADER_PASSTHROUGH') == '1':
         return True
     return settings.get('official_header_passthrough') is True
+
+
+def official_headers(headers, settings, accept='text/event-stream'):
+    outgoing = {'Accept': accept}
+    if official_header_passthrough(settings):
+        for name, value in headers.items():
+            if name.lower() not in OFFICIAL_HEADER_DENY:
+                outgoing[name] = value
+    else:
+        for name in ['Authorization', 'ChatGPT-Account-ID', 'OpenAI-Beta',
+                     'OpenAI-Organization', 'OpenAI-Project', 'User-Agent',
+                     'Originator', 'Version', 'Session_ID',
+                     'X-Codex-Turn-Metadata', 'X-Codex-Beta-Features']:
+            if headers.get(name):
+                outgoing[name] = headers[name]
+    return outgoing
+
+
+def authenticated_official_catalog(headers, settings, opener, query=''):
+    """Fetch the account-scoped catalog with Codex auth; return None if unavailable."""
+    if not headers.get('Authorization', '').startswith('Bearer '):
+        return None
+    # Keep Codex's version/capability query on the fixed official endpoint.
+    url = OPENAI_MODELS_URL + ('?' + query if query else '')
+    request = urllib.request.Request(url,
+        headers=official_headers(headers, settings, 'application/json'))
+    try:
+        with opener.open(request, timeout=15) as response:
+            data = json.loads(response.read(MAX_BODY))
+        models = data.get('models') if isinstance(data, dict) else None
+        if not isinstance(models, list) or any(
+                not isinstance(model, dict) or not isinstance(model.get('slug'), str)
+                for model in models):
+            return None
+        return models
+    except (OSError, ValueError, urllib.error.URLError):
+        return None
+
+
+def refresh_official_directory(owner, headers, query=''):
+    settings = owner.settings
+    official = authenticated_official_catalog(headers, settings, owner.opener, query)
+    if official is None:
+        return None
+    settings_path = getattr(owner, 'settings_path', None)
+    if settings_path:
+        from desktop.locking import DirectoryLock
+        from management.service import private_write
+    # Fetch outside the lock, then merge with the latest committed settings.
+    # Management and forwarding run in different processes.
+    with DirectoryLock(Path(settings_path).parent) if settings_path else nullcontext():
+        if settings_path:
+            settings = json.loads(Path(settings_path).read_text(encoding='utf-8'))
+        else:
+            settings = owner.settings
+        # A catalog response can be capability/version filtered. Absence is not
+        # a revocation: retain official entries already advertised by Codex.
+        # The upstream responses endpoint remains the authority on entitlement.
+        known = {model['slug']: model for model in settings.get('official_catalog', [])}
+        if settings_path:
+            state_path = Path(settings_path).parent / 'state.json'
+            try:
+                state = json.loads(state_path.read_text(encoding='utf-8'))
+                from desktop.service import official_cache
+                for model in official_cache(Path(state['config_path']).parent, settings):
+                    known[model['slug']] = model
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        known.update((model['slug'], model) for model in official)
+        official = list(known.values())
+        updated = dict(settings, official_catalog=official,
+                       official_models=[model['slug'] for model in official])
+        if 'source' in settings:
+            external = load_source(settings)
+            directory = merged_catalog(official, external)
+            update_cc_snapshot(updated, directory, external)
+        else:
+            directory = {'models': official}
+        updated['models'] = [model['slug'] for model in directory['models']]
+        if settings_path:
+            catalog_path = Path(updated['catalog'])
+            previous = catalog_path.read_bytes() if catalog_path.exists() else None
+            private_write(catalog_path, json.dumps(directory, ensure_ascii=False))
+            try:
+                private_write(Path(settings_path), json.dumps(updated, ensure_ascii=False))
+            except OSError:
+                if previous is None:
+                    catalog_path.unlink(missing_ok=True)
+                else:
+                    private_write(catalog_path, previous.decode('utf-8'))
+                raise
+        owner.settings = updated
+    return directory
+
+
+def cached_directory(settings):
+    """Return only a complete directory matching the current routing allowlist."""
+    models = settings.get('cc_snapshot', {}).get('models')
+    if models is None:
+        try:
+            models = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+    if (not isinstance(models, list) or not models or any(
+            not isinstance(model, dict) or not isinstance(model.get('slug'), str)
+            for model in models)):
+        return None
+    if [model['slug'] for model in models] != settings['models']:
+        return None
+    return {'models': models}
 
 
 def usage_fields(usage):
@@ -126,7 +239,6 @@ def route(body, headers, settings, deepseek=None):
         raise ValueError('SUBSCRIPTION_AUTH_REQUIRED')
     if body.get('stream') is not True:
         raise ValueError('STREAM_REQUIRED')
-    body = expose_spawn_catalog(body, settings)
     if 'source' in settings and model not in settings['official_models']:
         catalog = load_source(settings)  # Fresh address, model and credentials every request.
         if settings['source']['type'] == 'cc-switch':
@@ -136,18 +248,23 @@ def route(body, headers, settings, deepseek=None):
         selected, provider = catalog.select(model)
         coordination = NativeCoordinationAdapter(
             set(settings['models']) - set(settings['official_models']))
-        adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
+        native = (provider['protocol'] == 'openai_responses'
+                  and provider.get('responses_compatibility', 'native') == 'native')
+        if native:
+            adapter = NativeResponsesAdapter(history_migration=provider.get('history_migration', False))
+        else:
+            adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
         adapter.timeout_seconds = provider['timeout_seconds']
-        converted = adapter.request(external_context(body, selected))
+        converted = adapter.request(body if native else external_context(expose_spawn_catalog(body, settings), selected))
         if provider['protocol'] == 'openai_chat_completions':
             payload = converted
             limit_field = provider['token_limit_field']
             adapt = coordinated(adapter.event, coordination)
         else:
-            payload = {key: value for key, value in converted.items()
+            payload = converted if native else {key: value for key, value in converted.items()
                        if key in {'model', 'input', 'instructions', 'tools', 'stream'}}
             limit_field = 'max_output_tokens'
-            adapt = coordinated(adapter.stream_events, coordination)
+            adapt = adapter.stream_events if native else coordinated(adapter.stream_events, coordination)
         # Provider settings may extend a request but never replace routing
         # instructions or the bridge's no-storage policy.
         payload.update({key: value for key, value in selected['parameters'].items()
@@ -168,32 +285,21 @@ def route(body, headers, settings, deepseek=None):
             'Authorization': 'Bearer ' + resolve_api_key(provider),
             'Content-Type': 'application/json', 'Accept': 'text/event-stream'}, adapt
     if 'source' not in settings and model == deepseek['DEEPSEEK_MODEL']:
-        adapter = ResponsesAdapter()
-        coordination = NativeCoordinationAdapter(deepseek['DEEPSEEK_MODEL'])
-        # Bindings belong to this request, never to a shared server instance.
-        payload = adapter.request(external_context(body, {
-            'display_name': deepseek['DEEPSEEK_MODEL'], 'model_id': deepseek['DEEPSEEK_MODEL']}))
+        adapter = NativeResponsesAdapter()
+        payload = adapter.request(body)
+        payload['store'] = False
         budget = body.get('max_output_tokens', settings['deepseek_max_output_tokens'])
         if type(budget) is not int or budget <= 0:
             raise ValueError('INVALID_OUTPUT_BUDGET')
         payload['max_output_tokens'] = min(budget, settings['deepseek_max_output_tokens'])
-        payload['reasoning'] = {'effort': 'none'}
         return (deepseek['DEEPSEEK_BASE_URL'] + '/responses', payload,
                 {'Authorization': 'Bearer ' + deepseek['DEEPSEEK_API_KEY'],
                  'Content-Type': 'application/json', 'Accept': 'text/event-stream'},
-                coordinated(adapter.stream_events, coordination))
-    outgoing = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'}
+                adapter.stream_events)
+    body = expose_spawn_catalog(body, settings)
     # Never forward the local access token, cookies, arbitrary destination or host.
-    if official_header_passthrough(settings):
-        for name, value in headers.items():
-            if name.lower() not in OFFICIAL_HEADER_DENY:
-                outgoing[name] = value
-    else:
-        for name in ['Authorization', 'ChatGPT-Account-ID', 'OpenAI-Beta', 'OpenAI-Organization',
-                     'OpenAI-Project', 'User-Agent', 'Originator', 'Version', 'Session_ID',
-                     'X-Codex-Turn-Metadata', 'X-Codex-Beta-Features']:
-            if headers.get(name):
-                outgoing[name] = headers[name]
+    outgoing = official_headers(headers, settings)
+    outgoing['Content-Type'] = 'application/json'
     external_models = (set(settings['models']) - set(settings['official_models'])
                        if 'source' in settings else deepseek['DEEPSEEK_MODEL'])
     return OPENAI_URL, normalize_history(plaintext_collaboration_schema(body)), outgoing, NativeCoordinationAdapter(external_models).event
@@ -233,6 +339,7 @@ def retry_payload_after_unknown_tool(payload, error):
 class Gateway:
     def __init__(self, settings, settings_path=None, context=None):
         self.context = context
+        self.settings_path = Path(settings_path) if settings_path else None
         self.started_at = time.monotonic()
         self.record = lambda observation: print(json.dumps(observation), flush=True)
         self.settings = settings
@@ -243,7 +350,7 @@ class Gateway:
         from gateway.activity import Activity
         self.activity = Activity()
         # No redirects: credentials can only go to the fixed official endpoints.
-        self.opener = FreshProxyOpener()
+        self.opener = FreshProxyOpener(settings.get('upstream_proxy'))
         if context is not None:
             self.slots, self.activity, self.opener = context.slots, context.activity, context.opener
             self.record = context.record
@@ -336,10 +443,17 @@ class Gateway:
                 if not self.authorized():
                     return self.reply(401, {'error': {'message': 'LOCAL_AUTH_REQUIRED'}})
                 if self.path.split('?', 1)[0] == '/models':
-                    settings = owner.settings
-                    models = settings.get('cc_snapshot', {}).get('models')
-                    directory = ({'models': models} if models is not None else
-                                 json.loads(Path(settings['catalog']).read_text(encoding='utf-8')))
+                    if not self.headers.get('Authorization', '').startswith('Bearer '):
+                        return self.reply(401, {'error': {'message': 'SUBSCRIPTION_AUTH_REQUIRED'}})
+                    directory = refresh_official_directory(
+                        owner, self.headers, urllib.parse.urlsplit(self.path).query)
+                    if directory is None:
+                        directory = cached_directory(owner.settings)
+                        owner.record({'time': int(time.time()),
+                                      'status': 'official_catalog_refresh_failed',
+                                      'cached_directory': directory is not None})
+                        if directory is None:
+                            return self.reply(502, {'error': {'message': 'OFFICIAL_MODEL_LIST_UNAVAILABLE'}})
                     return self.reply(200, directory)
                 self.reply(404, {'error': {'message': 'UNSUPPORTED_ENDPOINT'}})
 
@@ -371,11 +485,23 @@ class Gateway:
                     body = json.loads(self.rfile.read(size))
                     if not isinstance(body, dict):
                         raise ValueError('INVALID_REQUEST_OBJECT')
+                    # Desktop can use its cached model directory without GET /models.
+                    # Reconcile an unknown ID against the authenticated account directory
+                    # before applying the allowlist; never accept an arbitrary ID.
+                    requested_model = body.get('model')
+                    if (isinstance(requested_model, str) and requested_model
+                            and requested_model not in settings['models']
+                            and self.headers.get('Authorization', '').startswith('Bearer ')):
+                        observation['phase'] = 'refresh_official_catalog'
+                        refresh_official_directory(owner, self.headers)
+                        settings = owner.settings
                     observation['stream'] = body.get('stream') is True
                     observation['route_type'] = ('official' if body.get('model') in
                                                  settings.get('official_models', []) else 'external')
                     if body.get('model') in settings['models']:
                         observation['model'] = body['model']
+                    elif isinstance(requested_model, str):
+                        observation['requested_model'] = requested_model[:256]
                     def tool_types(items):
                         result = []
                         for item in items:

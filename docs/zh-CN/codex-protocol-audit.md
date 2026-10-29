@@ -1,5 +1,7 @@
 # Codex 桌面独立工具输出：源码与最终请求审计
 
+> 实现更新：第三方 Responses 现默认保留原生结构；本文“当前网关”的对比记录的是审计时的旧实现。该降级现仅用于 Chat Completions 和显式选择 `responses_compatibility: portable` 的 Responses。独立的 `history_migration` 选项及配置方法见[配置说明](configuration.md#responses-原生与兼容模式)。
+
 ## 结论
 
 Codex 正式支持一种独立工具输出（standalone function-call output）：具有 name、可选 namespace 和 output，没有 call_id。它不是损坏的调用配对。桌面发起 turn/start.toolOutput 后，app-server 主动构造这一类型；历史整理保留它；最终 HTTP /responses 仍发送这一类型，不补出 function_call，也不改成 user 消息。

@@ -3,6 +3,7 @@ import errno
 import json
 import socket
 import ssl
+import sys
 import urllib.error
 import urllib.request
 
@@ -10,6 +11,17 @@ import urllib.request
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
+
+
+def discover_proxies():
+    if sys.platform != 'win32':
+        return urllib.request.getproxies()
+    # Windows urllib uses environment OR registry. A lone NO_PROXY entry
+    # otherwise suppresses every Windows system proxy. Merge per protocol;
+    # environment overrides registry, while ProxyHandler retains bypass rules.
+    proxies = urllib.request.getproxies_registry()
+    proxies.update(urllib.request.getproxies_environment())
+    return proxies
 
 
 class FreshProxyOpener:
@@ -21,8 +33,12 @@ class FreshProxyOpener:
     replay failed POSTs: the upstream may already have accepted a generation.
     """
 
+    def __init__(self, upstream_proxy=None):
+        self.upstream_proxy = upstream_proxy
+
     def open(self, request, timeout=120):
-        proxies = urllib.request.getproxies()
+        proxies = ({'http': self.upstream_proxy, 'https': self.upstream_proxy}
+                   if self.upstream_proxy else discover_proxies())
         # Record only presence, never proxy URLs, credentials or bypass lists.
         request.connected_proxy_configured = bool(proxies.get(request.type))
         opener = urllib.request.build_opener(

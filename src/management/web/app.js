@@ -209,9 +209,9 @@ function providerCard(id,original={}){
   pid.input.readOnly=!!id;key.input.autocomplete='new-password';
   if(id)sidebar.append(el('p',state.credential_status?.[id]==='available'?'已找到本地凭据 · 不代表连接已验证':'未找到可读取的凭据，请检查 Key 或环境变量','hint'));
   key.input.placeholder=original.credentials?'已配置 · 留空保留':'输入 API Key';
-  const plabel=el('div',undefined,'form-field'),caption=el('div',undefined,'field-caption'),label=el('label','接口协议'),protocol=el('select');
+  const plabel=el('div',undefined,'form-field'),caption=el('div',undefined,'field-caption'),label=el('label','供应商接口协议'),protocol=el('select');
   protocol.id='field-'+(++fieldId);label.htmlFor=protocol.id;
-  caption.append(label,help('按厂商支持的接口选择 Chat Completions 或 Responses。','接口协议说明'));
+  caption.append(label,help('Codex 使用 Responses 接入本工具；此选项决定本工具如何请求供应商。按供应商支持的接口选择，不自动切换协议。','接口协议说明'));
   for(const [value,name]of[['openai_chat_completions','Chat Completions'],['openai_responses','Responses']]){const option=el('option',name);option.value=value;protocol.append(option);}
   protocol.value=original.protocol||'openai_chat_completions';plabel.append(caption,protocol);
   for(const f of [pid,base])fields.append(f.label);fields.append(plabel,key.label,active.label);sidebar.append(fields);
@@ -223,11 +223,18 @@ function providerCard(id,original={}){
   for(const t of ['max_tokens','max_completion_tokens']){const o=el('option',t);o.value=t;tokenField.append(o);}tokenField.value=original.token_limit_field||'max_tokens';
   const timeout=field('请求超时（秒）',original.timeout_seconds??180,'number','范围为 1–3600 秒，影响第三方模型请求；连接测试固定使用 60 秒。');
   timeout.input.min='1';timeout.input.max='3600';timeout.input.step='1';
+  const compatibility=el('select');compatibility.setAttribute('aria-label','Responses 兼容模式');
+  for(const [value,name]of[['native','原生（默认）'],['portable','兼容转换（改写历史与工具）']]){const o=el('option',name);o.value=value;compatibility.append(o);}compatibility.value=original.responses_compatibility||'native';
+  const migration=field('Responses 历史项 ID 重放',original.history_migration===true,'checkbox','跨服务迁移时移除有完整内容的历史项 ID；不解密推理，不还原纯 ID 引用。');
+  const protocolHint=el('div',undefined,'protocol-hint');plabel.append(protocolHint);
+  const syncResponses=()=>{const chat=protocol.value!=='openai_responses';compatibility.disabled=chat;migration.input.disabled=chat;protocolHint.replaceChildren(protocolIndicator(protocol.value,compatibility.value));};protocol.addEventListener('change',syncResponses);compatibility.addEventListener('change',syncResponses);syncResponses();
+  advanced.append(el('p','Responses 兼容模式'),compatibility,migration.label,el('p','原生模式保留协议结构；不支持时返回错误，不自动改用 Chat。Portable 会改变部分消息类别。','hint'));
   advanced.append(timeout.label,el('p','厂商参数（JSON）'),params,el('p','Chat Completions 输出预算字段'),tokenField,el('p','Responses 使用 max_output_tokens。','hint'));sidebar.append(advanced);
   const actions=el('div',undefined,'actions');
   actions.append(button('保存厂商',async()=>{
     if(!id&&Object.hasOwn(state.config.providers,pid.input.value.trim()))throw Error('厂商标识已存在，请使用其他标识，或直接编辑已有厂商。');
     const spec={...original,base_url:base.input.value.trim(),protocol:protocol.value,enabled:active.input.checked,models:collect(rows),parameters:JSON.parse(params.value),token_limit_field:tokenField.value,timeout_seconds:Number(timeout.input.value)};
+    spec.responses_compatibility=protocol.value==='openai_responses'?compatibility.value:'native';spec.history_migration=protocol.value==='openai_responses'&&migration.input.checked;
     card.inert=true;
     try{await api('provider',{id:pid.input.value.trim(),spec,api_key:key.input.value||undefined});key.input.value='';clearDirty(card);connectionResults.clear();await refresh();message('厂商与模型已保存。Key / API 下一轮生效；模型列表变动请重启客户端。');}
     finally{card.inert=false;}
@@ -236,11 +243,27 @@ function providerCard(id,original={}){
   const foot=el('div',undefined,'provider-footer');foot.append(el('span','修改后保存此厂商及其全部模型','hint'),actions);content.append(foot);
   return card;
 }
+function protocolNotice(protocol,compatibility='native'){
+  if(protocol==='openai_chat_completions')return '转换接入：本工具将 Codex 的 Responses 请求转换为 Chat Completions。部分工具类型、独立工具通知和推理历史可能降级或不受支持；连接测试通过不代表所有桌面功能兼容。此配置需通过本工具接入。';
+  if(compatibility==='portable')return 'Responses 兼容转换：本工具会改写工具结构和部分历史消息，可能改变消息类别。连接测试通过不代表所有桌面功能兼容。';
+  return 'Responses 原生转发：保留 Codex 协议结构，供应商仍需支持实际使用的工具和历史特性。不支持时返回错误，不自动改用 Chat Completions。';
+}
+function protocolIndicator(protocol,compatibility='native'){
+  const warning=protocol==='openai_chat_completions'||compatibility==='portable';
+  const label=warning?'兼容转换':'原生转发';
+  const indicator=el('span',undefined,'protocol-indicator'+(warning?' is-warning':''));
+  const trigger=help(protocolNotice(protocol,compatibility),label+'说明');
+  trigger.textContent=warning?'!':'i';trigger.classList.add('protocol-info');
+  trigger.dataset.helpTone=warning?'warning':'neutral';
+  trigger.dataset.helpTitle=warning?'通过协议转换接入':'使用 Responses 原生转发';
+  indicator.append(trigger,el('span',label));return indicator;
+}
 function ccCard(entry){
   const {card,sidebar,content,rows}=providerLayout(entry.name,'同步自 CC Switch · '+entry.models.length+' 个模型');
   card.classList.add('cc-provider');
   card.dataset.providerId=entry.provider_key;
   const badges=el('div',undefined,'provider-badges');badges.append(el('span',entry.protocol==='openai_responses'?'Responses':'Chat Completions','badge'),el('span','只读','badge'));sidebar.append(badges);
+  badges.append(protocolIndicator(entry.protocol,entry.responses_compatibility));
   const address=el('div',undefined,'provider-address');address.append(el('p',entry.base_url));sidebar.append(address);
   const note=el('div',undefined,'readonly-note');note.append(el('span','在 CC Switch 中编辑配置'),help('仅同步 OpenAI / Codex 第三方配置，不回写数据库、不切换其他工具的当前厂商。每轮调用读取最新 Key。','CC Switch 同步说明'));content.append(note);
   for(const model of entry.models){
@@ -671,7 +694,10 @@ function openHelp(trigger){
   clearTimeout(helpTimer);
   if(activeHelp!==trigger){closeHelp();activeHelp=trigger;}
   trigger.setAttribute('aria-describedby',helpPanel.id);trigger.setAttribute('aria-expanded','true');
-  helpPanel.textContent=trigger.dataset.help;helpPanel.hidden=false;positionHelp();
+  helpPanel.dataset.tone=trigger.dataset.helpTone||'neutral';
+  helpPanel.replaceChildren();
+  if(trigger.dataset.helpTitle)helpPanel.append(el('strong',trigger.dataset.helpTitle,'help-panel-title'));
+  helpPanel.append(el('span',trigger.dataset.help));helpPanel.hidden=false;positionHelp();
 }
 function delayCloseHelp(){if(!helpPinned)helpTimer=setTimeout(closeHelp,180);}
  document.addEventListener('pointerover',event=>{const trigger=event.target.closest('.help-trigger');if(trigger&&(!helpPinned||trigger===activeHelp))openHelp(trigger);});

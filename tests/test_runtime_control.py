@@ -124,7 +124,10 @@ class RuntimeTests(unittest.TestCase):
             with self.request('/manage/api/state') as response:
                 state = json.load(response)['forwarding']
                 self.assertEqual(state['status'], 'fault')
-                self.assertEqual(state['error_reason'], 'port_in_use')
+                # Windows can reject SO_REUSEADDR against an existing listener
+                # with WSAEACCES (10013), rather than WSAEADDRINUSE (10048).
+                reasons = {'port_in_use', 'permission_denied'} if os.name == 'nt' else {'port_in_use'}
+                self.assertIn(state['error_reason'], reasons)
 
     def test_management_cannot_forward_or_bypass_origin_checks(self):
         for path, body, headers, expected in [
@@ -468,9 +471,12 @@ with DirectoryLock(p.parent):
                          'X-Connected-Token': self.context.settings['local_token']}), timeout=2)
         self.assertEqual(error.exception.code, 401)
         error.exception.close()
-        with urllib.request.urlopen(urllib.request.Request(url+'/models',
-                headers={'X-Connected-Token': 'replacement-token'}), timeout=2) as response:
-            self.assertEqual(response.status, 200)
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(urllib.request.Request(url+'/models',
+                headers={'X-Connected-Token': 'replacement-token'}), timeout=2)
+        self.assertEqual(error.exception.code, 401)
+        self.assertIn('SUBSCRIPTION_AUTH_REQUIRED', error.exception.read().decode())
+        error.exception.close()
 
     def test_request_error_does_not_restart_child_and_logs_are_forwarded(self):
         records = []

@@ -40,6 +40,24 @@ The wizard generates `setup-models.yaml` and `provider.env`, then asks whether t
 
 ## CC Switch
 
+### Native Responses and explicit compatibility
+
+The management page labels the choice as the provider API protocol and persistently explains the forwarding mode for both manual and CC Switch provider cards. Chat Completions retains Responses-to-Chat conversion through this gateway. Some tool types, standalone notifications and reasoning history may be downgraded or unsupported; a passing connection test does not establish full desktop compatibility. This configuration requires the gateway rather than a direct Codex connection to Chat Completions.
+
+Responses defaults to native transport for both YAML and CC Switch sources. Failures do not trigger Chat Completions fallback. Chat retains its existing conversion. Provider-level YAML options (also available under Advanced settings in management) are:
+
+```yaml
+protocol: openai_responses
+responses_compatibility: native  # default; portable enables the existing conversion bridge
+history_migration: false        # true removes only replayable top-level history item IDs
+```
+
+Portable mode consolidates instructions, flattens tools, converts standalone tool outputs to user context, converts readable reasoning to historical text, and omits opaque reasoning. It already includes item-ID replay. History migration alone cannot decrypt reasoning or resolve bare item references. Responses support does not make encrypted state or file resources portable between services.
+
+For CC Switch, these fields are read from the selected `model_providers.<provider>` TOML table; the database remains read-only. Defaults are `native` and `false`. CC Switch `meta.apiFormat` still overrides `wire_api`. Chat configurations reject `portable` or enabled history migration, which are Responses-specific. Legacy single-provider `.env` routing also defaults to native Responses; use YAML or CC Switch for portable compatibility.
+
+### Catalog and synchronization
+
 Each Codex model entry binds to the CC Switch provider record ID and exact model ID. Its `slug` is the original `provider-record-id/model-id`, without hashing, escaping, or splitting on slashes. The binding separately stores `provider_record_id`, `app_type`, and `model_id`. Display names are labels only. The imported catalog has no default model: calls require an explicit selection, and a model list can be imported without a configured default. CC Switch's `config.model`, when present, is included as an exact model entry.
 
 The gateway reads CC Switch at startup, then watches the database directory for database and `-wal` changes, merging consecutive events with a debounce of about 300 milliseconds. A safety check runs every 30 seconds; if notifications are unavailable, periodic checks continue. Synchronization continues with the management page closed. Page refreshes use the background cache without reading the database. The displayed sync time changes only when a snapshot is loaded or updated, not on unchanged checks. The directory, complete bindings, and source revision are stored together in `settings.json` under `cc_snapshot`; the client directory file is generated from that snapshot. Each sync replaces the entire CC directory, removes deleted entries and bindings, and preserves official models. Read or validation failures retain the previous snapshot and retry without publishing partial results. Deleting all supported provider records clears external models.

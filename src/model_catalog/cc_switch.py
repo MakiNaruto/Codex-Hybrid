@@ -70,6 +70,8 @@ def decode(app, raw, meta=None):
         if protocol is None:
             raise ConfigError('CC_PROTOCOL_NOT_SUPPORTED')
     return {'protocol': protocol, 'base_url': provider.get('base_url'),
+            'responses_compatibility': provider.get('responses_compatibility', 'native'),
+            'history_migration': provider.get('history_migration', False),
             'models': list(models.values()), 'key': key}
 
 
@@ -89,9 +91,12 @@ def inventory(path, *, strict=False):
             if not parsed['models']:
                 continue
             entry.update(protocol=parsed['protocol'], base_url=parsed['base_url'], models=parsed['models'])
+            entry.update({key: parsed[key] for key in ('responses_compatibility', 'history_migration')})
             # Reuse endpoint/model validation without exposing the credential.
             Catalog(Path(path).parent / 'cc-validation.yaml', data={'version': 1, 'providers': {
                 'check': {'protocol': parsed['protocol'], 'base_url': parsed['base_url'],
+                    'responses_compatibility': parsed['responses_compatibility'],
+                    'history_migration': parsed['history_migration'],
                     'credentials': {'api_key_env': 'UNUSED'}, 'models': {
                         model['model_id']: {'model_id': model['model_id']}
                         for model in parsed['models']}}}}, source_identifiers=True)
@@ -142,6 +147,8 @@ def make_catalog(path):
             if source_model['context_window'] is not None:
                 models[alias]['context_window'] = source_model['context_window']
         providers[key] = {'protocol': entry['protocol'], 'base_url': entry['base_url'],
+                         'responses_compatibility': entry['responses_compatibility'],
+                         'history_migration': entry['history_migration'],
                          'credentials': {'api_key_env': 'CC_READONLY_KEY'}, 'models': models}
         refs[key] = entry
     data = {'version': 1, 'providers': providers}

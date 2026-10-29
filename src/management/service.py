@@ -60,9 +60,24 @@ class Management:
         """Replace the entire CC snapshot; a failed read never removes old entries."""
         with self.lock:
             settings = self.gateway.settings
+            repaired = False
+            try:
+                official = self.official()
+                try:
+                    current = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']
+                    previous = [model for model in current if model['slug'] in settings['official_models']]
+                except (OSError, ValueError, KeyError, TypeError):
+                    previous = None
+                if official != previous:
+                    self.publish()
+                    repaired = True
+                    settings = self.gateway.settings
+            except (OSError, ValueError, KeyError, TypeError):
+                # Codex can be replacing its cache; retain the last complete directory.
+                return False
             if settings['source']['type'] != 'cc-switch':
                 self.sync_error = None
-                return False
+                return repaired
             try:
                 external = load_source(settings)
                 snapshot = settings.get('cc_snapshot', {})
@@ -77,7 +92,7 @@ class Management:
                     self.sync_error = None
                     if self.cc_catalog is None:
                         self.cache_cc(external)
-                    return False
+                    return repaired
                 self.publish(catalog=external)
                 self.sync_error = None
                 return True
@@ -89,6 +104,8 @@ class Management:
         if self.sync_thread is not None and self.sync_thread.is_alive():
             return
         self.sync_stop.clear()
+        with self.lock:
+            self.publish()
         self.sync_cc()
 
         def watch():
@@ -170,6 +187,8 @@ class Management:
 
     def preview_routing(self, mode):
         with self.lock:
+            if mode == 'project':
+                self.publish()
             *_, migration, revision = self.routing_plan(mode)
             process = self.process_state()
             from desktop import client as desktop_client
@@ -368,6 +387,13 @@ class Management:
 
     def official(self):
         settings = self.gateway.settings
+        if isinstance(settings.get('official_catalog'), list):
+            return settings['official_catalog']
+        state_path = self.directory / 'state.json'
+        if state_path.exists():
+            from desktop.service import official_cache
+            state = json.loads(state_path.read_text(encoding='utf-8'))
+            return official_cache(Path(state['config_path']).parent, settings)
         models = settings.get('cc_snapshot', {}).get('models')
         if models is None:
             models = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']
@@ -382,7 +408,9 @@ class Management:
             if extra:
                 settings.update(extra)
             external = catalog if catalog is not None else load_source(settings)
-            merged = merged_catalog(self.official(), external)
+            official = self.official()
+            merged = merged_catalog(official, external)
+            settings['official_models'] = [model['slug'] for model in official]
             settings['models'] = [m['slug'] for m in merged['models']]
             update_cc_snapshot(settings, merged, external)
             keys = [key for key, value in external.models.items() if value['enabled']]

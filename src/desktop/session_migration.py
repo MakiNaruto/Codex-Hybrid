@@ -460,7 +460,9 @@ def _ensure_baseline(migration, directory, originals):
     write(staging / 'manifest.json', json.dumps(info).encode())
     hashes = {p.name: sha(p.read_bytes()) for p in staging.iterdir()}
     for path in staging.iterdir():
-        with path.open('rb') as stream:
+        # Windows _commit (os.fsync) requires a writable descriptor. Reopen
+        # without truncation so SQLite backups and manifests remain intact.
+        with path.open('r+b') as stream:
             os.fsync(stream.fileno())
     _sync_directory(staging)
     staging.rename(baseline)

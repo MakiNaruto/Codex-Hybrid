@@ -42,6 +42,28 @@
 
 ## CC Switch
 
+### Responses 原生与兼容模式
+
+管理页将协议标为“供应商接口协议”，并在手动配置和 CC Switch 厂商卡片中持续展示实际转发方式。选择 Chat Completions 时，本工具保留 Responses → Chat Completions 转换；部分工具类型、独立工具通知和推理历史可能降级或不受支持，连接测试通过不代表全部桌面功能兼容。该配置需要通过本工具接入，不能据此认定 Codex 可以直连 Chat Completions。
+
+自行配置或 CC Switch 选择 Responses 后，默认保留原生协议结构；失败不会自动转为 Chat Completions。Chat Completions 继续走兼容转换。仅支持部分 Responses 特性的端点可能拒绝原生请求，此时应检查具体错误，再显式选择兼容模式。
+
+独立 YAML 可在厂商层配置（管理页“高级参数”也提供这两个选项）：
+
+```yaml
+protocol: openai_responses
+responses_compatibility: native  # 默认；portable 显式启用原有历史与工具转换
+history_migration: false        # true 仅移除可按完整内容重放的历史项 ID
+```
+
+`portable` 会归并系统指令、展开工具定义、将独立工具输出降级为 user 上下文，并将可读推理转为历史文本、移除不透明推理；它已包含历史项 ID 重放。`history_migration` 本身不会解密推理或还原纯 ID 引用。两个服务都使用 Responses，不代表加密状态与文件资源可以互用。
+
+CC Switch 模式从所选 `model_providers.<厂商>` TOML 配置读取同名字段；本项目只读其数据库，不代写这些选项。未填写时使用 `native` 和 `false`。协议仍由 CC Switch 的 `meta.apiFormat` 优先于 `wire_api` 决定。Chat Completions 不接受 `portable` 或开启历史迁移这两个 Responses 专属设置。
+
+旧版单厂商 `.env` 路由也默认走原生 Responses；需要 Portable 时请改用上述 YAML 或 CC Switch 配置。
+
+### 目录与同步
+
 每个 Codex 模型条目固定绑定 CC Switch 的厂商记录 ID 和确切模型 ID。`slug` 直接使用 `厂商记录ID/模型ID`，不哈希、不转义、不按斜杠拆分；绑定表单独保存 `provider_record_id`、`app_type` 和 `model_id`。显示名称仅用于展示。CC Switch 导入目录不设置默认模型，调用必须明确选择模型；仅提供模型列表而未配置默认模型也可导入。CC Switch 的 `config.model` 若存在，作为一个确切模型加入列表。
 
 网关启动时读取一次 CC Switch，随后监听数据库所在目录中数据库及 `-wal` 文件的变化，合并连续事件并等待约 300 毫秒后同步；另保留每 30 秒兜底检查，监听不可用时自动退回定期检查。管理页关闭时也继续同步，页面刷新只读取后台缓存，不再触发数据库读取。页面显示实际同步时间，无变化的检查不会更新时间。模型目录、完整绑定表和源版本一起保存在 `settings.json` 的 `cc_snapshot` 中，客户端目录文件由该快照生成。同步整体替换当前 CC Switch 目录，删除项和旧绑定一起移除，官方模型保留。读取或校验失败时保留上一份快照并重试，不发布部分结果。删除全部受支持的厂商记录后，外部模型列表清空。

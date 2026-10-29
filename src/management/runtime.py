@@ -32,7 +32,7 @@ class ManagementContext:
         self.started_at = time.monotonic()
         self.slots = threading.BoundedSemaphore(settings['max_concurrent_requests'])
         self.activity = Activity()
-        self.opener = FreshProxyOpener()
+        self.opener = FreshProxyOpener(settings.get('upstream_proxy'))
         self.record = lambda value: None
         self.runtime = None
 

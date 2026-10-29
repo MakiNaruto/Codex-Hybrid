@@ -15,6 +15,7 @@ from model_catalog.catalog import ConfigError
 
 
 class PortableHistoryTests(unittest.TestCase):
+    """The explicit portable Responses bridge and Chat conversion share these rules."""
     def test_host_delivered_outputs_without_call_identity_become_context_for_both_protocols(self):
         body = {'model': 'test', 'tools': [], 'input': [
             {'type': 'function_call_output', 'namespace': 'host', 'name': 'delegate',

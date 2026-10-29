@@ -18,12 +18,18 @@ Codex reads the gateway URL and model catalog path from its own `config.toml`. T
 
 Official requests also pass through the local gateway. OpenAI subscription credentials are sent only to a fixed official endpoint; third-party requests use the corresponding provider's key.
 
+On `/models`, the gateway reuses Codex's subscription credentials and query parameters to refresh the official catalog, without reading login files separately. Successful refreshes publish the merged directory and routing allowlist together. Failed refreshes return the previous directory only if it matches the current allowlist, preserving configuration and allowing calls to continue. Without a valid cache, the endpoint returns `OFFICIAL_MODEL_LIST_UNAVAILABLE`. This requires no Codex UI changes and never substitutes the selected model.
+
 Configuration, credentials, tokens, and backups live in the selected data directory. Do not commit files containing credentials. Generated files use POSIX `0600` permissions; Windows relies on directory ACLs.
 
 ### Protocol compatibility boundaries
 
-Third-party Responses and Chat Completions share history normalization. Conversation text and tool call/result identities survive; readable historical reasoning or summaries become ordinary historical text, while opaque reasoning is not transferred across endpoints. External system/developer messages are collected in order into Responses `instructions` or one initial Chat system message. The official route retains its native encrypted history.
+Third-party Responses defaults to native transport: request fields, message types, tool namespaces, standalone tool outputs, reasoning and encrypted state, and streamed argument deltas are preserved. Routing replaces the address, credentials and model ID, applies explicit parameters/output budgets, and enforces no storage. It does not inject routing instructions, flatten tools, retry generations or fall back to Chat.
 
-Instruction consolidation applies to messages, not developer-role tool metadata. Desktop task notifications may use named tool-output envelopes without a `call_id`; these become ordinary context with source attribution, without inventing a tool call. Real tool results keep their original call identities.
+Chat Completions retains the portable conversion. Responses uses that bridge only with explicit `responses_compatibility: portable`: readable reasoning becomes historical assistant text, opaque reasoning is omitted, system/developer messages are consolidated, and tools are flattened. This changes semantics and is not equivalent to native transport.
 
-Both protocols share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. The gateway does not invent completion events, switch protocols automatically, or replay failed requests. Native coordination guidance is generated from the actual request-scoped tool registry; ambiguous short tool names are not guessed.
+History migration is separate. Native Responses supports `history_migration: true` to remove replayable top-level item IDs, preserving call IDs, nested resource IDs and bare references. It cannot decrypt reasoning or fetch missing history. Portable conversion already includes this ID handling. The official route keeps its existing migration behavior.
+
+Portable instruction consolidation applies to messages, not developer-role tool metadata. Native transport preserves named standalone outputs without a `call_id`; only the compatibility bridge converts them to user context with source attribution. Real tool results retain their call identities.
+
+Both protocols share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. There is no automatic protocol switching. Native Responses does not retry generations; portable Responses retains its existing unknown-tool retry mechanism. Portable coordination guidance uses the request-scoped tool registry; ambiguous short tool names are not guessed.

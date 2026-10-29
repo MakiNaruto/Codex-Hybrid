@@ -1,4 +1,4 @@
-"""Lossless native history normalization and per-request external model context."""
+"""Native history replay and explicit portable compatibility transformations."""
 import copy
 import json
 import re
@@ -22,8 +22,9 @@ def normalize_history(original, *, portable=False):
         if (portable and item.get('type') in {'function_call_output', 'custom_tool_call_output'}
                 and not item.get('call_id') and isinstance(item.get('name'), str)):
             # Host-delivered task/context notifications use tool-output envelopes
-            # without an executable call. Foreign APIs require real call identities;
-            # preserve the notification as context rather than inventing a tool pair.
+            # without an executable call. The portable bridge targets endpoints
+            # that require paired calls; this changes the message category and
+            # is an explicit downgrade, not equivalent native serialization.
             source = '.'.join(value for value in (item.get('namespace'), item['name']) if isinstance(value, str))
             output = item.get('output', '')
             text = output if isinstance(output, str) else json.dumps(output, ensure_ascii=False)

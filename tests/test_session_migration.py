@@ -63,6 +63,25 @@ class SessionMigrationTests(unittest.TestCase):
         apply(plan(self.home, self.settings, 'codex-hybrid'), self.runtime, {})
         self.assertTrue((baseline / 'state.sqlite').is_file())
 
+    def test_baseline_sync_failure_can_retry_without_changing_sessions(self):
+        from desktop.session_migration import _ensure_baseline, _baseline_paths, sha
+        path = self.session('one')
+        original = path.read_bytes()
+        migration = plan(self.home, self.settings, 'openai')
+        baseline, marker = _baseline_paths(self.home, self.runtime)
+        with patch('desktop.session_migration.os.fsync', side_effect=OSError(9, 'Bad file descriptor')):
+            with self.assertRaises(OSError):
+                _ensure_baseline(migration, self.runtime, {path: original})
+        self.assertFalse(marker.exists())
+        self.assertFalse(baseline.exists())
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(self.rows()[0][1], 'old')
+        result = Path(apply(plan(self.home, self.settings, 'openai'), self.runtime, {}))
+        self.assertEqual(result, baseline)
+        hashes = json.loads(marker.read_text())['hashes']
+        self.assertEqual(hashes, {p.name: sha(p.read_bytes()) for p in baseline.iterdir()})
+        self.assertEqual(self.rows()[0][1], 'openai')
+
     def test_baseline_precedes_index_completion(self):
         path = self.session('one')
         with contextlib.closing(sqlite3.connect(self.database)) as db, db:

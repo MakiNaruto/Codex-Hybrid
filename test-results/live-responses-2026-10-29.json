@@ -1,0 +1,908 @@
+[
+  {
+    "model": "d954b768-c2cc-4c1d-9220-677de1cb5b2e/glm-5.3-flash",
+    "case": "plain_turn_1",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "model": "d954b768-c2cc-4c1d-9220-677de1cb5b2e/glm-5.3-flash",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/responses",
+    "http_status": 404,
+    "error_body": "",
+    "elapsed_ms": 164
+  },
+  {
+    "model": "d954b768-c2cc-4c1d-9220-677de1cb5b2e/glm-5.3-flashx",
+    "case": "plain_turn_1",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "model": "d954b768-c2cc-4c1d-9220-677de1cb5b2e/glm-5.3-flashx",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/responses",
+    "http_status": 404,
+    "error_body": "",
+    "elapsed_ms": 164
+  },
+  {
+    "model": "d954b768-c2cc-4c1d-9220-677de1cb5b2e/glm-5.3",
+    "case": "plain_turn_1",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "model": "d954b768-c2cc-4c1d-9220-677de1cb5b2e/glm-5.3",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4/responses",
+    "http_status": 404,
+    "error_body": "",
+    "elapsed_ms": 176
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-coder-plus-1106",
+    "case": "plain_turn_1",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-coder-plus-1106",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "error"
+    ],
+    "event_count": 1,
+    "errors": [
+      {
+        "code": "Internal Server Error",
+        "message": "1 validation error for Event\nobject\n  Field required [type=missing, input_value={'finish_reason': 'null', 'text': 'Hello'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing",
+        "request_id": "825f9b32-c180-9aaf-9be8-1c4a2347d747",
+        "type": "error"
+      }
+    ],
+    "completed": false,
+    "elapsed_ms": 465
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "plain_turn_1",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.completed",
+      "response.content_part.added",
+      "response.content_part.done",
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.output_text.done"
+    ],
+    "event_count": 12,
+    "errors": [],
+    "completed": true,
+    "response": {
+      "top_logprobs": 0,
+      "metadata": {},
+      "presence_penalty": 0.0,
+      "usage": {
+        "total_tokens": 68,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 6,
+        "input_tokens": 62,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "x_details": [
+          {
+            "total_tokens": 68,
+            "x_billing_type": "response_api",
+            "output_tokens": 6,
+            "input_tokens": 62,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        ]
+      },
+      "created_at": 1793242677,
+      "store": false,
+      "tools": [],
+      "output": [
+        {
+          "id": "msg_66f7e0bf-e2ea-4994-b735-f13225d1a799",
+          "role": "assistant",
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "text": "PROBE-729"
+            }
+          ],
+          "status": "completed"
+        }
+      ],
+      "top_p": 1.0,
+      "completed_at": 1793242677,
+      "frequency_penalty": 0.0,
+      "parallel_tool_calls": true,
+      "background": false,
+      "temperature": 1.0,
+      "tool_choice": "auto",
+      "model": "qwen-plus",
+      "service_tier": "default",
+      "id": "resp_35c1e9d9-437f-9d88-841f-5740f603351e",
+      "object": "response",
+      "status": "completed"
+    },
+    "elapsed_ms": 918
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "plain_turn_2_replay",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        },
+        {
+          "id": "msg_66f7e0bf-e2ea-4994-b735-f13225d1a799",
+          "role": "assistant",
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "text": "PROBE-729"
+            }
+          ],
+          "status": "completed"
+        },
+        {
+          "role": "user",
+          "content": "Which token did I ask you to remember? Reply only that token."
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.completed",
+      "response.content_part.added",
+      "response.content_part.done",
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.output_text.done"
+    ],
+    "event_count": 12,
+    "errors": [],
+    "completed": true,
+    "response": {
+      "top_logprobs": 0,
+      "metadata": {},
+      "presence_penalty": 0.0,
+      "usage": {
+        "total_tokens": 98,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 6,
+        "input_tokens": 92,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "x_details": [
+          {
+            "total_tokens": 98,
+            "x_billing_type": "response_api",
+            "output_tokens": 6,
+            "input_tokens": 92,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        ]
+      },
+      "created_at": 1793242678,
+      "store": false,
+      "tools": [],
+      "output": [
+        {
+          "id": "msg_04c6a5eb-e963-44a1-af99-a74efb386e32",
+          "role": "assistant",
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "text": "PROBE-729"
+            }
+          ],
+          "status": "completed"
+        }
+      ],
+      "top_p": 1.0,
+      "completed_at": 1793242678,
+      "frequency_penalty": 0.0,
+      "parallel_tool_calls": true,
+      "background": false,
+      "temperature": 1.0,
+      "tool_choice": "auto",
+      "model": "qwen-plus",
+      "service_tier": "default",
+      "id": "resp_d37d98e5-a72c-92b2-acc1-78bff0dae017",
+      "object": "response",
+      "status": "completed"
+    },
+    "elapsed_ms": 585
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "function_call",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Call multiply with a=137, b=29. Do not compute it yourself."
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "name": "multiply",
+          "description": "Multiply two integers.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "integer"
+              },
+              "b": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.completed",
+      "response.created",
+      "response.function_call_arguments.delta",
+      "response.function_call_arguments.done",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done"
+    ],
+    "event_count": 7,
+    "errors": [],
+    "completed": true,
+    "response": {
+      "top_logprobs": 0,
+      "metadata": {},
+      "presence_penalty": 0.0,
+      "usage": {
+        "total_tokens": 233,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "input_tokens": 206,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "x_details": [
+          {
+            "total_tokens": 233,
+            "x_billing_type": "response_api",
+            "output_tokens": 27,
+            "input_tokens": 206,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        ]
+      },
+      "created_at": 1793242678,
+      "store": false,
+      "tools": [
+        {
+          "name": "multiply",
+          "description": "Multiply two integers.",
+          "strict": true,
+          "type": "function",
+          "parameters": {
+            "additionalProperties": false,
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "integer"
+              },
+              "b": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "multiply",
+          "arguments": "{\"a\": 137, \"b\": 29}",
+          "id": "msg_c4f46ee3-053f-4e3a-95f5-72dd0c58354a",
+          "type": "function_call",
+          "call_id": "call_0bbca819d33a4f8d9f38b3",
+          "status": "completed"
+        }
+      ],
+      "top_p": 1.0,
+      "completed_at": 1793242679,
+      "frequency_penalty": 0.0,
+      "parallel_tool_calls": true,
+      "background": false,
+      "temperature": 1.0,
+      "tool_choice": "auto",
+      "model": "qwen-plus",
+      "service_tier": "default",
+      "id": "resp_1f89c702-a320-98c9-aded-a8e7ed575a36",
+      "object": "response",
+      "status": "completed"
+    },
+    "elapsed_ms": 1075
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "function_result_replay",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Call multiply with a=137, b=29. Do not compute it yourself."
+        },
+        {
+          "name": "multiply",
+          "arguments": "{\"a\": 137, \"b\": 29}",
+          "id": "msg_c4f46ee3-053f-4e3a-95f5-72dd0c58354a",
+          "type": "function_call",
+          "call_id": "call_0bbca819d33a4f8d9f38b3",
+          "status": "completed"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call_0bbca819d33a4f8d9f38b3",
+          "output": "3973"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "name": "multiply",
+          "description": "Multiply two integers.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "integer"
+              },
+              "b": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.created",
+      "response.failed",
+      "response.in_progress"
+    ],
+    "event_count": 3,
+    "errors": [
+      {
+        "sequence_number": 2,
+        "type": "response.failed",
+        "response": {
+          "output": [],
+          "parallel_tool_calls": false,
+          "created_at": 1793242679,
+          "tool_choice": "auto",
+          "model": "qwen-plus",
+          "id": "resp_95d88025-9c78-9bfa-aaf5-bffdf6bfa5b7",
+          "error": {
+            "message": "<400> InternalError.Algo.InvalidParameter: Agent invalid parameter. The error message is [1 validation error for Message\nrole\n  Value error, tool must be one of user,assistant,system,function [type=value_error, input_value='tool', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/value_error]",
+            "code": "InvalidParameter"
+          },
+          "tools": [],
+          "object": "response",
+          "status": "failed"
+        }
+      }
+    ],
+    "completed": false,
+    "elapsed_ms": 314
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "namespace_tool",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "tools": [
+        {
+          "type": "namespace",
+          "name": "math",
+          "tools": [
+            {
+              "type": "function",
+              "name": "multiply",
+              "description": "Multiply two integers.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "integer"
+                  },
+                  "b": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "a",
+                  "b"
+                ],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          ]
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.completed",
+      "response.content_part.added",
+      "response.content_part.done",
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.output_text.done"
+    ],
+    "event_count": 12,
+    "errors": [],
+    "completed": true,
+    "response": {
+      "top_logprobs": 0,
+      "metadata": {},
+      "presence_penalty": 0.0,
+      "usage": {
+        "total_tokens": 212,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 6,
+        "input_tokens": 206,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "x_details": [
+          {
+            "total_tokens": 212,
+            "x_billing_type": "response_api",
+            "output_tokens": 6,
+            "input_tokens": 206,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        ]
+      },
+      "created_at": 1793242680,
+      "store": false,
+      "tools": [
+        {
+          "name": "math",
+          "type": "namespace",
+          "tools": [
+            {
+              "name": "multiply",
+              "description": "Multiply two integers.",
+              "strict": true,
+              "type": "function",
+              "parameters": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "integer"
+                  },
+                  "b": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "a",
+                  "b"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "id": "msg_6974228c-4e29-4484-9e7d-779807c225b9",
+          "role": "assistant",
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "text": "PROBE-729"
+            }
+          ],
+          "status": "completed"
+        }
+      ],
+      "top_p": 1.0,
+      "completed_at": 1793242680,
+      "frequency_penalty": 0.0,
+      "parallel_tool_calls": true,
+      "background": false,
+      "temperature": 1.0,
+      "tool_choice": "auto",
+      "model": "qwen-plus",
+      "service_tier": "default",
+      "id": "resp_9352d4a5-1b1e-90e6-a7cc-1de10bd1b739",
+      "object": "response",
+      "status": "completed"
+    },
+    "elapsed_ms": 1076
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "custom_tool",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "tools": [
+        {
+          "type": "custom",
+          "name": "echo",
+          "description": "Echo a string."
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.completed",
+      "response.content_part.added",
+      "response.content_part.done",
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.output_text.done"
+    ],
+    "event_count": 12,
+    "errors": [],
+    "completed": true,
+    "response": {
+      "top_logprobs": 0,
+      "metadata": {},
+      "presence_penalty": 0.0,
+      "usage": {
+        "total_tokens": 210,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 6,
+        "input_tokens": 204,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "x_details": [
+          {
+            "total_tokens": 210,
+            "x_billing_type": "response_api",
+            "output_tokens": 6,
+            "input_tokens": 204,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        ]
+      },
+      "created_at": 1793242681,
+      "store": false,
+      "tools": [
+        {
+          "name": "echo",
+          "type": "custom",
+          "description": "Echo a string."
+        }
+      ],
+      "output": [
+        {
+          "id": "msg_224c15d6-113b-445d-ad1d-0c8125a18336",
+          "role": "assistant",
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "text": "PROBE-729"
+            }
+          ],
+          "status": "completed"
+        }
+      ],
+      "top_p": 1.0,
+      "completed_at": 1793242681,
+      "frequency_penalty": 0.0,
+      "parallel_tool_calls": true,
+      "background": false,
+      "temperature": 1.0,
+      "tool_choice": "auto",
+      "model": "qwen-plus",
+      "service_tier": "default",
+      "id": "resp_30a41fda-601b-9418-ba3d-9f6b20bab454",
+      "object": "response",
+      "status": "completed"
+    },
+    "elapsed_ms": 631
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "tool_search",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "tools": [
+        {
+          "type": "tool_search"
+        }
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.completed",
+      "response.content_part.added",
+      "response.content_part.done",
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.output_text.done"
+    ],
+    "event_count": 12,
+    "errors": [],
+    "completed": true,
+    "response": {
+      "top_logprobs": 0,
+      "metadata": {},
+      "presence_penalty": 0.0,
+      "usage": {
+        "total_tokens": 68,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 6,
+        "input_tokens": 62,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "x_details": [
+          {
+            "total_tokens": 68,
+            "x_billing_type": "response_api",
+            "output_tokens": 6,
+            "input_tokens": 62,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        ]
+      },
+      "created_at": 1793242681,
+      "store": false,
+      "tools": [
+        {
+          "type": "tool_search"
+        }
+      ],
+      "output": [
+        {
+          "id": "msg_627e5a01-658c-4918-81ec-f429c8f7d3e4",
+          "role": "assistant",
+          "type": "message",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "text": "PROBE-729"
+            }
+          ],
+          "status": "completed"
+        }
+      ],
+      "top_p": 1.0,
+      "completed_at": 1793242682,
+      "frequency_penalty": 0.0,
+      "parallel_tool_calls": true,
+      "background": false,
+      "temperature": 1.0,
+      "tool_choice": "auto",
+      "model": "qwen-plus",
+      "service_tier": "default",
+      "id": "resp_3fef388e-3946-93ce-9004-65041f021beb",
+      "object": "response",
+      "status": "completed"
+    },
+    "elapsed_ms": 1020
+  },
+  {
+    "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+    "case": "codex_reasoning_fields",
+    "request": {
+      "input": [
+        {
+          "role": "user",
+          "content": "Remember token PROBE-729. Reply only PROBE-729."
+        }
+      ],
+      "reasoning": {
+        "effort": "low"
+      },
+      "include": [
+        "reasoning.encrypted_content"
+      ],
+      "model": "cc0a5277-7cca-417a-a8cd-91fd3b9abdc0/qwen-plus",
+      "stream": true,
+      "store": false
+    },
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/responses",
+    "http_status": 200,
+    "content_type": "text/event-stream;charset=UTF-8",
+    "event_types": [
+      "response.failed"
+    ],
+    "event_count": 1,
+    "errors": [
+      {
+        "sequence_number": 0,
+        "type": "response.failed",
+        "response": {
+          "output": [],
+          "parallel_tool_calls": false,
+          "created_at": 1793242683,
+          "tool_choice": "auto",
+          "model": "qwen-plus",
+          "id": "resp_3dcd46a1-66df-9e9a-bb5c-6ee42347f701",
+          "error": {
+            "message": "<400> InternalError.Algo.InvalidParameter: The result_format parameter must be \"message\" when enable_thinking is true",
+            "code": "InvalidParameter"
+          },
+          "tools": [],
+          "object": "response",
+          "status": "failed"
+        }
+      }
+    ],
+    "completed": false,
+    "elapsed_ms": 699
+  }
+]
