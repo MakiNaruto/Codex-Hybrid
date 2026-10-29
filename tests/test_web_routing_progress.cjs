@@ -50,14 +50,14 @@ test('finished operations restore the switch and normal routing status', () => {
   assert.equal(view.elements['routing-status'].textContent, '已开启');
 });
 
-test('retained routing config does not enable the switch without running forwarding', () => {
+test('saved routing keeps the switch enabled across runtime states', () => {
   const view = setup(null);
-  for(const status of ['stopped', 'recovery_required', 'fault', 'recovering', 'starting', undefined]) {
+  for(const status of ['stopped', 'fault', 'recovering', 'starting', undefined]) {
     view.context.state.forwarding = status ? {status} : undefined;
     view.render();
-    assert.equal(view.elements['routing-toggle']['aria-checked'], 'false');
-    assert.match(view.elements['routing-status'].textContent, /已关闭.*转发未运行/);
-    assert.equal(view.context.routingEnabled(), false);
+    assert.equal(view.elements['routing-toggle']['aria-checked'], 'true');
+    assert.match(view.elements['routing-status'].textContent, /已开启/);
+    assert.equal(view.context.routingEnabled(), true);
   }
   view.context.state.forwarding = {status: 'running'};
   view.render();

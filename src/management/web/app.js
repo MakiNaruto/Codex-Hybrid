@@ -398,13 +398,13 @@ function renderRouting(){
   toggle.disabled=busy||!['project','openai'].includes(state?.routing_mode);
   toggle.setAttribute('aria-busy',String(busy));
   $('routing-status').textContent=progress||(routingSaving?'正在准备或切换…':routingError||(
-    state?.routing_mode==='project'?(routingEnabled()?'已开启':'已关闭 · 模型转发未运行，接入配置仍保留'):state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置'));
+    state?.routing_mode==='project'?({running:'已开启',starting:'已开启 · 正在启动…',recovering:'已开启 · 正在自动重试…',fault:'已开启 · 模型转发异常',stopped:'已开启 · 模型转发未运行'}[state?.forwarding?.status]||'已开启 · 正在检查状态…'):state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置'));
   if(progress&&routingSaving&&$('routing-dialog').open&&$('routing-dialog-confirm').disabled){
     $('routing-dialog-description').textContent=progress;
   }
 }
 function routingEnabled(){
-  return state?.routing_mode==='project'&&state?.forwarding?.status==='running';
+  return state?.routing_mode==='project';
 }
 let routingPolling=false;
 async function refreshRoutingProgress(){
@@ -514,22 +514,17 @@ setInterval(()=>{
 function renderForwarding(forwarding){
   if(!forwarding)return;
   const status=forwarding.status;
-  const labels={starting:'正在启动',running:'运行中',fault:'故障，自动恢复已停止',stopped:'已停止',recovering:'意外退出，正在自动恢复',recovery_required:'等待恢复'};
+  const labels={starting:'正在启动',running:'运行中',fault:'故障，自动恢复已停止',stopped:'已停止',recovering:'意外退出，正在自动恢复'};
   let detail=status==='recovering'?'（第 '+forwarding.retry_attempt+'/'+forwarding.retry_limit+' 次，预计 '+new Date(forwarding.retry_at*1000).toLocaleTimeString()+' 重试）':'';
   const reasons={port_in_use:'转发端口已被占用，请关闭占用程序或修改端口后重试。',permission_denied:'系统拒绝启动或监听，请检查本机权限后重试。',startup_timeout:'网关未在规定时间内就绪，请查看日志后重试。',worker_exited:'网关在就绪前退出，请查看日志后重试。',invalid_configuration:'网关配置无法读取或格式无效，请检查配置后重试。',process_start_failed:'无法创建网关进程，请检查运行环境后重试。',worker_error:'网关启动发生异常，请查看日志后重试。'};
   if(status==='fault'&&Object.hasOwn(reasons,forwarding.error_reason))detail='：'+reasons[forwarding.error_reason];
-  if(status==='recovery_required')detail='：配置仍指向网关，请恢复接入或关闭下方“Codex 接入”以恢复原生配置。';
   if(status==='running'&&state?.routing_mode==='openai')detail='（接入已关闭，暂保留供运行中的客户端使用）';
   if(Number.isSafeInteger(forwarding.log_dropped_records)&&forwarding.log_dropped_records>0)detail+=' · 已丢弃 '+forwarding.log_dropped_records+' 条日志（积压或写入失败）';
   $('forwarding-status').textContent='管理服务可用 · 模型转发'+(labels[status]||'状态未知')+detail;
-  $('recover-forwarding').textContent=status==='recovery_required'?'恢复接入':'重试模型转发';
-  $('recover-forwarding').hidden=state?.routing_mode!=='project'||['running','recovering','starting'].includes(status);
-  $('restore-native').hidden=state?.routing_mode!=='project'||!['fault','recovery_required'].includes(status);
-  $('restore-native').disabled=routingSaving||!!state?.routing_operation;
-  $('recover-forwarding').disabled=routingSaving||!!state?.routing_operation;
+  $('retry-forwarding').hidden=state?.routing_mode!=='project'||!['fault','stopped'].includes(status);
+  $('retry-forwarding').disabled=routingSaving||!!state?.routing_operation;
 }
-$('restore-native').onclick=()=>switchRouting('openai');
-$('recover-forwarding').onclick=()=>action(async()=>{await api('runtime/recover',{});await refresh();message('模型转发已恢复。');});
+$('retry-forwarding').onclick=()=>action(async()=>{await api('runtime/recover',{});await refresh();message('模型转发已启动。');});
 function renderGatewayActivity(activity){
   if(state){state.forwarding=activity?.forwarding;renderRouting();}
   const busy=activity?.gateway_status==='busy';

@@ -135,6 +135,16 @@ class ForwardingRuntime:
             self._launch()
         self.wake.set()
 
+    def restore(self):
+        """Restore saved routing without blocking management startup."""
+        with self.lock:
+            self.wanted = True
+            self.status = 'starting'
+            self.retry_at = time.time()
+            self.retry_deadline = time.monotonic()
+            self._publish()
+        self.wake.set()
+
     def _dispose(self):
         if self.process:
             self.process.join(2)
@@ -282,9 +292,7 @@ def serve(settings_path, record):
         # Bind management first: forwarding failure must leave diagnosis available.
         with Server(('127.0.0.1', management_port(settings)), handler(context)) as server:
             if manager.routing_state() == 'project':
-                runtime.status = 'recovery_required'
-                runtime.error = 'FORWARDING_RECOVERY_REQUIRED'
-                runtime._publish()
+                runtime.restore()
             manager.start_sync()
             record({'status': 'management_listening', 'time': int(time.time())})
             try:

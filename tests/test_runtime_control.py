@@ -529,10 +529,26 @@ with DirectoryLock(p.parent):
                 process.kill()
                 process.wait(5)
 
-    def test_restarted_service_waits_for_user_recovery(self):
+    def test_restarted_service_restores_saved_routing(self):
+        self.check_restarted_service('project', 'running')
+
+    def test_restarted_service_preserves_disabled_routing(self):
+        self.check_restarted_service('openai', 'stopped')
+
+    def test_restarted_service_keeps_management_available_on_forwarding_failure(self):
+        self.check_restarted_service('project', 'fault', occupied=True)
+
+    def check_restarted_service(self, routing, expected, occupied=False):
         self.switch('project')
+        if routing == 'openai':
+            self.switch('openai')
         self.runtime.stop()
         settings = dict(self.context.settings, management_port=free_port())
+        if occupied:
+            listener = socket.socket()
+            listener.bind(('127.0.0.1', settings['port']))
+            listener.listen()
+            self.addCleanup(listener.close)
         self.path.write_text(json.dumps(settings))
         process = subprocess.Popen([sys.executable, '-m', 'gateway.server', '--settings', str(self.path)],
             env=dict(os.environ, PYTHONPATH=SRC), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -543,15 +559,25 @@ with DirectoryLock(p.parent):
                 try:
                     with urllib.request.urlopen(url, timeout=1) as response:
                         state = json.load(response)
-                    break
+                    if state['forwarding']['status'] == expected:
+                        break
+                    if time.monotonic() > deadline:
+                        self.fail('Forwarding did not start')
+                    time.sleep(.05)
                 except OSError:
                     if time.monotonic() > deadline:
                         self.fail('Service did not restart')
                     time.sleep(.05)
-            self.assertEqual(state['forwarding']['status'], 'recovery_required')
-            self.assertEqual(state['routing_mode'], 'project')
-            with self.assertRaises(OSError):
-                socket.create_connection(('127.0.0.1', settings['port']), timeout=.2)
+            self.assertEqual(state['forwarding']['status'], expected)
+            self.assertEqual(state['routing_mode'], routing)
+            if expected == 'running':
+                with socket.create_connection(('127.0.0.1', settings['port']), timeout=.2):
+                    pass
+            elif expected == 'fault':
+                self.assertIn(state['forwarding']['error_reason'], {'port_in_use', 'permission_denied'})
+            else:
+                with self.assertRaises(OSError):
+                    socket.create_connection(('127.0.0.1', settings['port']), timeout=.2)
         finally:
             process.terminate()
             process.wait(5)
