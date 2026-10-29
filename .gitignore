@@ -13,3 +13,10 @@ dist/
 .ruff_cache/
 
 /cli-config.json
+
+# Local design artifacts, test evidence, and working notes
+/test-results/
+/design/
+/docs/zh-CN/codex-protocol-audit.md
+/docs/zh-CN/refactoring-review.md
+/tasks/

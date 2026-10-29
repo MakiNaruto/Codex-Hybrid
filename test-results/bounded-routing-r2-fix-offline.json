@@ -1,8 +1,0 @@
-{
-  "scope": "All original rollout tool declarations and calls/results; no network; not byte-for-byte request capture",
-  "passed": true,
-  "tool_count": 71,
-  "call_names": [
-    "functions__exec"
-  ]
-}
