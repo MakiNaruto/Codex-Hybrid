@@ -22,8 +22,8 @@ import uuid
 
 from model_catalog.legacy_config import load_config
 from gateway.transport import FreshProxyOpener, records as sse_events
-from adapters.responses import (ResponsesAdapter, UnregisteredToolError,
-                                 plaintext_collaboration_schema, NativeCoordinationAdapter)
+from adapters.responses import ResponsesAdapter, UnregisteredToolError
+from adapters.coordination import plaintext_collaboration_schema, NativeCoordinationAdapter
 from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
 from model_catalog.catalog import ConfigError, resolve_api_key
 from adapters.chat import ChatAdapter
@@ -232,6 +232,55 @@ def connection_diagnostic(error):
     return result
 
 
+def external_route(body, settings):
+    """Resolve a live external model and build its protocol-specific request."""
+    model = body.get('model')
+    catalog = load_source(settings)  # Fresh address, model and credentials every request.
+    if settings['source']['type'] == 'cc-switch':
+        binding = settings.get('cc_snapshot', {}).get('bindings', {}).get(model)
+        if binding is None or catalog.bindings.get(model) != binding:
+            raise ConfigError('MODEL_NOT_CONFIGURED')
+    selected, provider = catalog.select(model)
+    coordination = NativeCoordinationAdapter(
+        set(settings['models']) - set(settings['official_models']))
+    native = (provider['protocol'] == 'openai_responses'
+              and provider.get('responses_compatibility', 'native') == 'native')
+    if native:
+        adapter = NativeResponsesAdapter(history_migration=provider.get('history_migration', False))
+    else:
+        adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
+    adapter.timeout_seconds = provider['timeout_seconds']
+    converted = adapter.request(body if native else external_context(expose_spawn_catalog(body, settings), selected))
+    if provider['protocol'] == 'openai_chat_completions':
+        payload = converted
+        limit_field = provider['token_limit_field']
+        adapt = coordinated(adapter.event, coordination)
+    else:
+        payload = converted if native else {key: value for key, value in converted.items()
+                   if key in {'model', 'input', 'instructions', 'tools', 'stream'}}
+        limit_field = 'max_output_tokens'
+        adapt = adapter.stream_events if native else coordinated(adapter.stream_events, coordination)
+    # Provider settings may extend a request but never replace routing
+    # instructions or the bridge's no-storage policy.
+    payload.update({key: value for key, value in selected['parameters'].items()
+                    if key not in {'store', 'instructions'}})
+    if provider['protocol'] == 'openai_responses':
+        payload['store'] = False
+    payload['model'] = selected['model_id']
+    configured_limit = selected.get(
+        'output_limit_configured', selected.get('max_output_tokens') is not None)
+    budget = body.get('max_output_tokens', selected['max_output_tokens'] if configured_limit else None)
+    # An absent output setting is not an implicit token cap. Keep the
+    # context window separate and let the upstream default apply.
+    if 'max_output_tokens' in body or configured_limit:
+        if type(budget) is not int or budget <= 0:
+            raise ValueError('INVALID_OUTPUT_BUDGET')
+        payload[limit_field] = min(budget, selected['max_output_tokens']) if configured_limit else budget
+    return provider['endpoint'], payload, {
+        'Authorization': 'Bearer ' + resolve_api_key(provider),
+        'Content-Type': 'application/json', 'Accept': 'text/event-stream'}, adapt
+
+
 def route(body, headers, settings, deepseek=None):
     """Build each request with fresh, vendor-specific headers and adapter state."""
     model = body.get('model')
@@ -243,50 +292,7 @@ def route(body, headers, settings, deepseek=None):
     if body.get('stream') is not True:
         raise ValueError('STREAM_REQUIRED')
     if 'source' in settings and model not in settings['official_models']:
-        catalog = load_source(settings)  # Fresh address, model and credentials every request.
-        if settings['source']['type'] == 'cc-switch':
-            binding = settings.get('cc_snapshot', {}).get('bindings', {}).get(model)
-            if binding is None or catalog.bindings.get(model) != binding:
-                raise ConfigError('MODEL_NOT_CONFIGURED')
-        selected, provider = catalog.select(model)
-        coordination = NativeCoordinationAdapter(
-            set(settings['models']) - set(settings['official_models']))
-        native = (provider['protocol'] == 'openai_responses'
-                  and provider.get('responses_compatibility', 'native') == 'native')
-        if native:
-            adapter = NativeResponsesAdapter(history_migration=provider.get('history_migration', False))
-        else:
-            adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
-        adapter.timeout_seconds = provider['timeout_seconds']
-        converted = adapter.request(body if native else external_context(expose_spawn_catalog(body, settings), selected))
-        if provider['protocol'] == 'openai_chat_completions':
-            payload = converted
-            limit_field = provider['token_limit_field']
-            adapt = coordinated(adapter.event, coordination)
-        else:
-            payload = converted if native else {key: value for key, value in converted.items()
-                       if key in {'model', 'input', 'instructions', 'tools', 'stream'}}
-            limit_field = 'max_output_tokens'
-            adapt = adapter.stream_events if native else coordinated(adapter.stream_events, coordination)
-        # Provider settings may extend a request but never replace routing
-        # instructions or the bridge's no-storage policy.
-        payload.update({key: value for key, value in selected['parameters'].items()
-                        if key not in {'store', 'instructions'}})
-        if provider['protocol'] == 'openai_responses':
-            payload['store'] = False
-        payload['model'] = selected['model_id']
-        configured_limit = selected.get(
-            'output_limit_configured', selected.get('max_output_tokens') is not None)
-        budget = body.get('max_output_tokens', selected['max_output_tokens'] if configured_limit else None)
-        # An absent output setting is not an implicit token cap. Keep the
-        # context window separate and let the upstream default apply.
-        if 'max_output_tokens' in body or configured_limit:
-            if type(budget) is not int or budget <= 0:
-                raise ValueError('INVALID_OUTPUT_BUDGET')
-            payload[limit_field] = min(budget, selected['max_output_tokens']) if configured_limit else budget
-        return provider['endpoint'], payload, {
-            'Authorization': 'Bearer ' + resolve_api_key(provider),
-            'Content-Type': 'application/json', 'Accept': 'text/event-stream'}, adapt
+        return external_route(body, settings)
     if 'source' not in settings and model == deepseek['DEEPSEEK_MODEL']:
         adapter = NativeResponsesAdapter()
         payload = adapter.request(body)

@@ -41,3 +41,19 @@ Chat Completions 使用现有兼容转换。Responses 默认（或显式设置 `
 两个协议共用 SSE 分帧，支持多行数据及仅在 `event:` 中声明的事件类型。显式上游错误转换为脱敏的失败终态；协议类型不匹配单独报错。连接关闭和 `[DONE]` 本身不代表成功，不补造完成事件，不自动换协议。原生路径不重试生成；Portable Responses 保留原有未注册工具重试机制。兼容桥的协作工具说明来自本次实际注册的映射表；有歧义的短工具名不会被猜测执行。
 
 模型添加名单与模型级兼容覆盖保存在 Hybrid 的 `settings.json`，CC Switch 数据库保持只读。偏好按来源区分，名单同时控制目录发布与实时路由。首次升级保留先前已发布的模型；后续发现的新模型只有添加后才可使用。模型级 Hybrid 设置优先于 YAML 模型设置，后者优先于厂商设置；显式 native 保留，缺省 Responses 使用 portable。
+
+### 代码职责与复用边界
+
+| 模块 | 职责 |
+| --- | --- |
+| `gateway/server.py` | HTTP 生命周期、认证和路由选择；`external_route` 组织第三方请求，不执行工具 |
+| `model_catalog/` | 配置来源、模型目录、凭据解析和模型偏好 |
+| `adapters/native_responses.py` | 原生 Responses 传输，历史 ID 迁移仅按配置启用 |
+| `adapters/responses.py` | Portable 工具注册、历史映射、冲突检查和返回事件转换；Chat 共用这些规则 |
+| `adapters/chat.py` | 在共用 Portable 转换之上处理 Chat 消息和流事件 |
+| `adapters/coordination.py` | 原生协作 namespace 映射和请求内 spawn 名称一致性，独立于 Portable 转换 |
+| `adapters/request_compat.py` | 历史重放、路由上下文和脱敏错误转换 |
+| `management/` | 配置发布、管理 HTTP 接口、路由操作和转发进程生命周期 |
+| `desktop/` | 客户端配置、会话迁移与按平台分开的桌面控制 |
+
+Portable 请求按固定顺序处理：先注册本次请求和历史中发现的全部工具，再转换历史，随后检查重复工具的执行结构，最后生成实际可调用的协作工具说明。不要把工具发现移到历史转换之后：历史调用可能依赖后面才出现的工具定义。

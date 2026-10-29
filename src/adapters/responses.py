@@ -5,7 +5,6 @@ Does not execute tools. The original Codex backend remains the executor.
 import copy
 import json
 import re
-import uuid
 
 from adapters.request_compat import normalize_history, stream_error_event
 
@@ -14,121 +13,6 @@ class UnregisteredToolError(ValueError):
     def __init__(self, name):
         super().__init__('Upstream requested an unregistered tool')
         self.tool_name = name if isinstance(name, str) and re.fullmatch(r'[\w.:-]{0,128}', name) else '<invalid>'
-
-
-def plaintext_collaboration_schema(original):
-    """Expose ordinary bridge tools; leave OpenAI's reserved schemas untouched.
-
-The wire namespace is custom; the gateway maps calls back to native Codex.
-No existing ciphertext is decrypted or altered.
-"""
-    request = copy.deepcopy(original)
-    def visit(tools, namespace=None):
-        for tool in tools:
-            if tool.get('type') == 'namespace':
-                visit(tool.get('tools', []), tool['name'])
-                if tool['name'] == 'collaboration':
-                    tool['name'] = 'connected_agent_bridge'
-            elif namespace == 'collaboration' and tool.get('name') in {
-                    'spawn_agent', 'send_message', 'followup_task'}:
-                properties = tool.get('parameters', {}).get('properties', {})
-                if tool['name'] == 'spawn_agent' and 'task_name' in properties:
-                    properties['task_name']['description'] = (
-                        properties['task_name'].get('description', '') +
-                        '\nTask names must be unique within the parent, including agents created before '
-                        'an edited message was re-executed. Editing/retrying a message does not delete '
-                        'existing agents. For a fresh execution, choose a new lowercase suffix such as '
-                        '_run2 or _run3 when the preferred name already exists; report the actual name. '
-                        'If creation returns an already-exists error, retry with a fresh suffixed name. '
-                        'Use followup_task only when the user intends to continue the existing execution. '
-                        'If the user explicitly forbids changing the exact name, report the conflict instead.')
-                    properties['task_name']['description'] += (
-                        '\nFor configured external executions the local gateway treats task_name as a preferred label '
-                        'and appends a unique run suffix automatically, including retries of unchanged edited '
-                        'messages. Use the actual returned task path for follow-up, wait and messaging. '
-                        'Do not ask for permission merely because the preferred label was used before.')
-                for field in ['message']:
-                    if field in properties:
-                        properties[field].pop('encrypted', None)
-    visit(request.get('tools', []))
-    for item in request.get('input', []):
-        if item.get('type') == 'additional_tools':
-            visit(item.get('tools', []))
-        elif item.get('type') == 'function_call' and item.get('namespace') == 'collaboration':
-            item['namespace'] = 'connected_agent_bridge'
-        elif item.get('type') == 'agent_message':
-            # Native collaboration can place an external model's plaintext
-            # message into encrypted_content. OpenAI attempts to decrypt that
-            # field and returns invalid_encrypted_content. Retain provenance
-            # and plaintext without attempting to decrypt genuine ciphertext.
-            for part in item.get('content', []):
-                value = part.get('encrypted_content')
-                if (part.get('type') == 'encrypted_content' and isinstance(value, str)
-                        and not value.startswith('gAAAA')):
-                    part.clear()
-                    part.update(type='input_text', text=value)
-    return request
-
-
-def native_coordination_event(original):
-    event=copy.deepcopy(original)
-    def restore(item):
-        if item.get('type') == 'function_call' and item.get('namespace') == 'connected_agent_bridge':
-            item['namespace']='collaboration'
-    if 'item' in event: restore(event['item'])
-    for item in event.get('response',{}).get('output',[]): restore(item)
-    return event
-
-
-class NativeCoordinationAdapter:
-    """Give every newly spawned external execution a unique native task path.
-
-    A call retains its name across output_item.done and response.completed.
-    Existing-target tools and GPT-only spawns retain their original arguments.
-    """
-    def __init__(self, external_model):
-        self.external_model = external_model
-        self.external_models = {external_model} if isinstance(external_model, str) else set(external_model)
-        self.names = {}
-        self.spawn_items = set()
-
-    def event(self, original):
-        event = native_coordination_event(original)
-        item = event.get('item', {})
-        if (item.get('type') == 'function_call' and item.get('namespace') == 'collaboration'
-                and item.get('name') == 'spawn_agent' and item.get('id')):
-            self.spawn_items.add(item['id'])
-        if (event.get('type', '').startswith('response.function_call_arguments.')
-                and event.get('item_id') in self.spawn_items):
-            # Final output_item.done supplies the consistent rewritten arguments.
-            return None
-
-        def rename(item):
-            if not (item.get('type') == 'function_call' and item.get('namespace') == 'collaboration'
-                    and item.get('name') == 'spawn_agent' and item.get('arguments')):
-                return
-            try:
-                arguments = json.loads(item['arguments'])
-            except ValueError:
-                return  # Incomplete arguments on output_item.added are not executable.
-            if arguments.get('model') not in self.external_models:
-                return
-            preferred = arguments.get('task_name')
-            if not isinstance(preferred, str) or not re.fullmatch(r'[a-z0-9_]+', preferred):
-                return  # Keep native validation for invalid names.
-            call_id = item.get('call_id') or item.get('id')
-            if not call_id:
-                raise ValueError('Spawn call has no stable identity')
-            if call_id not in self.names:
-                self.names[call_id] = preferred[:80] + '_run_' + uuid.uuid4().hex
-            arguments['task_name'] = self.names[call_id]
-            item['arguments'] = json.dumps(arguments, ensure_ascii=False)
-
-        if 'item' in event:
-            rename(event['item'])
-        for output in event.get('response', {}).get('output', []):
-            rename(output)
-        return event
 
 
 class ResponsesAdapter:
@@ -205,12 +89,28 @@ class ResponsesAdapter:
 
     def request(self, original):
         request = normalize_history(original, portable=True)
+        tools = self._register_request_tools(request)
+        request['input'] = self._convert_history(request.get('input', []))
+        unique = self._unique_tools(tools)
+        request['tools'] = list(unique.values())
+        instructions = self._coordination_instructions(request.get('instructions'), unique)
+        if instructions is not None:
+            request['instructions'] = instructions
+        return request
+
+    def _register_request_tools(self, request):
+        """Register current and discovered tools before resolving historical calls."""
         tools = []
-        for tool in request.get('tools', []): tools.extend(self.convert_tool(tool))
-        items = request.get('input', [])
-        for item in items:
+        for tool in request.get('tools', []):
+            tools.extend(self.convert_tool(tool))
+        for item in request.get('input', []):
             if item.get('type') in {'additional_tools', 'tool_search_output'}:
-                for tool in item.get('tools', []): tools.extend(self.convert_tool(tool))
+                for tool in item.get('tools', []):
+                    tools.extend(self.convert_tool(tool))
+        return tools
+
+    def _convert_history(self, items):
+        """Translate history using this request's complete tool binding table."""
         converted = []
         for item in items:
             kind = item.get('type')
@@ -264,7 +164,10 @@ class ResponsesAdapter:
             elif kind == 'custom_tool_call_output':
                 item['type'] = 'function_call_output'
             converted.append(item)
-        request['input'] = converted
+        return converted
+
+    @staticmethod
+    def _unique_tools(tools):
         # Model switches can update descriptions of the same historical tool.
         # Execution schemas must still agree; keep the latest guidance text.
         unique = {}
@@ -275,7 +178,10 @@ class ResponsesAdapter:
                     {k: v for k, v in tool.items() if k != 'description'}):
                 raise ValueError('Conflicting tool definitions')
             unique[tool['name']] = tool
-        request['tools'] = list(unique.values())
+        return unique
+
+    def _coordination_instructions(self, instructions, unique):
+        """Describe only coordination aliases actually registered for this turn."""
         coordination = {'spawn_agent', 'send_message', 'followup_task', 'wait_agent',
                         'list_agents', 'interrupt_agent'}
         aliases = [f"{binding['name']} = `{alias}`" for alias, binding in self.bindings.items()
@@ -283,11 +189,11 @@ class ResponsesAdapter:
                        binding['name'] == 'wait' and {'ids', 'targets'} &
                        unique[alias].get('parameters', {}).get('properties', {}).keys())]
         if aliases:
-            request['instructions'] = (request.get('instructions') or '') + (
+            return (instructions or '') + (
                 '\nNative agent coordination tools registered for this request: ' + '; '.join(aliases) +
                 '. Use these exact callable names, even if earlier instructions name a host namespace. '
                 'Use the registered coordination wait tool for agents, never a process stdin tool.')
-        return request
+        return instructions
 
     def item(self, original):
         item = copy.deepcopy(original)

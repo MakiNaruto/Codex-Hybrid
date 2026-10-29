@@ -39,3 +39,19 @@ Repeated definitions may update a tool's description; the last encountered descr
 Both protocols share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. There is no automatic protocol switching. Native Responses does not retry generations; portable Responses retains its existing unknown-tool retry mechanism. Portable coordination guidance uses the request-scoped tool registry; ambiguous short tool names are not guessed.
 
 Hybrid stores membership and per-model compatibility overrides in its own settings.json, scoped by source; CC Switch remains read-only. Both directory publication and live routing enforce membership. Upgrade preserves previously published models; newly discovered models require an Add action. Hybrid model overrides take precedence over YAML model options and provider defaults. Explicit native is preserved; unspecified Responses compatibility defaults to portable.
+
+### Code responsibilities and reuse
+
+| Module | Responsibility |
+| --- | --- |
+| `gateway/server.py` | HTTP lifecycle, authentication and route selection; `external_route` assembles external requests without executing tools |
+| `model_catalog/` | Configuration sources, model catalogs, credentials and model preferences |
+| `adapters/native_responses.py` | Native Responses transport with explicitly configured history ID migration |
+| `adapters/responses.py` | Portable tool registration, history mapping, conflict checks and event conversion, shared by Chat |
+| `adapters/chat.py` | Chat messages and stream conversion on top of the shared Portable rules |
+| `adapters/coordination.py` | Native collaboration namespace mapping and request-scoped spawn naming, independent of Portable conversion |
+| `adapters/request_compat.py` | History replay, routing context and sanitized errors |
+| `management/` | Configuration publication, management HTTP, routing operations and forwarding process lifecycle |
+| `desktop/` | Client configuration, session migration and platform-specific desktop control |
+
+Portable requests register all current and discovered tools before mapping history, then validate duplicate execution schemas and generate guidance for the registered coordination aliases. Preserve this order: historical calls can depend on tool definitions that appear later in the request.
