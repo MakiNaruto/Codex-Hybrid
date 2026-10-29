@@ -394,14 +394,17 @@ function renderRouting(){
   const phases={preparing:'正在准备切换…',closing:'正在请求 Codex 桌面端正常退出，请稍候…',applying:'正在应用接入配置和会话索引…',launching:'正在启动 Codex 桌面端，请稍候…'};
   const progress=operation&&Object.hasOwn(phases,operation.phase)?phases[operation.phase]:'';
   const toggle=$('routing-toggle');
-  toggle.setAttribute('aria-checked',String(state?.routing_mode==='project'));
+  toggle.setAttribute('aria-checked',String(routingEnabled()));
   toggle.disabled=busy||!['project','openai'].includes(state?.routing_mode);
   toggle.setAttribute('aria-busy',String(busy));
   $('routing-status').textContent=progress||(routingSaving?'正在准备或切换…':routingError||(
-    state?.routing_mode==='project'?'已开启':state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置'));
+    state?.routing_mode==='project'?(routingEnabled()?'已开启':'已关闭 · 模型转发未运行，接入配置仍保留'):state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置'));
   if(progress&&routingSaving&&$('routing-dialog').open&&$('routing-dialog-confirm').disabled){
     $('routing-dialog-description').textContent=progress;
   }
+}
+function routingEnabled(){
+  return state?.routing_mode==='project'&&state?.forwarding?.status==='running';
 }
 let routingPolling=false;
 async function refreshRoutingProgress(){
@@ -465,9 +468,9 @@ for(const mode of ['project','openai'])$('desktop-'+mode).onchange=()=>action(as
   catch(error){$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';throw error;}
   finally{syncDesktopSelect($('desktop-'+mode));}
 });
-$('routing-toggle').onclick=async()=>{
+$('routing-toggle').onclick=()=>switchRouting(routingEnabled()?'openai':'project');
+async function switchRouting(mode){
   if(routingSaving||state?.routing_operation)return;
-  const mode=state.routing_mode==='project'?'openai':'project';
   routingSaving=true;routingError='';renderRouting();
   try{
     const preview=await api('routing/preview',{mode});
@@ -525,10 +528,10 @@ function renderForwarding(forwarding){
   $('restore-native').disabled=routingSaving||!!state?.routing_operation;
   $('recover-forwarding').disabled=routingSaving||!!state?.routing_operation;
 }
-$('restore-native').onclick=()=>$('routing-toggle').click();
+$('restore-native').onclick=()=>switchRouting('openai');
 $('recover-forwarding').onclick=()=>action(async()=>{await api('runtime/recover',{});await refresh();message('模型转发已恢复。');});
 function renderGatewayActivity(activity){
-  renderForwarding(activity?.forwarding);
+  if(state){state.forwarding=activity?.forwarding;renderRouting();}
   const busy=activity?.gateway_status==='busy';
   const status=$('gateway-activity');
   status.hidden=false;

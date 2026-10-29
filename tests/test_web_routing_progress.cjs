@@ -8,7 +8,7 @@ function setup(operation, saving = false, api = async () => ({})) {
   const elements = {};
   const context = vm.createContext({
     $: id => elements[id] ||= {setAttribute(name, value) { this[name] = value; }},
-    state: {routing_mode: 'project', routing_operation: operation}, routingSaving: saving,
+    state: {routing_mode: 'project', routing_operation: operation, forwarding: {status: 'running'}}, routingSaving: saving,
     routingError: '', renderForwarding() {}, api,
   });
   vm.runInContext(helpers, context);
@@ -48,6 +48,23 @@ test('finished operations restore the switch and normal routing status', () => {
   view.render();
   assert.equal(view.elements['routing-toggle'].disabled, false);
   assert.equal(view.elements['routing-status'].textContent, '已开启');
+});
+
+test('retained routing config does not enable the switch without running forwarding', () => {
+  const view = setup(null);
+  for(const status of ['stopped', 'recovery_required', 'fault', 'recovering', 'starting', undefined]) {
+    view.context.state.forwarding = status ? {status} : undefined;
+    view.render();
+    assert.equal(view.elements['routing-toggle']['aria-checked'], 'false');
+    assert.match(view.elements['routing-status'].textContent, /已关闭.*转发未运行/);
+    assert.equal(view.context.routingEnabled(), false);
+  }
+  view.context.state.forwarding = {status: 'running'};
+  view.render();
+  assert.equal(view.elements['routing-toggle']['aria-checked'], 'true');
+  view.context.state.routing_mode = 'openai';
+  view.render();
+  assert.equal(view.elements['routing-toggle']['aria-checked'], 'false');
 });
 
 test('a late progress response cannot overwrite the completed operation', async () => {
