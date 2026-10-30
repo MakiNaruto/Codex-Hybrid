@@ -232,6 +232,30 @@ agent 消息适配也处理宿主将可读任务文本放在 `encrypted_content`
 
 以上为 2026-10-30 当前端点的 Windows 短任务和真实嵌套子 agent 样本；Qwen 的 discovered_tools 未做单项必要性对照，长任务、并发、旧历史和 macOS 尚未验收。问题现象、请求 ID、转换代价与复测依据见[决策与排查记录](../decisions/002-native-feature-adaptations.md)。
 
+新安装不会自动勾选局部适配，Responses 默认使用 Portable（来源或已保存的设置可覆盖模式）。参考上表推荐组合，关闭完整兼容模式后勾选并保存；不会自动应用推荐。模型名称相同不保证供应商端点行为相同。
+
+“兼容模式”就是 Portable，与四项局部适配的关系如下：
+
+| 完整兼容模式开关 | 局部适配勾选 | 实际路径 |
+| --- | --- | --- |
+| 开启 | 任意，保留但不生效 | Portable，统一转换并缓存整轮输出 |
+| 关闭 | 全不勾选 | 严格 native，原生实时输出 |
+| 关闭 | 部分或全部勾选 | native 加所选局部适配，保持实时输出 |
+
+因此，四项全不勾选不等于开启兼容模式，实际模式由完整兼容模式开关决定。
+
+| 现象或错误线索 | 通常尝试的适配 / 排查方法 |
+| --- | --- |
+| 端点拒绝 agent_message，或子 agent 收到请求却忽略任务 | 转换 agent 任务消息 |
+| 无 call_id 的具名工具输出被拒绝，或独立完成通知不可见 | 转换独立工具通知 |
+| custom 工具定义被拒绝，或 custom 返回调用缺少 namespace | 转换自定义工具；支持原生 custom 的 GLM 不需要 |
+| 工具在发现历史中存在，模型却说找不到 spawn_agent，或将 DSML 调用写进正文 | 尝试展开已发现工具；这些现象也可能有其他原因 |
+| HTTP 400 / InvalidParameter | 根据拒绝字段对应上述项目，状态码本身不能确定勾选项 |
+| GATEWAY_STREAM_ADAPTATION_FAILED | 通用转换失败；用请求 ID 查看诊断中的 phase、error_code 和字段位置，不能固定映射到某一项 |
+| UNSUPPORTED_AGENT_MESSAGE_CONTENT | 已启用任务消息转换但内容无法识别；密文、历史占位不会解密，需定位内容形态，不能靠全勾解决 |
+
+按推荐组合或现象调整后，用新聊天 / 新父 agent 复测。仍不兼容可手动回到 Portable；模式切换不会自动修复旧历史。
+
 实验性原生局部兼容：模型仍选择 `native`，再通过管理 API `POST /manage/api/models` 的单条更新设置 `responses_adaptations` 数组。可选项为 `custom_tools`（仅将 custom 工具包装为同命名空间的 function，并还原返回调用）、`agent_messages`（将明文 agent 任务转换为 user 消息）、`standalone_outputs`（将无 call_id 的具名工具通知转换为带来源的 user 上下文）、`discovered_tools`（展开历史发现的工具定义）。这些选项保存在当前来源的 Hybrid 模型偏好中，不修改 CC Switch；设为空数组可恢复严格原生。非原生模式下暂不生效。模型详情会显示启用的局部兼容项。
 
 局部兼容不缓存整轮输出，不自动重试生成；正文、阶段标记和未转换工具的参数增量直接转发。包装后的 custom 工具参数需收齐并验证字符串后才能还原为原生调用，因此该工具的输入增量不转发。原始 grammar 作为输入约束说明传递，不能保证上游强制遵守。加密 agent 消息不会解密或当作明文；不支持时明确失败。不要据简单连接测试推断历史切换、全部工具或嵌套 agent 已通过。

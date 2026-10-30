@@ -223,6 +223,30 @@ The four adaptations (`agent_messages`, `standalone_outputs`, `custom_tools`, an
 
 These profiles reflect current endpoints and short real nested-agent tests on Windows on 2026-10-30. The necessity of discovered_tools for Qwen was not isolated. Long tasks, concurrency, old histories, and macOS remain unverified. See the [decision and troubleshooting record](../decisions/002-native-feature-adaptations.md) for evidence, request IDs, and conversion tradeoffs.
 
+Fresh installs do not select local adaptations automatically. Responses defaults to Portable unless source or saved settings override the mode. Use the recommendations above: turn off full compatibility, select the options, and save. Recommendations are not applied automatically. Different endpoints serving the same model name may behave differently.
+
+The compatibility switch selects Portable; the four local adaptations do not select the mode:
+
+| Full compatibility switch | Local adaptations | Active path |
+| --- | --- | --- |
+| On | Any selection, retained but inactive | Portable with unified conversion and whole-generation buffering |
+| Off | None selected | Strict native with real-time streaming |
+| Off | Some or all selected | Native with selected adaptations and real-time streaming |
+
+Leaving all four unchecked does not enable Portable. The full compatibility switch determines the mode.
+
+| Symptom or error clue | Adaptation to try / next check |
+| --- | --- |
+| Endpoint rejects agent_message, or a child receives the request but ignores its task | Convert agent task messages |
+| Named output without call_id is rejected, or an independent completion notice is invisible | Convert standalone tool notifications |
+| Custom tool definitions are rejected, or custom calls lack namespace | Convert custom tools; GLM with working native custom support does not need this |
+| A tool exists in discovery history but the model cannot find spawn_agent, or prints DSML calls as prose | Try expanding discovered tools; other causes remain possible |
+| HTTP 400 / InvalidParameter | Inspect the rejected field and match it to the rows above; the status alone is insufficient |
+| GATEWAY_STREAM_ADAPTATION_FAILED | Generic conversion failure: use the request ID to inspect phase, error_code, and field locations; no single checkbox applies universally |
+| UNSUPPORTED_AGENT_MESSAGE_CONTENT | Task conversion is enabled but cannot recognize the content; ciphertext and history markers are not decrypted. Investigate the content shape rather than selecting everything |
+
+Retest in a fresh chat or parent agent after changing options. Use Portable manually if needed; switching modes does not repair old histories automatically.
+
 Experimental native feature adaptations: keep the model in `native` mode and set `responses_adaptations` in a model update to `POST /manage/api/models`. Supported flags are `custom_tools` (wrap only custom tools as functions within their original namespaces, restoring returned calls), `agent_messages` (plaintext agent tasks to user messages), `standalone_outputs` (named outputs without call_id to user context retaining provenance), and `discovered_tools` (expand definitions from tool discovery history). These are source-scoped Hybrid preferences; CC Switch remains read-only. An empty array restores strict native transport. Flags are dormant outside native mode. Model details displays active adaptations.
 
 This path streams immediately, without whole-generation buffering or generation retries. Text, phases and unaffected tool argument deltas are preserved. Wrapped custom inputs are restored only after complete JSON/string validation, so their wrapper argument deltas are suppressed. Original grammar is conveyed as guidance rather than guaranteed upstream enforcement. Encrypted agent messages are rejected rather than decrypted or treated as plaintext. Connection probes do not establish full history-switching or nested-agent acceptance.
