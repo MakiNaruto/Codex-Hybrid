@@ -594,9 +594,14 @@ class Management:
         settings = self.gateway.settings
         if key in settings['official_models']:
             raise ConfigError('EXTERNAL_MODEL_REQUIRED')
-        catalog = load_source(settings)
         if settings['source']['type'] == 'cc-switch':
             settings = copy.deepcopy(settings)
+            # Membership controls the client directory, not source connection tests.
+            preference = settings.get('model_preferences', {}).get(source_key(settings['source']))
+            if preference is not None:
+                preference['added'] = [*preference.get('added', []), key]
+        catalog = load_source(settings)
+        if settings['source']['type'] == 'cc-switch':
             # Test the selected live configuration without publishing a partial directory.
             settings['cc_snapshot'] = {'bindings': catalog.bindings}
         model, _ = catalog.select(key)

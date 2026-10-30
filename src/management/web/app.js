@@ -132,7 +132,7 @@ function field(title,value='',type='text',description=''){
 }
 const connectionResults=new Map();
 let testingConnections=0;
-function testButton(model){
+function testButton(model,sourceOnly=false){
   const group=el('div',undefined,'connection-test');
   const result=el('span',undefined,'test-result');
   const saved=connectionResults.get(model?.key);
@@ -151,7 +151,7 @@ function testButton(model){
       result.textContent=text;result.className='test-result error';message(text,true);
     }finally{testingConnections--;b.textContent='测试连接';b.removeAttribute('aria-busy');}
   });
-  b.disabled=!model?.enabled;b.title=b.disabled?'请先保存并启用厂商及模型':'测试已保存的模型配置';
+  b.disabled=!(sourceOnly?model?.source_enabled:model?.enabled);b.title=b.disabled?'请先保存并启用厂商及模型':sourceOnly?'测试 CC Switch 来源配置，无需加入模型列表':'测试已保存的模型配置';
   group.append(b,result);return group;
 }
 function modelEditor(alias,model={},cc=false,savedModel){
@@ -184,7 +184,7 @@ function modelEditor(alias,model={},cc=false,savedModel){
   };row.alias=()=>a.input.value.trim();return row;
 }
 function collect(container){const result={};for(const row of container.children){const [alias,model]=row.value();if(Object.hasOwn(result,alias))throw Error('模型别名重复');result[alias]=model;}return result;}
-function providerLayout(name,description){
+function providerLayout(name,description,cc=false){
   const card=el('article',undefined,'card provider-layout');
   const sidebar=el('div',undefined,'provider-sidebar');
   const heading=el('div',undefined,'provider-heading');
@@ -193,7 +193,7 @@ function providerLayout(name,description){
   sidebar.append(heading);
   const content=el('div',undefined,'provider-content');
   const head=el('div',undefined,'models-heading');head.append(el('h4','所属模型'));
-  const tip=help('测试连接会使用已保存并启用的配置，向厂商发送一次真实请求并消耗少量额度。新增或修改模型后，请先保存厂商。','测试连接说明');
+  const tip=help(cc?'测试连接直接使用 CC Switch 来源配置，无需先在模型管理中添加模型，也不会将模型加入客户端列表。测试会向厂商发送一次真实请求并消耗少量额度。':'测试连接会使用已保存并启用的配置，向厂商发送一次真实请求并消耗少量额度。新增或修改模型后，请先保存厂商。','测试连接说明');
   const tools=el('div',undefined,'models-tools');tools.append(tip);head.append(tools);
   const rows=el('div',undefined,'models-grid');content.append(head,rows);card.append(sidebar,content);
   return {card,sidebar,content,rows,tools};
@@ -260,7 +260,7 @@ function protocolIndicator(protocol,compatibility='native'){
   indicator.append(trigger,el('span',label));return indicator;
 }
 function ccCard(entry){
-  const {card,sidebar,content,rows}=providerLayout(entry.name,'同步自 CC Switch · '+entry.models.length+' 个模型');
+  const {card,sidebar,content,rows}=providerLayout(entry.name,'同步自 CC Switch · '+entry.models.length+' 个模型',true);
   card.classList.add('cc-provider');
   card.dataset.providerId=entry.provider_key;
   const badges=el('div',undefined,'provider-badges');badges.append(el('span',entry.protocol==='openai_responses'?'Responses':'Chat Completions','badge'),el('span','只读','badge'));sidebar.append(badges);
@@ -286,7 +286,7 @@ function ccCard(entry){
       else metric.append(el('span','tokens','stat-unit'));
       stat.append(caption,metric);stats.append(stat);
     }
-    item.append(identity,testButton(state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id)),stats);rows.append(item);
+    item.append(identity,testButton(state.models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id),true),stats);rows.append(item);
   }
   if(!entry.models.length)rows.append(el('p','暂无可同步的模型','hint'));return card;
 }

@@ -36,7 +36,7 @@ Windows 上，每次上游请求都会重新读取当前用户的系统 HTTP/HTT
 
 ### 测试模型连接
 
-打开管理页，保存并启用模型，再点击“测试连接”。测试发送 `Reply with exactly hello and nothing else.`，
+独立管理模式下，打开管理页，保存并启用模型，再点击“测试连接”。CC Switch 模式下，可直接在“管理连接”测试来源模型，无需先在“模型管理”添加；测试不会将模型加入客户端列表。测试发送 `Reply with exactly hello and nothing else.`，
 输出预算最多 8192 tokens；若模型配置上限更低，则使用更低值。
 成功仅表示这次基础请求完成，完整 Codex 会话和工具调用仍需单独验证。
 

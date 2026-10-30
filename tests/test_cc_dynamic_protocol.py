@@ -1,4 +1,5 @@
 from contextlib import closing
+import copy
 import json
 from pathlib import Path
 import sqlite3
@@ -11,6 +12,7 @@ from gateway.server import route, sse_events
 from management.service import Management
 from model_catalog.cc_switch import make_catalog, selected_key, inventory
 from model_catalog.catalog import ConfigError
+from model_catalog.sources import source_key
 
 
 class DynamicProtocolTests(unittest.TestCase):
@@ -31,7 +33,11 @@ class DynamicProtocolTests(unittest.TestCase):
             catalog_path = Path(directory) / 'catalog.json'
             catalog_path.write_text(json.dumps({'models': []}))
             settings = {'catalog': str(catalog_path), 'source': {'type': 'cc-switch', 'path': str(db_path)},
-                        'models': [key], 'official_models': []}
+                        'models': [], 'official_models': []}
+            settings['model_preferences'] = {source_key(settings['source']): {
+                'added': [], 'compatibility': {key: 'native'}, 'adaptations': {key: []}}}
+            original_settings = copy.deepcopy(settings)
+            original_catalog = catalog_path.read_bytes()
             seen = []
 
             self_outer = self
@@ -61,12 +67,19 @@ class DynamicProtocolTests(unittest.TestCase):
                     db.commit()
                 with self.assertRaises(ConfigError):
                     selected_key(db_path, old)
+                database_before_test = db_path.read_bytes()
                 if fmt == 'openai_responses':
                     from urllib.error import HTTPError
                     with self.assertRaises(HTTPError):
                         manager.test_connection(key)
                 else:
                     self.assertEqual(manager.test_connection(key)['status'], 'completed')
+                self.assertEqual(settings, original_settings)
+                self.assertEqual(catalog_path.read_bytes(), original_catalog)
+                self.assertEqual(db_path.read_bytes(), database_before_test)
+                with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_ALLOWED$'):
+                    route({'model': key, 'stream': True, 'input': []},
+                          {'Authorization': 'Bearer test-only-token'}, settings)
             base = 'https://open.bigmodel.cn/api/coding/paas/v4'
             self.assertEqual(seen, [base + '/chat/completions', base + '/responses',
                                     base + '/chat/completions'])
