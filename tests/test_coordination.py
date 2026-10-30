@@ -4,9 +4,25 @@ import json
 import unittest
 
 from adapters.coordination import NativeCoordinationAdapter, plaintext_collaboration_schema
+from adapters.request_compat import progress_guidance
 
 
 class CoordinationTests(unittest.TestCase):
+    def test_discovered_bridge_tools_receive_parent_progress_guidance(self):
+        for namespace in ('collaboration', 'connected_agent_bridge'):
+            request = {'input': [{'type': 'tool_search_output', 'tools': [
+                {'type': 'namespace', 'name': namespace, 'tools': []}]}]}
+            self.assertIn('Agent messages', progress_guidance(request))
+
+    def test_discovered_collaboration_schema_is_mapped(self):
+        request = {'input': [{'type': 'tool_search_output', 'tools': [
+            {'type': 'namespace', 'name': 'collaboration', 'tools': [
+                {'type': 'function', 'name': 'send_message', 'parameters': {
+                    'properties': {'message': {'type': 'string', 'encrypted': True}}}}]}]}]}
+        mapped = plaintext_collaboration_schema(request)['input'][0]['tools'][0]
+        self.assertEqual(mapped['name'], 'connected_agent_bridge')
+        self.assertNotIn('encrypted', mapped['tools'][0]['parameters']['properties']['message'])
+
     def spawn(self, model='vendor/model', **arguments):
         return {'type': 'function_call', 'id': 'fc1', 'call_id': 'call1',
                 'namespace': 'connected_agent_bridge', 'name': 'spawn_agent',

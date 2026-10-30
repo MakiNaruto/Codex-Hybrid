@@ -174,7 +174,7 @@ PARENT_GUIDANCE = (
 
 def progress_guidance(request):
     """Tell external models how to make multi-agent progress visible."""
-    if 'collaboration' not in collaboration_namespaces(request):
+    if not {'collaboration', 'connected_agent_bridge'} & collaboration_namespaces(request):
         return ''
     delegated = delegated_task(request)
     # A delegated worker may itself own subagents, so the two roles can combine.
@@ -195,7 +195,7 @@ def collaboration_namespaces(request):
                 visit(tool.get('tools', []))
     visit(request.get('tools', []))
     for item in request.get('input', []):
-        if item.get('type') == 'additional_tools':
+        if item.get('type') in {'additional_tools', 'tool_search_output'}:
             visit(item.get('tools', []))
         elif item.get('type') == 'agent_message':
             found.add('collaboration')

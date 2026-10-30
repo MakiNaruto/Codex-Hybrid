@@ -30,9 +30,11 @@ Reply only: Hello World
 
 Expected reply: `Hello World`. A new chat helps verify the model selection. Full sessions include system instructions, tool definitions, and history, so their input is usually larger than a management-page connection test.
 
-## Have an official-model agent create a third-party subagent
+## Create subagents across models
 
-Select an official model that supports native subagents in the main chat, then send the prompt below. **Replace the model key first.** The manual YAML example uses `deepseek/flash`; the setup wizard uses `custom/default`. For CC Switch, use the actual registered key. Run `status` to list model keys.
+Select an official or third-party model that supports tool calls in the main chat. The gateway advertises enabled child models in collaboration tools for official, third-party native Responses, portable Responses, and Chat Completions routes. A parent can select an official or another third-party child model; children can create further subagents within the client's depth and concurrency limits. Native Responses retains its tool namespaces and stream events without portable conversion.
+
+Send the prompt below. **Replace the model key first.** The manual YAML example uses `deepseek/flash`; the setup wizard uses `custom/default`. For CC Switch, use the actual registered key. Run `status` to list model keys. To verify the reverse direction, select a third-party parent and use a client-supported official model key or another enabled third-party model key for the child.
 
 ```text
 Create a native subagent with model deepseek/flash, fork_turns none,

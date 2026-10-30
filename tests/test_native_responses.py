@@ -58,6 +58,40 @@ class NativeResponsesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'UPSTREAM_PROTOCOL_MISMATCH'):
             adapt({'choices': []})
 
+    def test_external_native_parent_receives_child_catalog_without_tool_conversion(self):
+        tool = {'type': 'namespace', 'name': 'collaboration', 'tools': [
+            {'type': 'function', 'name': 'spawn_agent', 'description': 'Create a child.',
+             'parameters': {'properties': {'model': {'type': 'string'}}}}]}
+        settings = {'source': {'type': 'yaml'},
+                    'models': ['gpt-test', 'vendor/model', 'other/child'],
+                    'official_models': ['gpt-test'],
+                    'cc_snapshot': {'models': [
+                        {'slug': key, 'visibility': 'list'}
+                        for key in ['gpt-test', 'vendor/model', 'other/child']]}}
+        for deferred in (None, 'additional_tools', 'tool_search_output'):
+            with self.subTest(deferred=deferred):
+                body = copy.deepcopy(self.body)
+                if deferred:
+                    body['input'].append({'type': deferred, 'tools': [tool]})
+                else:
+                    body['tools'].append(tool)
+                before = copy.deepcopy(body)
+                with patch('gateway.server.load_source', return_value=self.catalog()):
+                    _, payload, _, adapt = route(body, {
+                        'Authorization': 'Bearer local-test-token'}, settings)
+                tools = payload['input'][-1]['tools'] if deferred else payload['tools']
+                spawn = tools[-1]['tools'][0]
+                for key in settings['models']:
+                    self.assertIn('`' + key + '`', spawn['description'])
+                self.assertEqual(tools[-1]['name'], 'collaboration')
+                self.assertEqual(body, before)
+                for target in ('gpt-test', 'other/child'):
+                    event = {'type': 'response.output_item.done', 'item': {
+                        'type': 'function_call', 'namespace': 'collaboration',
+                        'name': 'spawn_agent', 'arguments':
+                        '{"task_name":"worker","model":"' + target + '"}'}}
+                    self.assertEqual(adapt(event), [event])
+
     def test_history_migration_only_removes_replayable_item_ids(self):
         self.body['input'].append({'type': 'item_reference', 'id': 'ref_1'})
         _, payload, _, _ = self.routed(self.catalog(history_migration=True))

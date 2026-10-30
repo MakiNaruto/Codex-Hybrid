@@ -253,7 +253,8 @@ def external_route(body, settings):
     else:
         adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
     adapter.timeout_seconds = provider['timeout_seconds']
-    converted = adapter.request(body if native else external_context(expose_spawn_catalog(body, settings), selected))
+    advertised = expose_spawn_catalog(body, settings)
+    converted = adapter.request(advertised if native else external_context(advertised, selected))
     if provider['protocol'] == 'openai_chat_completions':
         payload = converted
         limit_field = provider['token_limit_field']

@@ -8,6 +8,11 @@ from model_catalog.agent_catalog import expose_spawn_catalog
 
 
 class SpawnCatalogTests(unittest.TestCase):
+    def test_requests_without_coordination_need_no_catalog(self):
+        request = {'model': 'vendor/model', 'tools': [], 'input': [
+            {'role': 'developer', 'content': None}]}
+        self.assertIs(expose_spawn_catalog(request, {}), request)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

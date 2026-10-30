@@ -42,6 +42,19 @@ def expose_spawn_catalog(original, settings):
     for item in original.get('input', []):
         if item.get('type') in {'additional_tools', 'tool_search_output'}:
             visit(item.get('tools', []))
+    previews = [original.get('instructions', '')]
+    for item in original.get('input', []):
+        if item.get('role') in {'developer', 'system'}:
+            content = item.get('content', '')
+            if isinstance(content, str):
+                previews.append(content)
+            elif isinstance(content, list):
+                previews.extend(part.get('text', '') for part in content if isinstance(part, dict))
+    # Native requests without collaboration must remain untouched and need no
+    # local catalog. Tool descriptions and instruction previews are both valid
+    # places for the host to advertise the available child models.
+    if not targets and not any(isinstance(value, str) and PREVIEW.search(value) for value in previews):
+        return original
     catalog = settings.get('cc_snapshot', {}).get('models')
     if catalog is None:
         catalog = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']

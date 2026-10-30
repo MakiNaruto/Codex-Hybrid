@@ -43,7 +43,7 @@ def plaintext_collaboration_schema(original):
                     properties['message'].pop('encrypted', None)
     visit(request.get('tools', []))
     for item in request.get('input', []):
-        if item.get('type') == 'additional_tools':
+        if item.get('type') in {'additional_tools', 'tool_search_output'}:
             visit(item.get('tools', []))
         elif item.get('type') == 'function_call' and item.get('namespace') == 'collaboration':
             item['namespace'] = 'connected_agent_bridge'
