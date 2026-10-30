@@ -586,6 +586,8 @@ function positionHelp(){
 function openHelp(trigger){
   clearTimeout(helpTimer);
   if(activeHelp!==trigger){closeHelp();activeHelp=trigger;}
+  const helpHost=trigger.closest('dialog')||document.body;
+  if(helpPanel.parentElement!==helpHost)helpHost.append(helpPanel);
   trigger.setAttribute('aria-describedby',helpPanel.id);trigger.setAttribute('aria-expanded','true');
   helpPanel.dataset.tone=trigger.dataset.helpTone||'neutral';
   helpPanel.replaceChildren();
@@ -603,6 +605,7 @@ function delayCloseHelp(){if(!helpPinned)helpTimer=setTimeout(closeHelp,180);}
    else if(!helpPanel.contains(event.target))closeHelp();
  });
  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeHelp();});
+ document.addEventListener('close',event=>{if(event.target.contains(activeHelp))closeHelp();},true);
  helpPanel.addEventListener('pointerenter',()=>clearTimeout(helpTimer));helpPanel.addEventListener('pointerleave',delayCloseHelp);
  window.addEventListener('resize',()=>{if(activeHelp)positionHelp();});
  window.addEventListener('scroll',()=>{if(activeHelp)positionHelp();},true);

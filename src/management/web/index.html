@@ -43,7 +43,7 @@
     <section class="routing-section" aria-labelledby="routing-heading">
       <div class="section-head"><h2 id="routing-heading">Codex 接入</h2><button id="detect-processes" class="secondary" type="button">检测状态</button></div>
       <div class="routing-control">
-        <div class="routing-copy"><p id="routing-status" class="routing-status" role="status"></p><label id="routing-label" for="routing-toggle">让 Codex 使用你的模型</label><p class="routing-description">通过 Hybrid 调用已配置的第三方模型。</p></div>
+        <div class="routing-copy"><p id="routing-status" class="routing-status" role="status"></p><p id="routing-label" class="routing-title">接入第三方模型</p><p class="routing-description">开启后，Codex 可调用你在 Hybrid 中配置的模型。</p></div>
         <button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button>
       </div>
       <p id="forwarding-status" class="hint" role="status"></p>
@@ -108,28 +108,29 @@
 </dialog>
 <dialog id="model-detail-dialog" class="model-detail-dialog" aria-labelledby="model-detail-title">
   <div class="model-dialog-heading"><span class="eyebrow">模型详情</span><button id="close-model-detail" class="icon-button secondary" type="button" aria-label="关闭模型详情">×</button></div>
-  <h2 id="model-detail-title"></h2><p id="model-detail-provider" class="hint"></p>
-  <dl class="model-detail-meta" id="model-detail-meta"></dl>
-  <div id="model-compatibility-setting" class="model-setting">
-    <div class="model-setting-heading"><div><h3 id="model-compatibility-label">完整兼容模式</h3><p class="hint">Portable · Responses</p></div><button id="model-compatibility" class="routing-toggle" type="button" role="switch" aria-checked="true" aria-labelledby="model-compatibility-label" aria-describedby="model-compatibility-help"><span class="routing-thumb" aria-hidden="true"></span></button></div>
-    <p id="model-compatibility-help" class="hint">开启后使用 Portable 兜底，统一转换消息、工具和历史；整轮校验后才显示输出。关闭后使用原生实时输出，可按端点需要选择下方局部适配。仅影响当前模型，下一轮生效；失败不会自动切换模式。</p>
-    <fieldset id="model-adaptations" class="model-adaptations">
-      <legend>原生模式的局部适配</legend>
-      <p class="hint">按你常用端点的实际表现配置。未勾选的特性保持原生；全部取消即严格原生。Portable 下保留这些选项，但不启用。</p>
-      <label><input id="adapt-agent-messages" type="checkbox" value="agent_messages">转换 agent 任务消息</label>
-      <p class="hint">端点拒绝 agent 消息，或接受请求却不执行其中任务时启用。任务正文转换为普通消息。</p>
-      <label><input id="adapt-standalone-outputs" type="checkbox" value="standalone_outputs">转换独立工具通知</label>
-      <p class="hint">端点不支持无调用 ID 的工具通知时启用。保留内容与来源，转换为普通消息。</p>
-      <label><input id="adapt-custom-tools" type="checkbox" value="custom_tools">转换自定义工具</label>
-      <p class="hint">端点不支持 custom 工具时启用。使用函数包装并还原调用；该工具输入需收齐后显示。</p>
-      <label><input id="adapt-discovered-tools" type="checkbox" value="discovered_tools">展开已发现工具</label>
-      <p class="hint">工具已提供但模型仍报告找不到时启用。将工具发现结果中的定义合并到本轮工具列表，保留命名空间。</p>
-    </fieldset>
+  <div class="model-detail-body">
+    <header class="model-detail-identity"><h2 id="model-detail-title"></h2><p id="model-detail-provider" class="hint"></p></header>
+    <dl class="model-detail-meta" id="model-detail-meta"></dl>
+    <section id="model-compatibility-setting" class="model-setting" aria-labelledby="model-compatibility-label">
+      <div class="model-setting-heading">
+        <div><div class="model-setting-title"><h3 id="model-compatibility-label">开启兼容模式</h3><button type="button" class="help-trigger" aria-label="兼容模式说明" aria-expanded="false" data-help="开启后使用 Portable 统一转换消息、工具和历史，整轮校验后才显示输出。关闭后使用原生实时输出，可按需选择局部适配。仅影响当前模型，保存后下一轮生效；失败不会自动切换模式。">?</button></div><p id="model-compatibility-help" class="hint">统一适配消息与工具，整轮完成后显示输出。</p></div>
+        <button id="model-compatibility" class="routing-toggle" type="button" role="switch" aria-checked="true" aria-labelledby="model-compatibility-label" aria-describedby="model-compatibility-help"><span class="routing-thumb" aria-hidden="true"></span></button>
+      </div>
+      <fieldset id="model-adaptations" class="model-adaptations">
+        <legend>局部适配</legend>
+        <p class="hint adaptation-mode-note"><span class="adaptation-native-note">保留原生实时输出，仅转换所选内容。</span><span class="adaptation-portable-note">兼容模式已接管转换，以下选择保留，关闭后生效。</span></p>
+        <div class="adaptation-options">
+          <div class="adaptation-row"><label for="adapt-agent-messages"><input id="adapt-agent-messages" type="checkbox" value="agent_messages"><span><strong>转换 agent 任务消息</strong><small>将任务正文转为普通消息</small></span></label><button type="button" class="help-trigger" aria-label="转换 agent 任务消息说明" aria-expanded="false" data-help="端点拒绝 agent 消息，或接受请求却不执行其中任务时启用。任务正文转换为普通消息。">?</button></div>
+          <div class="adaptation-row"><label for="adapt-standalone-outputs"><input id="adapt-standalone-outputs" type="checkbox" value="standalone_outputs"><span><strong>转换独立工具通知</strong><small>保留通知内容与来源</small></span></label><button type="button" class="help-trigger" aria-label="转换独立工具通知说明" aria-expanded="false" data-help="端点不支持无调用 ID 的工具通知时启用。保留内容与来源，转换为普通消息。">?</button></div>
+          <div class="adaptation-row"><label for="adapt-custom-tools"><input id="adapt-custom-tools" type="checkbox" value="custom_tools"><span><strong>转换自定义工具</strong><small>使用函数格式兼容工具调用</small></span></label><button type="button" class="help-trigger" aria-label="转换自定义工具说明" aria-expanded="false" data-help="端点不支持 custom 工具时启用。使用函数包装并还原调用；该工具输入需收齐后显示。">?</button></div>
+          <div class="adaptation-row"><label for="adapt-discovered-tools"><input id="adapt-discovered-tools" type="checkbox" value="discovered_tools"><span><strong>展开已发现工具</strong><small>将发现的工具加入本轮可用列表</small></span></label><button type="button" class="help-trigger" aria-label="展开已发现工具说明" aria-expanded="false" data-help="工具已提供但模型仍报告找不到时启用。将工具发现结果中的定义合并到本轮工具列表，保留命名空间。未勾选的特性保持原生，全部取消即严格原生。">?</button></div>
+        </div>
+      </fieldset>
+    </section>
+    <div class="model-detail-connection"><p id="model-detail-protocol" class="hint"></p><div id="model-detail-test"></div></div>
+    <p id="model-detail-error" class="error" role="alert"></p>
   </div>
-  <p id="model-detail-protocol" class="hint"></p><div id="model-detail-test"></div>
-  <p id="model-detail-error" class="error" role="alert"></p>
-  <p class="hint">移除只影响 Hybrid 的可用列表，原始连接配置仍会保留。</p>
-  <div class="dialog-actions model-detail-actions"><button id="remove-model" class="text-danger" type="button">移除模型</button><button id="save-model-detail" type="button">保存设置</button></div>
+  <footer class="dialog-actions model-detail-actions"><div class="model-remove-action"><button id="remove-model" class="secondary text-danger" type="button">移除模型</button><button type="button" class="help-trigger" aria-label="移除模型说明" aria-expanded="false" data-help="仅从 Hybrid 可用列表移除，原始连接配置仍会保留。你可以随时重新添加。">?</button></div><button id="save-model-detail" type="button">保存设置</button></footer>
 </dialog>
 <dialog id="routing-dialog" aria-labelledby="routing-dialog-title" aria-describedby="routing-dialog-description">
   <form method="dialog">

@@ -106,13 +106,9 @@ function openModelDetail(model){
   $('model-detail-title').textContent=modelName(model);$('model-detail-provider').textContent=providerName(model)+' · '+(state.mode==='cc_switch'?'CC Switch':'独立管理');
   const meta=$('model-detail-meta');meta.replaceChildren();
   for(const [label,value] of [['模型 ID',model.model_id],['上下文窗口',model.context_window.toLocaleString()+' tokens'],['输出上限',model.max_output_tokens?model.max_output_tokens.toLocaleString()+' tokens':'未设置']]){
-    meta.append(el('dt',label),el('dd',value));
+    const item=el('div',undefined,'model-meta-item');item.append(el('dt',label),el('dd',value));meta.append(item);
   }
   $('model-compatibility-setting').hidden=model.protocol!=='openai_responses';
-  if(model.responses_compatibility==='native'&&model.responses_adaptations?.length){
-    const labels={custom_tools:'自定义工具',agent_messages:'子 agent 任务消息',standalone_outputs:'独立工具通知',discovered_tools:'已发现工具'};
-    meta.append(el('dt','局部兼容'),el('dd',model.responses_adaptations.map(key=>labels[key]||key).join('、')));
-  }
   $('model-compatibility').setAttribute('aria-checked',String(model.responses_compatibility==='portable'));
   for(const [key,id] of Object.entries(adaptationControls))$(id).checked=(model.responses_adaptations||[]).includes(key);
   syncAdaptationControls();
