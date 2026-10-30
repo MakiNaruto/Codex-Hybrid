@@ -111,8 +111,20 @@
   <h2 id="model-detail-title"></h2><p id="model-detail-provider" class="hint"></p>
   <dl class="model-detail-meta" id="model-detail-meta"></dl>
   <div id="model-compatibility-setting" class="model-setting">
-    <div class="model-setting-heading"><div><h3 id="model-compatibility-label">兼容模式 <span class="badge">推荐</span></h3><p class="hint">Portable · Responses</p></div><button id="model-compatibility" class="routing-toggle" type="button" role="switch" aria-checked="true" aria-labelledby="model-compatibility-label" aria-describedby="model-compatibility-help"><span class="routing-thumb" aria-hidden="true"></span></button></div>
-    <p id="model-compatibility-help" class="hint">转换任务消息、工具与历史格式，改善第三方协作兼容性。关闭后保留原生消息格式。此设置仅影响当前模型，下一轮调用生效。</p>
+    <div class="model-setting-heading"><div><h3 id="model-compatibility-label">完整兼容模式</h3><p class="hint">Portable · Responses</p></div><button id="model-compatibility" class="routing-toggle" type="button" role="switch" aria-checked="true" aria-labelledby="model-compatibility-label" aria-describedby="model-compatibility-help"><span class="routing-thumb" aria-hidden="true"></span></button></div>
+    <p id="model-compatibility-help" class="hint">开启后使用 Portable 兜底，统一转换消息、工具和历史；整轮校验后才显示输出。关闭后使用原生实时输出，可按端点需要选择下方局部适配。仅影响当前模型，下一轮生效；失败不会自动切换模式。</p>
+    <fieldset id="model-adaptations" class="model-adaptations">
+      <legend>原生模式的局部适配</legend>
+      <p class="hint">按你常用端点的实际表现配置。未勾选的特性保持原生；全部取消即严格原生。Portable 下保留这些选项，但不启用。</p>
+      <label><input id="adapt-agent-messages" type="checkbox" value="agent_messages">转换 agent 任务消息</label>
+      <p class="hint">端点拒绝 agent 消息，或接受请求却不执行其中任务时启用。任务正文转换为普通消息。</p>
+      <label><input id="adapt-standalone-outputs" type="checkbox" value="standalone_outputs">转换独立工具通知</label>
+      <p class="hint">端点不支持无调用 ID 的工具通知时启用。保留内容与来源，转换为普通消息。</p>
+      <label><input id="adapt-custom-tools" type="checkbox" value="custom_tools">转换自定义工具</label>
+      <p class="hint">端点不支持 custom 工具时启用。使用函数包装并还原调用；该工具输入需收齐后显示。</p>
+      <label><input id="adapt-discovered-tools" type="checkbox" value="discovered_tools">展开已发现工具</label>
+      <p class="hint">工具已提供但模型仍报告找不到时启用。将工具发现结果中的定义合并到本轮工具列表，保留命名空间。</p>
+    </fieldset>
   </div>
   <p id="model-detail-protocol" class="hint"></p><div id="model-detail-test"></div>
   <p id="model-detail-error" class="error" role="alert"></p>

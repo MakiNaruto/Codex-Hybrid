@@ -4,6 +4,26 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync('src/management/web/models.js','utf8');
 const persist=source.slice(source.indexOf('async function persistModelUpdates'),source.indexOf("$('add-models').onclick"));
+const adaptations=source.slice(source.indexOf('const adaptationControls='),source.indexOf('function modelName'));
+test('native settings and portable fallback retain per-model adaptations',()=>{
+  const controls={
+    'model-compatibility':{getAttribute:()=>portable?'true':'false'},
+    'adapt-agent-messages':{checked:true},'adapt-standalone-outputs':{checked:false},'adapt-custom-tools':{checked:true},'adapt-discovered-tools':{checked:false}
+  };
+  let portable=false;
+  const context=vm.createContext({$:id=>controls[id]});
+  vm.runInContext(adaptations,context);
+  const update=()=>JSON.parse(JSON.stringify(context.modelDetailUpdate({key:'p/m',protocol:'openai_responses'})));
+  context.syncAdaptationControls();
+  assert.equal(controls['adapt-custom-tools'].disabled,false);
+  assert.deepEqual(update(),{key:'p/m',responses_compatibility:'native',responses_adaptations:['agent_messages','custom_tools']});
+  portable=true;context.syncAdaptationControls();
+  assert.equal(controls['adapt-custom-tools'].disabled,true);
+  assert.deepEqual(update(),{key:'p/m',responses_compatibility:'portable',responses_adaptations:['agent_messages','custom_tools']});
+  portable=false;controls['adapt-agent-messages'].checked=false;controls['adapt-custom-tools'].checked=false;
+  assert.deepEqual(update().responses_adaptations,[]);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.modelDetailUpdate({key:'p/chat',protocol:'openai_chat_completions'}))),{key:'p/chat'});
+});
 function setup(failure){
   const events=[],error={textContent:'old'},controls=[{disabled:false},{disabled:true}];
   const dialog={setAttribute(){},removeAttribute(){},querySelectorAll:()=>controls,close:()=>events.push('close')};

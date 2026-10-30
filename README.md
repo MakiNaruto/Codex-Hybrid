@@ -18,7 +18,7 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
 <table>
   <tr>
     <td align="center" valign="top" width="33%">
-      <img src="docs/images/codex-model-picker.png" width="520" alt="Select a third-party model in Codex’s native model picker">
+      <img src="docs/images/codex-third-party-subagent.png" width="520" alt="An official-model agent delegates to a third-party model as a native subagent">
     </td>
     <td align="center" valign="top" width="33%">
       <img src="docs/images/management.png" width="520" alt="Manually add a provider, API key, and model">
@@ -28,7 +28,7 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Use third-party models in Codex</sub></td>
+    <td align="center"><sub>Use third-party models as subagents</sub></td>
     <td align="center"><sub>Add providers and models manually</sub></td>
     <td align="center"><sub>Reuse CC Switch configuration</sub></td>
   </tr>

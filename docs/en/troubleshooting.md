@@ -22,9 +22,9 @@ reasoning and compressed history are not covered yet. See the
 | You want to uninstall | Run `./scripts/codex-hybrid.sh uninstall`. It stops the service, asks whether to restore the Codex configuration, and removes the local provider table. Runtime files and credentials remain in the data directory. |
 | You want to migrate or reinstall | Run `uninstall` in the original location, then install dependencies and initialize with the selected data directory. |
 
-Third-party Responses API generations are buffered and validated until a terminal event
+Third-party Responses Portable generations are buffered and validated until a terminal event
 arrives before forwarding, so the first output is delayed. This prevents tool calls from
-discarded generations from reaching the executor. Official models and Chat Completions
+discarded generations from reaching the executor. Official models, native Responses (including explicit feature adaptations), and Chat Completions
 continue streaming immediately. Two retries mean at most three upstream requests, which
 can increase latency and usage. An early upstream disconnect discards the buffer and
 reports `UPSTREAM_STREAM_ENDED_EARLY` without automatic replay.

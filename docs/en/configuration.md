@@ -205,6 +205,28 @@ Prefer the complete generated candidate and `activate` to retain backup and inte
 
 ### Model membership and overrides
 
+Configure frequent Responses models in Models → View details: turn off full compatibility, then select only the agent-message, standalone-output, or custom-tool conversions required by that endpoint. Save to apply on the next request. No selections means strict native. Enable full compatibility for the Portable fallback when needed; no automatic switching or retries occur. Portable retains the selected adaptations without activating them. Existing defaults and saved modes are not migrated in bulk.
+
+Pydantic validates adapted structures with strict types. Only optional adaptation lists default to empty; task content, tool input, and call relationships are never invented. Invalid known structures fail explicitly. Unadapted native content and extension fields pass through. Tool JSON is validated once that tool input completes, without waiting for the entire response.
+
+An additional option, “Expand discovered tools” (`discovered_tools`), merges definitions from `additional_tools` / `tool_search_output` into current `tools`, retaining namespaces and tool-search result call IDs. Expanded `additional_tools` metadata is removed; conflicting definitions fail. Enable this if the model repeatedly cannot find an advertised tool. It increases the explicit tool list and context usage. The GLM-5.3-Flash trial currently uses it.
+
+Agent-message adaptation also recognizes readable task text placed by the host in `encrypted_content`. No decryption occurs; gAAAA ciphertext, UUID history markers and opaque tokens are rejected with `UNSUPPORTED_AGENT_MESSAGE_CONTENT`. Diagnostics record only fixed structural categories, never message text. Retest in a fresh chat or parent agent after changing adaptations, to avoid earlier failure history influencing the model.
+
+The four adaptations (`agent_messages`, `standalone_outputs`, `custom_tools`, and `discovered_tools`) cover the main compatibility problems observed so far with GLM-5.3-Flash, DeepSeek V4.1 Flash, Qwen3.8 Max, and Qwen3.8 2.4T A95B: task delivery, notifications, tool formats, and discovery during nested delegation. Enable only the adaptations needed by the endpoint; this is not a universal compatibility guarantee. Prefer native mode with explicit adaptations and use Portable as a manual fallback.
+
+| Current trial model | Adaptations enabled in native mode |
+| --- | --- |
+| GLM-5.3-Flash | agent_messages, standalone_outputs, discovered_tools |
+| DeepSeek V4.1 Flash | agent_messages, custom_tools, discovered_tools |
+| Qwen3.8 Max, Qwen3.8 2.4T A95B | All four |
+
+These profiles reflect current endpoints and short real nested-agent tests on Windows on 2026-10-30. The necessity of discovered_tools for Qwen was not isolated. Long tasks, concurrency, old histories, and macOS remain unverified. See the [decision and troubleshooting record](../decisions/002-native-feature-adaptations.md) for evidence, request IDs, and conversion tradeoffs.
+
+Experimental native feature adaptations: keep the model in `native` mode and set `responses_adaptations` in a model update to `POST /manage/api/models`. Supported flags are `custom_tools` (wrap only custom tools as functions within their original namespaces, restoring returned calls), `agent_messages` (plaintext agent tasks to user messages), `standalone_outputs` (named outputs without call_id to user context retaining provenance), and `discovered_tools` (expand definitions from tool discovery history). These are source-scoped Hybrid preferences; CC Switch remains read-only. An empty array restores strict native transport. Flags are dormant outside native mode. Model details displays active adaptations.
+
+This path streams immediately, without whole-generation buffering or generation retries. Text, phases and unaffected tool argument deltas are preserved. Wrapped custom inputs are restored only after complete JSON/string validation, so their wrapper argument deltas are suppressed. Original grammar is conveyed as guidance rather than guaranteed upstream enforcement. Encrypted agent messages are rejected rather than decrypted or treated as plaintext. Connection probes do not establish full history-switching or nested-agent acceptance.
+
 Model details offers a per-model compatibility switch. Hybrid stores this override and the added-model list in its private settings.json (`model_preferences`), without writing to CC Switch. YAML models may also specify responses_compatibility. Precedence: Hybrid model override → YAML model setting → provider setting → portable default for Responses. Chat does not expose this switch.
 
 Membership controls both publication and live routing. The first upgrade publication retains previously advertised models; later discoveries require adding explicitly. CC Switch database selections are scoped separately and restored when switching back. Saving a new model in independent management counts as an explicit Add; external source-file additions do not.

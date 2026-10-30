@@ -495,7 +495,7 @@ class Management:
             added = set(preferences['added'])
             seen = set()
             for update in updates:
-                if (not isinstance(update, dict) or set(update) - {'key', 'added', 'responses_compatibility'}
+                if (not isinstance(update, dict) or set(update) - {'key', 'added', 'responses_compatibility', 'responses_adaptations'}
                         or not isinstance(update.get('key'), str) or update['key'] in seen):
                     raise ConfigError('INVALID_MODEL_PREFERENCES')
                 model_key = update['key']
@@ -519,6 +519,15 @@ class Management:
                     if model['protocol'] != 'openai_responses':
                         raise ConfigError('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
                     preferences['compatibility'][model_key] = value
+                if 'responses_adaptations' in update:
+                    from adapters.minimal_responses import validate_adaptations
+                    if model['protocol'] != 'openai_responses':
+                        raise ConfigError('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
+                    try:
+                        value = validate_adaptations(update['responses_adaptations'])
+                    except ValueError:
+                        raise ConfigError('INVALID_RESPONSES_ADAPTATIONS') from None
+                    preferences.setdefault('adaptations', {})[model_key] = value
             preferences['added'] = sorted(added)
             return self.publish(extra={'model_preferences': settings['model_preferences']})
 

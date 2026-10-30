@@ -214,6 +214,28 @@ http_headers = { "X-Connected-Token" = "从生成的候选配置复制实际本�
 
 ### 模型级设置与添加名单
 
+为常用 Responses 模型自配适配：进入“模型管理 → 查看详情”，关闭“完整兼容模式”，再按端点的实际能力勾选“转换 agent 任务消息”“转换独立工具通知”“转换自定义工具”，保存后下一轮生效。全部取消即严格原生。遇到暂时无法适配的问题，可开启完整兼容模式使用 Portable 兜底；不会自动切换或重试。切换为 Portable 时，局部选项保留但不生效。现有默认和已保存的模式不因这项功能批量改变。
+
+结构校验使用 Pydantic 严格类型：只为适配配置的可选列表补空默认值，不为任务、工具输入或调用关系伪造缺失数据。已知待转换结构校验失败会报错；未适配的原生内容与扩展字段继续透传。工具 JSON 在该工具输入完成时校验，不等待整轮响应结束。
+
+真实子 agent 场景另提供“展开已发现工具”（API 值 `discovered_tools`）：将 `additional_tools` / `tool_search_output` 中的定义合并到当前 `tools`，保留 namespace，移除已展开的 `additional_tools` 元数据，保留工具搜索调用结果关联；冲突定义报错。工具已提供但模型反复报告找不到时，可单独启用。代价是增加本轮显式工具列表和上下文用量。GLM-5.3-Flash 当前试用启用了此项。
+
+agent 消息适配也处理宿主将可读任务文本放在 `encrypted_content` 字段中的已验证形态；不执行解密，gAAAA 密文、UUID 历史占位和不透明 token 明确拒绝。失败时诊断码为 `UNSUPPORTED_AGENT_MESSAGE_CONTENT`，只记录固定的结构分类，不记录消息正文。修改适配后，建议新建聊天或新建父 agent 重测，避免旧的失败历史影响模型判断。
+
+目前四项能力（`agent_messages`、`standalone_outputs`、`custom_tools`、`discovered_tools`）已覆盖当前 GLM-5.3-Flash、DeepSeek V4.1 Flash、Qwen3.8 Max 和 Qwen3.8 2.4T A95B 实测中的主要兼容问题，包括任务投递、通知、工具格式及嵌套委任中的工具发现。它们是可组合的适配范围，不代表所有模型都应全勾，也不保证所有端点和历史都兼容。推荐原生优先、按需开启，Portable 手动兜底。
+
+| 当前试用模型 | native 下启用的适配 |
+| --- | --- |
+| GLM-5.3-Flash | agent_messages、standalone_outputs、discovered_tools |
+| DeepSeek V4.1 Flash | agent_messages、custom_tools、discovered_tools |
+| Qwen3.8 Max、Qwen3.8 2.4T A95B | 四项全部开启 |
+
+以上为 2026-10-30 当前端点的 Windows 短任务和真实嵌套子 agent 样本；Qwen 的 discovered_tools 未做单项必要性对照，长任务、并发、旧历史和 macOS 尚未验收。问题现象、请求 ID、转换代价与复测依据见[决策与排查记录](../decisions/002-native-feature-adaptations.md)。
+
+实验性原生局部兼容：模型仍选择 `native`，再通过管理 API `POST /manage/api/models` 的单条更新设置 `responses_adaptations` 数组。可选项为 `custom_tools`（仅将 custom 工具包装为同命名空间的 function，并还原返回调用）、`agent_messages`（将明文 agent 任务转换为 user 消息）、`standalone_outputs`（将无 call_id 的具名工具通知转换为带来源的 user 上下文）、`discovered_tools`（展开历史发现的工具定义）。这些选项保存在当前来源的 Hybrid 模型偏好中，不修改 CC Switch；设为空数组可恢复严格原生。非原生模式下暂不生效。模型详情会显示启用的局部兼容项。
+
+局部兼容不缓存整轮输出，不自动重试生成；正文、阶段标记和未转换工具的参数增量直接转发。包装后的 custom 工具参数需收齐并验证字符串后才能还原为原生调用，因此该工具的输入增量不转发。原始 grammar 作为输入约束说明传递，不能保证上游强制遵守。加密 agent 消息不会解密或当作明文；不支持时明确失败。不要据简单连接测试推断历史切换、全部工具或嵌套 agent 已通过。
+
 管理页的模型详情可单独开关兼容模式。Hybrid 将覆盖值和已添加名单保存到私有 `settings.json` 的 `model_preferences`，不回写 CC Switch。YAML 的每个模型也可设置 `responses_compatibility`；优先级为 Hybrid 模型覆盖 → YAML 模型设置 → 厂商设置 → Responses 默认 portable。Chat 不显示此开关。
 
 已添加名单同时限制客户端目录与实时调用。升级首次发布保留已有模型；之后新发现模型需手动添加。不同 CC Switch 数据库的名单独立，切回原来源恢复其选择。通过独立管理保存新模型视为明确添加；仅在来源文件中出现的新模型不会自动加入。

@@ -38,7 +38,7 @@ SAFE_VALUES = {
                    'INVALID_REQUEST_OBJECT', 'INVALID_BODY_SIZE', 'GATEWAY_UNREGISTERED_TOOL',
                    'GATEWAY_STREAM_ADAPTATION_FAILED', 'UPSTREAM_STREAM_ENDED_EARLY',
                    'UPSTREAM_PROTOCOL_MISMATCH', 'INVALID_STREAM_PAYLOAD', 'UNSUPPORTED_REASONING_HISTORY',
-                   'UNSUPPORTED_SYSTEM_CONTENT'},
+                   'UNSUPPORTED_SYSTEM_CONTENT', 'UNSUPPORTED_AGENT_MESSAGE_CONTENT'},
     'protocol': {'openai_responses', 'openai_chat_completions'},
     'route_type': {'official', 'external'},
     'upstream_error_type': {'invalid_request_error', 'authentication_error', 'permission_error',
@@ -58,10 +58,16 @@ def safe_details(entry):
     for key in ('error_type', 'cause_type'):
         if isinstance(entry.get(key), str) and entry[key] in EXCEPTION_TYPES:
             result[key] = entry[key]
+    shapes = entry.get('agent_content_shapes')
+    allowed_shapes = {'non_object','input_text','text','output_text','other',
+                      'encrypted_content:ciphertext','encrypted_content:readable',
+                      'encrypted_content:opaque_string','encrypted_content:non_string'}
+    if isinstance(shapes, list):
+        result['agent_content_shapes'] = sorted({v for v in shapes if isinstance(v, str) and v in allowed_shapes})
     request_id = entry.get('request_id')
     if isinstance(request_id, str) and re.fullmatch(r'[0-9a-f]{32}', request_id):
         result['request_ref'] = hashlib.sha256(request_id.encode()).hexdigest()[:24]
-    for key in ('stream', 'proxy_configured'):
+    for key in ('stream', 'proxy_configured', 'spawn_agent_advertised'):
         if type(entry.get(key)) is bool:
             result[key] = entry[key]
     for key in ('errno', 'winerror'):

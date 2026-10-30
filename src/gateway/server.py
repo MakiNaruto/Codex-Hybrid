@@ -28,6 +28,7 @@ from model_catalog.sources import load_source, merged_catalog, update_cc_snapsho
 from model_catalog.catalog import ConfigError, resolve_api_key
 from adapters.chat import ChatAdapter
 from adapters.native_responses import NativeResponsesAdapter
+from adapters.minimal_responses import MinimalResponsesAdapter
 from adapters.request_compat import normalize_history, external_context, upstream_error
 from model_catalog.agent_catalog import expose_spawn_catalog
 
@@ -246,7 +247,9 @@ def external_route(body, settings):
     native = (provider['protocol'] == 'openai_responses'
               and provider.get('responses_compatibility', 'native') == 'native')
     if native:
-        adapter = NativeResponsesAdapter(history_migration=provider.get('history_migration', False))
+        adaptations = provider.get('responses_adaptations', [])
+        adapter = (MinimalResponsesAdapter(adaptations, history_migration=provider.get('history_migration', False))
+                   if adaptations else NativeResponsesAdapter(history_migration=provider.get('history_migration', False)))
     else:
         adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
     adapter.timeout_seconds = provider['timeout_seconds']
@@ -520,6 +523,15 @@ class Gateway:
                     observation['tool_types'] = sorted(set(tool_types(body.get('tools', [])) +
                         tool_types([t for i in body.get('input', []) if i.get('type') == 'additional_tools'
                                     for t in i.get('tools', [])])))
+                    def has_spawn(tools):
+                        return any(tool.get('name') == 'spawn_agent' or has_spawn(tool.get('tools', []))
+                                   for tool in tools)
+                    observation['spawn_agent_in_request_tools'] = has_spawn(body.get('tools', []))
+                    observation['spawn_agent_in_history_tools'] = any(
+                        has_spawn(item.get('tools', [])) for item in body.get('input', [])
+                        if item.get('type') in {'additional_tools', 'tool_search_output'})
+                    observation['spawn_agent_advertised'] = (observation['spawn_agent_in_request_tools']
+                                                            or observation['spawn_agent_in_history_tools'])
                     observation['phase'] = 'route_request'
                     url, payload, headers, adapt = route(body, self.headers, settings, owner.deepseek)
                     observation['model'] = body['model']
@@ -649,6 +661,8 @@ class Gateway:
                 except (ValueError, KeyError, TypeError, AttributeError, IndexError) as error:
                     observation['status'] = 'incompatible_request_or_stream'
                     observation['error_type'] = type(error).__name__
+                    if hasattr(error, 'agent_content_shapes'):
+                        observation['agent_content_shapes'] = error.agent_content_shapes
                     source_root = Path(__file__).resolve().parents[1]
                     observation['error_locations'] = [
                         f'{Path(f.filename).resolve().relative_to(source_root).as_posix()}:{f.lineno}'
@@ -667,7 +681,8 @@ class Gateway:
                             and error.args[0] in {
                             'SUBSCRIPTION_AUTH_REQUIRED', 'STREAM_REQUIRED', 'INVALID_REQUEST_OBJECT',
                             'UPSTREAM_PROTOCOL_MISMATCH', 'INVALID_STREAM_PAYLOAD',
-                            'UNSUPPORTED_REASONING_HISTORY', 'UNSUPPORTED_SYSTEM_CONTENT'}):
+                            'UNSUPPORTED_REASONING_HISTORY', 'UNSUPPORTED_SYSTEM_CONTENT',
+                            'UNSUPPORTED_AGENT_MESSAGE_CONTENT'}):
                         observation['error_code'] = error.args[0]
                         code = error.args[0]
                     detail = None

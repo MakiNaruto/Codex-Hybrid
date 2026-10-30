@@ -12,6 +12,23 @@ import test_cc_sync as cc_sync
 
 class ModelManagementTests(unittest.TestCase):
     setUp = cc_sync.CCSyncTests.setUp
+    def test_native_adaptations_persist_and_route_without_changing_cc(self):
+        from adapters.minimal_responses import MinimalResponsesAdapter
+        self.manager.publish()
+        before = self.fixture.database.read_bytes()
+        self.manager.save_models(self.manager.view()['source_id'], [{'key':'record-a/model-b',
+            'responses_compatibility':'native','responses_adaptations':['custom_tools']}])
+        settings = self.gateway.settings
+        _, _, _, adapt = route({'model':'record-a/model-b','stream':True,'input':[], 'tools':[]},
+            {'Authorization':'Bearer fixture-auth-only'}, settings)
+        self.assertIsInstance(adapt.__self__, MinimalResponsesAdapter)
+        self.assertEqual(load_source(settings).select('record-a/model-b')[1]['responses_adaptations'], ['custom_tools'])
+        self.assertEqual(self.fixture.database.read_bytes(), before)
+        self.assertEqual(json.loads(self.path.read_text())['model_preferences'], settings['model_preferences'])
+        with self.assertRaises(ConfigError):
+            self.manager.save_models(self.manager.view()['source_id'], [{'key':'record-a/model-b',
+                'responses_adaptations':['guess']}])
+        self.assertEqual(self.gateway.settings, settings)
     # Reuse the real SQLite fixture and manager lifecycle, without inheriting its test cases below.
     def test_remove_add_compatibility_survive_sync_and_never_write_cc(self):
         self.manager.publish()

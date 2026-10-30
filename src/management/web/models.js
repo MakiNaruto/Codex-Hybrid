@@ -3,6 +3,19 @@
 let modelDialogSource;
 let detailModel;
 let modelSaving=false;
+const adaptationControls={agent_messages:'adapt-agent-messages',standalone_outputs:'adapt-standalone-outputs',custom_tools:'adapt-custom-tools',discovered_tools:'adapt-discovered-tools'};
+function syncAdaptationControls(){
+  const portable=$('model-compatibility').getAttribute('aria-checked')==='true';
+  for(const id of Object.values(adaptationControls))$(id).disabled=portable;
+}
+function modelDetailUpdate(model){
+  const update={key:model.key};
+  if(model.protocol==='openai_responses'){
+    update.responses_compatibility=$('model-compatibility').getAttribute('aria-checked')==='true'?'portable':'native';
+    update.responses_adaptations=Object.entries(adaptationControls).filter(([,id])=>$(id).checked).map(([key])=>key);
+  }
+  return update;
+}
 function modelName(model){
   return state.mode==='cc_switch'?(state.inventory.find(entry=>entry.provider_key===model.provider)?.models.find(entry=>entry.model_id===model.model_id)?.display_name||model.model_id):model.display_name;
 }
@@ -27,7 +40,7 @@ function renderModelList(){
   for(const model of models){
     const row=el('div',undefined,'model-list-row');
     row.append(modelIdentity(model));
-    const mode=model.protocol==='openai_responses'?(model.responses_compatibility==='portable'?'兼容模式':'原生模式'):'Chat 转换';
+    const mode=model.protocol==='openai_responses'?(model.responses_compatibility==='portable'?'兼容模式':model.responses_adaptations?.length?'原生 · 局部适配':'原生模式'):'Chat 转换';
     row.append(el('span',mode,'model-list-mode'));
     const details=button('查看详情',()=>openModelDetail(model),'secondary model-list-details');
     details.setAttribute('aria-label',modelName(model)+'，查看详情');
@@ -96,7 +109,13 @@ function openModelDetail(model){
     meta.append(el('dt',label),el('dd',value));
   }
   $('model-compatibility-setting').hidden=model.protocol!=='openai_responses';
+  if(model.responses_compatibility==='native'&&model.responses_adaptations?.length){
+    const labels={custom_tools:'自定义工具',agent_messages:'子 agent 任务消息',standalone_outputs:'独立工具通知',discovered_tools:'已发现工具'};
+    meta.append(el('dt','局部兼容'),el('dd',model.responses_adaptations.map(key=>labels[key]||key).join('、')));
+  }
   $('model-compatibility').setAttribute('aria-checked',String(model.responses_compatibility==='portable'));
+  for(const [key,id] of Object.entries(adaptationControls))$(id).checked=(model.responses_adaptations||[]).includes(key);
+  syncAdaptationControls();
   $('model-detail-protocol').textContent=model.protocol==='openai_responses'?'接口协议 · Responses':'接口协议 · Chat Completions（已通过格式转换接入）';
   $('model-detail-test').replaceChildren(testButton(model));$('model-detail-error').textContent='';
   $('save-model-detail').disabled=false;$('remove-model').disabled=false;
@@ -119,10 +138,10 @@ $('available-search').addEventListener('input',renderAvailableModels);
 $('confirm-add-models').onclick=()=>persistModelUpdates([...$('available-models').querySelectorAll('input:checked')].map(input=>({key:input.value,added:true})),$('add-models-dialog'),'add-models-error');
 $('model-compatibility').onclick=()=>{
   const control=$('model-compatibility');control.setAttribute('aria-checked',String(control.getAttribute('aria-checked')!=='true'));
+  syncAdaptationControls();
 };
 $('save-model-detail').onclick=()=>{
-  const update={key:detailModel.key};
-  if(detailModel.protocol==='openai_responses')update.responses_compatibility=$('model-compatibility').getAttribute('aria-checked')==='true'?'portable':'native';
+  const update=modelDetailUpdate(detailModel);
   persistModelUpdates([update],$('model-detail-dialog'),'model-detail-error');
 };
 $('remove-model').onclick=()=>persistModelUpdates([{key:detailModel.key,added:false}],$('model-detail-dialog'),'model-detail-error');

@@ -28,10 +28,21 @@ def apply_preferences(catalog, settings):
     preferences = settings.get('model_preferences', {}).get(source_key(settings['source']))
     if preferences is None:
         return catalog
-    if not isinstance(preferences, dict) or set(preferences) - {'added', 'compatibility'}:
+    if not isinstance(preferences, dict) or set(preferences) - {'added', 'compatibility', 'adaptations'}:
         raise ConfigError('INVALID_MODEL_PREFERENCES')
     added = preferences.get('added', [])
     compatibility = preferences.get('compatibility', {})
+    adaptations = preferences.get('adaptations', {})
+    from adapters.minimal_responses import validate_adaptations
+    if not isinstance(adaptations, dict):
+        raise ConfigError('INVALID_MODEL_PREFERENCES')
+    try:
+        for key, value in adaptations.items():
+            if not isinstance(key, str):
+                raise ValueError('INVALID_MODEL_PREFERENCES')
+            validate_adaptations(value)
+    except ValueError:
+        raise ConfigError('INVALID_MODEL_PREFERENCES') from None
     if (not isinstance(added, list) or any(not isinstance(key, str) for key in added)
             or not isinstance(compatibility, dict)
             or any(not isinstance(key, str) or value not in ('native', 'portable')
@@ -41,6 +52,8 @@ def apply_preferences(catalog, settings):
         model['enabled'] = model['source_enabled'] and key in added
         if key in compatibility and model['protocol'] == 'openai_responses':
             model['responses_compatibility'] = compatibility[key]
+        if key in adaptations and model['protocol'] == 'openai_responses':
+            model['responses_adaptations'] = list(adaptations[key])
     if catalog.default_model and not catalog.models[catalog.default_model]['enabled']:
         catalog.default_model = None
     return catalog

@@ -21,8 +21,8 @@
 | 卸载 | 执行 `./scripts/codex-hybrid.sh uninstall`；服务会先停止，之后确认恢复 Codex 配置并移除本地 provider 表。数据目录和凭据会保留 |
 | 准备迁移或重装 | 先在原位置回滚、重启 Codex、停止服务，再安装依赖并使用所选数据目录重新初始化 |
 
-第三方 Responses API 为避免执行被丢弃生成中的工具调用，会先缓存并校验整轮响应，
-收到终止事件后再转发，因此首段输出会延迟；官方模型和 Chat Completions 保持流式转发。
+第三方 Responses Portable 模式为避免执行被丢弃生成中的工具调用，会先缓存并校验整轮响应，
+收到终止事件后再转发，因此首段输出会延迟；官方模型、原生 Responses（含显式局部兼容）和 Chat Completions 保持流式转发。
 最多两次重试表示最多三次上游请求，可能增加等待时间和用量。上游提前断流时丢弃缓存，
 报告 `UPSTREAM_STREAM_ENDED_EARLY`，不会自动重放。
 

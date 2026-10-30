@@ -222,6 +222,7 @@ class Catalog:
             fail('MODEL_DISABLED')
         model = self.models[selected]
         return model, {**self.providers[model['provider']],
+                       'responses_adaptations': model.get('responses_adaptations', []),
                        'responses_compatibility': model['responses_compatibility']}
 
     def listing(self, include_disabled=False):
@@ -229,7 +230,8 @@ class Catalog:
         return [{key: model[key] for key in ('key', 'provider', 'protocol', 'model_id',
                   'display_name', 'enabled', 'max_output_tokens', 'output_limit_configured',
                   'context_window', 'source_enabled', 'responses_compatibility')} |
-                {'default': model['key'] == self.default_model, 'validation': 'not_checked'}
+                {'default': model['key'] == self.default_model, 'validation': 'not_checked',
+                 'responses_adaptations': model.get('responses_adaptations', [])}
                 for model in self.models.values() if include_disabled or model['enabled']]
 
 

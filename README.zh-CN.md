@@ -18,7 +18,7 @@
 <table>
   <tr>
     <td align="center" valign="top" width="33%">
-      <img src="docs/images/codex-model-picker.png" width="520" alt="在 Codex 原生列表中选择第三方模型">
+      <img src="docs/images/codex-third-party-subagent.png" width="520" alt="官方主 agent 调用第三方模型作为原生子 agent 的示例">
     </td>
     <td align="center" valign="top" width="33%">
       <img src="docs/images/management.png" width="520" alt="手动添加厂商、API Key 和模型">
@@ -28,7 +28,7 @@
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>在 Codex 中使用第三方模型</sub></td>
+    <td align="center"><sub>调用第三方模型作为子 agent</sub></td>
     <td align="center"><sub>手动添加厂商与模型</sub></td>
     <td align="center"><sub>复用 CC Switch 配置</sub></td>
   </tr>
