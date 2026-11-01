@@ -5,8 +5,8 @@ const vm=require('node:vm');
 const source=fs.readFileSync('src/management/web/app.js','utf8');
 const navigation=source.slice(source.indexOf('function renderManagementPage'),source.indexOf("window.addEventListener('hashchange'"));
 function setup(hash){
-  const nodes=Object.fromEntries(['page-access','page-models','page-diagnostics','page-title','page-intro'].map(id=>[id,{hidden:false,focus(){this.focused=true;}}]));
-  const links=['access','models','diagnostics'].map(page=>({dataset:{page},setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];}}));
+  const nodes=Object.fromEntries(['page-access','page-models','page-diagnostics','page-usage','page-title','page-intro'].map(id=>[id,{hidden:false,focus(){this.focused=true;}}]));
+  const links=['access','models','diagnostics','usage'].map(page=>({dataset:{page},setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];}}));
   const context=vm.createContext({window:{location:{hash}},document:{querySelectorAll:()=>links},$:id=>nodes[id]});
   vm.runInContext(navigation,context);return {context,nodes,links};
 }
@@ -31,4 +31,10 @@ test('remembered page survives a browser reload without fragment',()=>{
   context.localStorage={getItem:()=>saved,setItem:(key,value)=>{saved=value;}};
   context.renderManagementPage();assert.equal(nodes['page-diagnostics'].hidden,false);
   context.window.location.hash='#access';context.renderManagementPage();assert.equal(saved,'access');
+});
+
+test('usage navigation shows the usage page and hides other pages',()=>{
+  const {context,nodes}=setup('#usage');context.renderManagementPage();
+  assert.equal(nodes['page-usage'].hidden,false);assert.equal(nodes['page-models'].hidden,true);
+  assert.equal(context.document.title,'Codex Hybrid · 用量统计');
 });

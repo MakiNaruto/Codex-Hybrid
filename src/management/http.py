@@ -46,6 +46,7 @@ def handle(handler, gateway, method):
               '/manage/desktop.js': ('desktop.js', 'application/javascript; charset=utf-8'),
               '/manage/app.js': ('app.js', 'application/javascript; charset=utf-8'),
               '/manage/models.js': ('models.js', 'application/javascript; charset=utf-8'),
+              '/manage/usage.js': ('usage.js', 'application/javascript; charset=utf-8'),
               '/manage/diagnostics.js': ('diagnostics.js', 'application/javascript; charset=utf-8'),
               '/manage/style.css': ('style.css', 'text/css; charset=utf-8')}
     if method == 'GET' and handler.path in static:
@@ -67,6 +68,12 @@ def handle(handler, gateway, method):
                 reply(400, {'code': 'INVALID_DIAGNOSTIC_PERIOD'}); return True
             days = None if periods[0] == 'all' else int(periods[0])
             reply(200, report(manager, days=days)); return True
+        if method == 'GET' and urlsplit(handler.path).path == '/manage/api/usage':
+            from management.usage import report
+            periods = parse_qs(urlsplit(handler.path).query, keep_blank_values=True).get('days', ['7'])
+            if len(periods) != 1 or periods[0] not in {'1', '7', '30'}:
+                reply(400, {'code': 'INVALID_USAGE_PERIOD'}); return True
+            reply(200, report(manager.directory, days=int(periods[0]))); return True
         if method == 'GET' and handler.path == '/manage/api/activity':
             reply(200, manager.activity_state()); return True
         if method == 'GET' and handler.path == '/manage/api/state':

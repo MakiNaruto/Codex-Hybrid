@@ -637,6 +637,7 @@ function renderManagementPage(focusHeading=false){
   const pages={
     access:['接入与运行','配置 Codex 接入方式，查看客户端状态与启动偏好。'],
     models:['模型管理','选择要在 Codex 中使用的模型，连接与兼容设置集中管理。'],
+    usage:['用量统计','查看模型调用趋势、Token 消耗与缓存命中情况。'],
     diagnostics:['运行与诊断','查看服务状态、请求错误与诊断信息。']
   };
   let remembered='';

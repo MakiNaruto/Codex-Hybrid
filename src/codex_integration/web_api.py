@@ -5,7 +5,8 @@ from model_catalog.catalog import ConfigError
 
 
 READS = {'state', 'activity', 'processes', 'diagnostics?days=1', 'diagnostics?days=7',
-         'diagnostics?days=30', 'diagnostics?days=all'}
+         'diagnostics?days=30', 'diagnostics?days=all',
+         'usage?days=1', 'usage?days=7', 'usage?days=30'}
 WRITES = {
     'source': ({'mode'}, {'cc_db_path'}),
     'models': ({'source_id', 'updates'}, set()),
@@ -61,6 +62,9 @@ def handle(controller, request):
         return manager.activity_state()
     if path == 'processes':
         return manager.process_state()
+    if path.startswith('usage?days='):
+        from management.usage import report
+        return report(manager.directory, days=int(path.split('=', 1)[1]))
     if path.startswith('diagnostics?days='):
         from management.diagnostics import report
         days = path.split('=', 1)[1]
