@@ -52,6 +52,11 @@ with plist_path.open("wb") as stream:
     plistlib.dump(info, stream)
 ICONS
 
+# Refresh this bundle's icon registration after updating its contents in place.
+touch "desktop/build/stage0/Codex Hybrid Tray Preview.app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f "desktop/build/stage0/Codex Hybrid Tray Preview.app"
+
 if [[ "${STAGE0_OPEN_APP:-1}" == 1 ]]; then
   open "./desktop/build/stage0/Codex Hybrid Tray Preview.app"
 fi
