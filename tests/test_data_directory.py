@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from desktop.paths import data_directory, check_legacy_installation
-from desktop.preferences import configure
+from codex_integration.paths import data_directory, check_legacy_installation
+from codex_integration.preferences import configure
 
 
 class DataDirectoryTests(unittest.TestCase):

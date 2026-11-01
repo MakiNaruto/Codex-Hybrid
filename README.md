@@ -117,4 +117,5 @@ After adding or removing models, update the client model catalog and restart Cod
 | [Commands and advanced setup](docs/en/cli.md) | Commands, defaults, private access links, and custom paths |
 | [Usage and verification](docs/en/usage.md) | Connection tests, main chats, native subagents, and verification limits |
 | [Troubleshooting](docs/en/troubleshooting.md) | Missing models, 401 errors, installation, and rollback |
-| [Architecture](docs/en/architecture.md) | Routing and credential boundaries |
+| [Architecture](docs/en/architecture.md) | Repository layout, browser and desktop responsibilities, routing and credentials |
+| [Desktop app and builds](apps/desktop/README.md) | Tauri shell, Intel Mac builds and platform verification scope (Chinese) |

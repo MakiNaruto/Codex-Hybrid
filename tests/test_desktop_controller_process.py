@@ -17,7 +17,7 @@ class ControllerProcessTests(unittest.TestCase):
     def test_private_session_owns_gateway_and_eof_reaps_it(self):
         root = Path(__file__).resolve().parents[1]
         binary = os.environ.get('STAGE0_SNAPSHOT_EXECUTABLE')
-        command = [str(Path(binary).resolve())] if binary else [sys.executable, '-X', 'utf8', str(root / 'desktop/stage0/probe.py')]
+        command = [str(Path(binary).resolve())] if binary else [sys.executable, '-X', 'utf8', str(root / 'apps/desktop/stage0/probe.py')]
         with tempfile.TemporaryDirectory(prefix='controller-session-') as temporary:
             home = Path(temporary)
             codex = home / '.codex'

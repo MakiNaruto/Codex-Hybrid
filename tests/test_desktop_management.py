@@ -8,8 +8,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from desktop.management import execute
-from desktop.snapshot import snapshot
+from codex_integration.management import execute
+from codex_integration.snapshot import snapshot
 
 
 class DesktopManagementTests(unittest.TestCase):
@@ -84,13 +84,13 @@ class DesktopManagementTests(unittest.TestCase):
         self.assertEqual(result, {'ok': False, 'error': 'OPERATION_FAILED'})
 
     def test_existing_service_blocks_a_separate_desktop_process(self):
-        from desktop.locking import DirectoryLock
+        from codex_integration.locking import DirectoryLock
         self.initialize()
         environment = os.environ.copy()
         environment['PYTHONPATH'] = str(Path(__file__).resolve().parents[1] / 'src')
         with DirectoryLock(self.directory, 'service.lock'):
             child = subprocess.run([sys.executable, '-c',
-                'from desktop.management import execute; import json,sys; '
+                'from codex_integration.management import execute; import json,sys; '
                 'print(json.dumps(execute({"action":"initialize"},directory=sys.argv[1])))',
                 str(self.directory)], env=environment, capture_output=True, text=True, timeout=10)
         self.assertEqual(json.loads(child.stdout)['error'], 'SERVICE_ALREADY_RUNNING')

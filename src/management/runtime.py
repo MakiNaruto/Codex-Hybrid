@@ -273,7 +273,7 @@ def handler(context):
 
 
 def serve(settings_path, record):
-    from desktop.locking import DirectoryLock
+    from codex_integration.locking import DirectoryLock
     from gateway.server import Server, route, sse_events
     from management.service import Management, private_write
     import secrets

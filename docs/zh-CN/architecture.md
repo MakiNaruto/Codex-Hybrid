@@ -44,6 +44,22 @@ Chat Completions 使用现有兼容转换。Responses 默认（或显式设置 `
 
 ### 代码职责与复用边界
 
+```text
+apps/desktop/               Tauri 桌面外壳、构建工具与桌面验证资料
+src/
+├─ cli/                     安装向导与命令行入口
+├─ codex_integration/       Codex 本机配置、会话迁移、平台控制与桌面私有协议
+├─ management/              两端共用的管理业务、运行时及网页 HTTP 适配
+│  └─ web/                  浏览器与 Tauri 共用的 HTML、CSS 和 JavaScript
+├─ gateway/                 模型请求转发与服务入口
+├─ model_catalog/           模型来源与目录
+└─ adapters/                上游协议适配
+```
+
+网页和桌面按入口与传输方式区分：浏览器通过 `management/http.py` 使用 HTTP，Tauri 通过 `codex_integration/controller.py` 和 `web_api.py` 使用私有 stdio/IPC；两者复用管理业务和页面。`web/transport.js` 选择传输方式，`web/desktop.js` 处理桌面生命周期。Windows 与 macOS 的进程控制仍分别位于 `codex_integration/windows_*.py` 和 `macos_client.py`。
+
+原根目录 `desktop/` 现为 `apps/desktop/`，原 `src/desktop/` 现为 `src/codex_integration/`。执行构建、探针或直接导入 Python 模块时使用新路径；已安装的旧桌面包需重新构建。CLI 命令、HTTP 路径和用户数据位置保持原有约定。桌面构建见[桌面应用说明](../../apps/desktop/README.md)。
+
 | 模块 | 职责 |
 | --- | --- |
 | `gateway/server.py` | HTTP 生命周期、认证和路由选择；`external_route` 组织第三方请求，不执行工具 |
@@ -54,8 +70,8 @@ Chat Completions 使用现有兼容转换。Responses 默认（或显式设置 `
 | `adapters/coordination.py` | 原生协作 namespace 映射和请求内 spawn 名称一致性，独立于 Portable 转换 |
 | `adapters/request_compat.py` | 历史重放、路由上下文和脱敏错误转换 |
 | `management/` | 配置发布、管理 HTTP 接口和转发进程生命周期；服务层持有锁与配置快照，`routing.py` 组织路由预览与可恢复事务 |
-| `desktop/configuration.py` | CLI 与管理路由共用的纯 TOML 转换：生成、识别、恢复受管字段和保留当前模型，不读写文件或调用操作系统 |
-| `desktop/` | 客户端命令与服务、会话迁移和按平台分开的桌面控制 |
+| `codex_integration/configuration.py` | CLI 与管理路由共用的纯 TOML 转换：生成、识别、恢复受管字段和保留当前模型，不读写文件或调用操作系统 |
+| `codex_integration/` | 客户端命令与服务、会话迁移和按平台分开的桌面控制 |
 | `management/web/` | `app.js` 提供公共交互与接入编排，`models.js` 处理模型页面，`diagnostics.js` 在独立作用域内管理诊断时间范围与请求状态 |
 
 Portable 请求按固定顺序处理：先注册本次请求和历史中发现的全部工具，再转换历史，随后检查重复工具的执行结构，最后生成实际可调用的协作工具说明。不要把工具发现移到历史转换之后：历史调用可能依赖后面才出现的工具定义。

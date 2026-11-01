@@ -65,7 +65,7 @@ After running `refresh-models`, restart the service and fully quit and reopen Co
 See [configuration](configuration.md) and [commands](cli.md) for more detail.
 
 
-The Windows-only `desktop.probe_windows_restart_manager` (run with `PYTHONPATH=src python -m desktop.probe_windows_restart_manager`) creates isolated GUI fixtures, verifying background cooperative exit and respected shutdown refusal. It never operates on Codex. The real Codex background restart still needs separate validation.
+The Windows-only `codex_integration.probe_windows_restart_manager` (run with `PYTHONPATH=src python -m codex_integration.probe_windows_restart_manager`) creates isolated GUI fixtures, verifying background cooperative exit and respected shutdown refusal. It never operates on Codex. The real Codex background restart still needs separate validation.
 
 On macOS, installation discovery validates the Codex bundle identifier and executable. Quitting uses Apple events and may require Automation permission; denied or timed-out quits fall back to manual handling without force termination. Launch confirmation checks for the desktop main process.
 

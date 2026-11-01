@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from desktop import service
+from codex_integration import service
 from gateway.server import Gateway
 from model_catalog.catalog import ConfigError
 
@@ -56,7 +56,7 @@ class WebWorkflowTests(unittest.TestCase):
             self.manager.save_desktop_preferences('project', 'invalid')
 
     def desktop_switch(self, mode, running=False, close=True, launch='started', failure=False):
-        from desktop import client as desktop_client
+        from codex_integration import client as desktop_client
         target = {'executable': 'fixture', 'app_id': 'fixture!App'}
         with patch.object(desktop_client, 'discover', return_value=target), \
                 patch.object(desktop_client, 'processes', return_value=[object()] if running else []), \
@@ -85,7 +85,7 @@ class WebWorkflowTests(unittest.TestCase):
         self.assertEqual(self.manager.routing_state(), 'project')
 
     def test_specific_close_failure_survives_api_and_logging_failure(self):
-        from desktop.client import CloseResult
+        from codex_integration.client import CloseResult
         with patch.object(self.gateway, 'record', side_effect=OSError('log unavailable')):
             result = self.desktop_switch('project', running=True,
                                          close=CloseResult(False, 'restart_manager_shutdown_failed'))
@@ -144,7 +144,7 @@ class WebWorkflowTests(unittest.TestCase):
         self.assertEqual(self.manager.routing_state(), 'openai')
 
     def test_new_desktop_after_preview_is_not_closed(self):
-        from desktop import client as desktop_client
+        from codex_integration import client as desktop_client
         with patch.object(desktop_client, 'discover', return_value={'executable': 'fixture'}), \
                 patch.object(desktop_client, 'processes', side_effect=[[], [object()]]), \
                 patch.object(desktop_client, 'close') as closer, \
@@ -158,7 +158,7 @@ class WebWorkflowTests(unittest.TestCase):
             self.assertEqual(self.manager.routing_state(), 'project')
 
     def test_missing_install_still_applies_and_invalid_ticket_never_closes(self):
-        from desktop import client as desktop_client
+        from codex_integration import client as desktop_client
         with patch.object(desktop_client, 'discover', return_value=None), \
                 patch.object(desktop_client, 'close') as closer:
             preview = self.manager.preview_routing('project')
@@ -171,7 +171,7 @@ class WebWorkflowTests(unittest.TestCase):
             self.assertEqual(self.manager.routing_state(), 'project')
 
     def test_unknown_process_state_does_not_control_desktop(self):
-        from desktop import client as desktop_client
+        from codex_integration import client as desktop_client
         with patch.object(desktop_client, 'discover', return_value={'executable': 'fixture'}), \
                 patch.object(desktop_client, 'processes', side_effect=OSError('denied')), \
                 patch.object(desktop_client, 'close') as closer, \
@@ -185,7 +185,7 @@ class WebWorkflowTests(unittest.TestCase):
             launcher.assert_not_called()
 
     def test_external_config_edit_during_close_is_not_overwritten_or_reopened(self):
-        from desktop import client as desktop_client
+        from codex_integration import client as desktop_client
         def close(_):
             path = self.home/'config.toml'
             path.write_text(path.read_text() + '\n# external edit\n')

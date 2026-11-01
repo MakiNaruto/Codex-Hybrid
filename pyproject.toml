@@ -16,7 +16,14 @@ model-router = "cli.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["cli", "cli.*", "gateway", "gateway.*", "adapters", "adapters.*", "model_catalog", "model_catalog.*", "management", "management.*", "desktop", "desktop.*"]
+include = [
+    "cli", "cli.*",
+    "gateway", "gateway.*",
+    "adapters", "adapters.*",
+    "model_catalog", "model_catalog.*",
+    "management", "management.*",
+    "codex_integration", "codex_integration.*",
+]
 namespaces = false
 
 [tool.setuptools.dynamic]

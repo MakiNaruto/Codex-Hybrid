@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from desktop.codex_index import find_codex, repair_index
+from codex_integration.codex_index import find_codex, repair_index
 from model_catalog.catalog import ConfigError
 
 
@@ -35,7 +35,7 @@ for line in sys.stdin:
             def launch(command, **options):
                 commands.append(command)
                 return real_popen([sys.executable, '-u', str(script), str(observed)], **options)
-            with patch('desktop.codex_index.subprocess.Popen', side_effect=launch), \
+            with patch('codex_integration.codex_index.subprocess.Popen', side_effect=launch), \
                     patch.dict(os.environ, {'OPENAI_API_KEY': 'do-not-inherit'}):
                 repair_index(home, ['thread-b', 'thread-a'], sys.executable)
             messages = [json.loads(line) for line in observed.read_text(encoding='utf-8').splitlines()]
@@ -64,18 +64,18 @@ for line in sys.stdin:
                 process = real_popen([sys.executable, '-u', str(script)], **options)
                 processes.append(process)
                 return process
-            with patch('desktop.codex_index.subprocess.Popen', side_effect=launch):
+            with patch('codex_integration.codex_index.subprocess.Popen', side_effect=launch):
                 with self.assertRaisesRegex(ConfigError, 'SESSION_INDEX_REPAIR_FAILED'):
                     repair_index(home, ['thread'], sys.executable)
             self.assertIsNotNone(processes[0].poll())
 
     def test_invalid_executable_fails_without_launching_a_shell(self):
-        with patch('desktop.codex_index.subprocess.Popen') as launch:
+        with patch('codex_integration.codex_index.subprocess.Popen') as launch:
             with self.assertRaisesRegex(ConfigError, 'SESSION_INDEX_CODEX_UNAVAILABLE'):
                 find_codex('missing-codex-executable --arbitrary-argument')
         launch.assert_not_called()
 
     def test_no_missing_indexes_do_not_start_codex(self):
-        with patch('desktop.codex_index.subprocess.Popen') as launch:
+        with patch('codex_integration.codex_index.subprocess.Popen') as launch:
             repair_index(Path.cwd(), [])
         launch.assert_not_called()

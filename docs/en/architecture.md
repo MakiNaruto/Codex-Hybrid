@@ -42,6 +42,22 @@ Hybrid stores membership and per-model compatibility overrides in its own settin
 
 ### Code responsibilities and reuse
 
+```text
+apps/desktop/               Tauri shell, build tools and desktop validation notes
+src/
+├─ cli/                     Setup wizard and command line entry points
+├─ codex_integration/       Local Codex configuration, migration, platform control and private desktop protocol
+├─ management/              Shared management logic, runtime and browser HTTP adapter
+│  └─ web/                  HTML, CSS and JavaScript shared by browser and Tauri
+├─ gateway/                 Model request forwarding and service entry points
+├─ model_catalog/           Model sources and catalog
+└─ adapters/                Upstream protocol adapters
+```
+
+Browser and desktop entry points use different transports: browsers use HTTP through `management/http.py`; Tauri uses private stdio/IPC through `codex_integration/controller.py` and `web_api.py`. Both reuse management logic and UI assets. `web/transport.js` selects the transport, while `web/desktop.js` handles desktop lifecycle. Windows and macOS process control remain in separate `codex_integration/windows_*.py` and `macos_client.py` modules.
+
+The former root `desktop/` is now `apps/desktop/`, and `src/desktop/` is now `src/codex_integration/`. Use the new paths for builds, probes and direct Python imports; rebuild existing desktop packages. CLI commands, HTTP paths and user data locations retain their existing contracts. See the [desktop build notes](../../apps/desktop/README.md).
+
 | Module | Responsibility |
 | --- | --- |
 | `gateway/server.py` | HTTP lifecycle, authentication and route selection; `external_route` assembles external requests without executing tools |
@@ -52,8 +68,8 @@ Hybrid stores membership and per-model compatibility overrides in its own settin
 | `adapters/coordination.py` | Native collaboration namespace mapping and request-scoped spawn naming, independent of Portable conversion |
 | `adapters/request_compat.py` | History replay, routing context and sanitized errors |
 | `management/` | Publication, management HTTP and forwarding lifecycle; the service owns locks and settings snapshots while `routing.py` plans and commits recoverable routing transactions |
-| `desktop/configuration.py` | Pure TOML transformations shared by CLI and management: generate, recognize and restore owned fields and retain the current model, without file writes or OS calls |
-| `desktop/` | Client commands and services, session migration and platform-specific desktop control |
+| `codex_integration/configuration.py` | Pure TOML transformations shared by CLI and management: generate, recognize and restore owned fields and retain the current model, without file writes or OS calls |
+| `codex_integration/` | Client commands and services, session migration and platform-specific desktop control |
 | `management/web/` | `app.js` provides shared interactions and access orchestration, `models.js` owns the model page, and `diagnostics.js` scopes diagnostic periods and request state to its page |
 
 Portable requests register all current and discovered tools before mapping history, then validate duplicate execution schemas and generate guidance for the registered coordination aliases. Preserve this order: historical calls can depend on tool definitions that appear later in the request.

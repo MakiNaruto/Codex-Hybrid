@@ -6,7 +6,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from cli import bootstrap
-from desktop import service
+from codex_integration import service
 
 
 class BootstrapTests(unittest.TestCase):

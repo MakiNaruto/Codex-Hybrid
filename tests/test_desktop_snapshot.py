@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from desktop.snapshot import snapshot
+from codex_integration.snapshot import snapshot
 
 
 class DesktopSnapshotTests(unittest.TestCase):
@@ -56,7 +56,7 @@ providers:
         self.assertNotIn('secret-invalid', json.dumps(result))
 
     def test_settings_changed_during_read_does_not_get_a_fresh_revision(self):
-        from desktop.snapshot import revision
+        from codex_integration.snapshot import revision
         models = self.directory / 'models.yaml'
         models.write_text('version: 1\nproviders: {}\n', encoding='utf-8')
         settings = self.directory / 'settings.json'
@@ -65,7 +65,7 @@ providers:
         def change_before_revision(directory, settings_bytes=None):
             settings.write_text(json.dumps({**value, 'changed': True}), encoding='utf-8')
             return revision(directory, settings_bytes=settings_bytes)
-        with patch('desktop.snapshot.revision', side_effect=change_before_revision):
+        with patch('codex_integration.snapshot.revision', side_effect=change_before_revision):
             self.assertEqual(snapshot(self.directory)['status'], 'unavailable')
 
     def test_private_command_uses_fixed_home_and_returns_json(self):
@@ -78,7 +78,7 @@ providers:
         root = Path(__file__).resolve().parents[1]
         executable = os.environ.get('STAGE0_SNAPSHOT_EXECUTABLE')
         command = [str(Path(executable).resolve())] if executable else [
-            sys.executable, '-X', 'utf8', str(root / 'desktop/stage0/probe.py')]
+            sys.executable, '-X', 'utf8', str(root / 'apps/desktop/stage0/probe.py')]
         environment = os.environ.copy()
         environment['HOME'] = str(self.directory)
         environment['PYTHONPATH'] = str(root / 'src')

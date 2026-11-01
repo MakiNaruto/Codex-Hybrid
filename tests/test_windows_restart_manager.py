@@ -3,7 +3,7 @@ from ctypes import wintypes
 import unittest
 from unittest.mock import Mock, patch
 
-from desktop import windows_restart_manager as manager
+from codex_integration import windows_restart_manager as manager
 
 
 class RestartManagerTests(unittest.TestCase):

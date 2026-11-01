@@ -11,8 +11,8 @@ import webbrowser
 
 import yaml
 
-import desktop.service as desktop
-from desktop.paths import data_directory, environment_value, check_legacy_installation
+from codex_integration import service
+from codex_integration.paths import data_directory, environment_value, check_legacy_installation
 from model_catalog.catalog import Catalog
 
 
@@ -25,7 +25,7 @@ def ask(label, default=None):
 
 
 def run(action):
-    subprocess.run([sys.executable, '-m', 'cli', action, '--data-dir', str(desktop.RUNTIME)], check=True)
+    subprocess.run([sys.executable, '-m', 'cli', action, '--data-dir', str(service.RUNTIME)], check=True)
 
 
 def main():
@@ -35,12 +35,12 @@ def main():
     parser.add_argument('--port', type=int, default=18891)
     args = parser.parse_args()
     print('Codex Hybrid 本机配置向导（macOS / Windows / Python 3.11+）')
-    desktop.RUNTIME = data_directory(args.data_dir)
-    check_legacy_installation(desktop.RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
-    runtime = desktop.RUNTIME
+    service.RUNTIME = data_directory(args.data_dir)
+    check_legacy_installation(service.RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
+    runtime = service.RUNTIME
     print(f'数据目录：{runtime}')
     runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
-    from desktop.locking import DirectoryLock
+    from codex_integration.locking import DirectoryLock
     with DirectoryLock(runtime):
         if not (runtime / 'state.json').exists():
             if not 1024 <= args.port <= 65535:
@@ -49,8 +49,8 @@ def main():
             if not (home / 'config.toml').is_file() or not (home / 'models_cache.json').is_file():
                 raise ValueError('请先安装 Codex、登录并完成一次聊天，再运行向导；自定义目录用 --codex-home 指定')
             # Validate compatibility before collecting a secret or creating files.
-            desktop.official_cache(home)
-            desktop.candidate_config((home / 'config.toml').read_text(),
+            service.official_cache(home)
+            service.candidate_config((home / 'config.toml').read_text(),
                                      {'catalog': str(runtime / 'models.json'), 'port': args.port, 'local_token': 'preflight'})
             print('1. 配置来源：1 = 手动填写 API，2 = 本机 CC Switch（只读），3 = 稍后在网页配置')
             choice = ask('选择', '1')
@@ -72,13 +72,13 @@ def main():
                 # Never overwrite an earlier unfinished setup's credentials without consent.
                 if config_path.exists() or (runtime / 'provider.env').exists():
                     raise ValueError(f'存在未完成的配置，请先检查 {config_path} 和 {runtime / "provider.env"}')
-                desktop.private_write(config_path, yaml.safe_dump(config, allow_unicode=True))
+                service.private_write(config_path, yaml.safe_dump(config, allow_unicode=True))
                 try:
                     Catalog(config_path)
                     key = getpass.getpass('API Key（输入不显示）：').strip()
                     if not key or any(c.isspace() for c in key) or key[0] in "\"'":
                         raise ValueError('API Key 不能为空或包含空白/外层引号')
-                    desktop.private_write(runtime / 'provider.env', 'CONNECTED_API_KEY=' + key + '\n')
+                    service.private_write(runtime / 'provider.env', 'CONNECTED_API_KEY=' + key + '\n')
                 except BaseException:
                     config_path.unlink(missing_ok=True)
                     raise
@@ -87,11 +87,11 @@ def main():
                 config_path = runtime / 'setup-models.yaml'
                 if config_path.exists():
                     raise ValueError(f'存在未完成的配置，请先检查 {config_path}')
-                desktop.private_write(config_path, yaml.safe_dump({'version': 1, 'providers': {}}))
+                service.private_write(config_path, yaml.safe_dump({'version': 1, 'providers': {}}))
                 source = {'type': 'yaml', 'path': str(config_path)}
             else:
                 raise ValueError('配置来源选择无效')
-            desktop.prepare(args.port, home, source)
+            service.prepare(args.port, home, source)
         else:
             print('1. 检查并复用已有配置')
     print('\n2. 启动本机服务（已有配置会保留）')

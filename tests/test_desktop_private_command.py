@@ -13,7 +13,7 @@ class DesktopPrivateCommandTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         executable = os.environ.get('STAGE0_SNAPSHOT_EXECUTABLE')
         command = ([str(Path(executable).resolve())] if executable else
-                   [sys.executable, '-X', 'utf8', str(root / 'desktop/stage0/probe.py')])
+                   [sys.executable, '-X', 'utf8', str(root / 'apps/desktop/stage0/probe.py')])
         with tempfile.TemporaryDirectory(prefix='desktop-control-') as temporary:
             home = Path(temporary)
             codex = home / '.codex'

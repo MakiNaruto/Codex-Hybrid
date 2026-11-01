@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from desktop.service import private_write as write_client_snapshot
+from codex_integration.service import private_write as write_client_snapshot
 from management.service import private_write as write_management_text
 
 

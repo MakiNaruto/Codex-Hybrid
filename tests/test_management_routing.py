@@ -12,14 +12,14 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-from desktop.service import PROVIDER, candidate_config, digest
+from codex_integration.service import PROVIDER, candidate_config, digest
 from management.service import Management
 from model_catalog.catalog import ConfigError
 
 
 class RoutingTests(unittest.TestCase):
     def setUp(self):
-        processes = patch('desktop.process_state._candidate_processes', return_value=[])
+        processes = patch('codex_integration.process_state._candidate_processes', return_value=[])
         processes.start()
         self.addCleanup(processes.stop)
         self.temp = TemporaryDirectory()

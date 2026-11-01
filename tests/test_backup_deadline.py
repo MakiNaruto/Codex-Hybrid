@@ -5,7 +5,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from desktop import session_migration as migration
+from codex_integration import session_migration as migration
 import test_session_migration as fixtures
 
 

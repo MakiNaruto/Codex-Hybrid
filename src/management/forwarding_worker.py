@@ -33,7 +33,7 @@ class SharedActivity(Activity):
 def _serve(connection, settings, settings_path, counter, log_drops=None):
     from gateway.server import Gateway, Server
     from management.runtime import ManagementContext
-    from desktop.locking import DirectoryLock
+    from codex_integration.locking import DirectoryLock
     from gateway.runtime_log import AsyncRecords
     send_lock = threading.Lock()
 

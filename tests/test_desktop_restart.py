@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from desktop.restart import Restart
-from desktop.client import CloseResult
+from codex_integration.restart import Restart
+from codex_integration.client import CloseResult
 from model_catalog.catalog import ConfigError
 
 
@@ -14,10 +14,10 @@ class RestartTests(unittest.TestCase):
         self.restart = Restart(Path('/fixture/.codex'))
         self.target = {'bundle': '/fixture/Codex.app'}
         self.process = SimpleNamespace(pid=17, create_time=lambda: 100.0)
-        self.discover = patch('desktop.client.discover', return_value=self.target).start()
-        self.processes = patch('desktop.client.processes', return_value=[self.process]).start()
-        self.close = patch('desktop.client.close', return_value=CloseResult(True)).start()
-        self.launch = patch('desktop.client.launch', return_value='started').start()
+        self.discover = patch('codex_integration.client.discover', return_value=self.target).start()
+        self.processes = patch('codex_integration.client.processes', return_value=[self.process]).start()
+        self.close = patch('codex_integration.client.close', return_value=CloseResult(True)).start()
+        self.launch = patch('codex_integration.client.launch', return_value='started').start()
         self.addCleanup(patch.stopall)
 
     def test_preview_and_cancel_never_operate_application(self):
@@ -44,11 +44,11 @@ class RestartTests(unittest.TestCase):
         for scenario in ('identity', 'expiry', 'ticket'):
             with self.subTest(scenario=scenario):
                 self.processes.return_value = [self.process]
-                with patch('desktop.restart.time.monotonic', return_value=10):
+                with patch('codex_integration.restart.time.monotonic', return_value=10):
                     preview = self.restart.preview({})
                 if scenario == 'identity':
                     self.processes.return_value = [SimpleNamespace(pid=17, create_time=lambda: 101.0)]
-                with patch('desktop.restart.time.monotonic', return_value=200 if scenario == 'expiry' else 11):
+                with patch('codex_integration.restart.time.monotonic', return_value=200 if scenario == 'expiry' else 11):
                     with self.assertRaises(ConfigError):
                         self.restart.confirm('wrong' if scenario == 'ticket' else preview['ticket'])
         self.close.assert_not_called()

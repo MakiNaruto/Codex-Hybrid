@@ -1,0 +1,567 @@
+#!/usr/bin/env python3
+"""Prepare, start, activate and roll back Codex Hybrid."""
+import argparse
+import json
+import os
+from pathlib import Path
+
+import secrets
+import signal
+import subprocess
+import sys
+import time
+import tomllib
+import urllib.request
+
+from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
+from codex_integration.configuration import (
+    PROVIDER, digest, candidate_config, is_bridge_provider,
+    remove_bridge_provider_table, retain_config_model,
+)
+
+from codex_integration.paths import ROOT, RUNTIME, default_models_path, data_directory, environment_value, check_legacy_installation
+
+WINDOWS = sys.platform == 'win32'
+
+
+def private_write(path, data):
+    path = Path(path)
+    # Atomic replacement; never follow a pre-existing destination symlink.
+    temporary = path.with_name(path.name + '.' + secrets.token_hex(6) + '.tmp')
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(data if isinstance(data, bytes) else data.encode())
+    os.replace(temporary, path)
+
+
+def official_cache(codex_home, settings=None):
+    models = json.loads((codex_home / 'models_cache.json').read_text(encoding='utf-8'))['models']
+    if settings:
+        external = set(settings['models']) - set(settings['official_models'])
+        models = [model for model in models if model['slug'] not in external]
+    if not models:
+        raise ValueError('Official model cache is empty')
+    return models
+
+
+def prepare(port, codex_home, source=None, *, directory=None, management_auth_required=False):
+    from codex_integration.locking import DirectoryLock
+    runtime = Path(directory) if directory is not None else RUNTIME
+    with DirectoryLock(runtime):
+        return _prepare_locked(port, codex_home, source, directory=runtime,
+                               management_auth_required=management_auth_required)
+
+
+def _prepare_locked(port, codex_home, source=None, *, directory=None, management_auth_required=False):
+    runtime = Path(directory) if directory is not None else RUNTIME
+    if (runtime / 'state.json').exists():
+        raise ValueError('Already prepared; use status/start/activate/rollback with the existing files')
+    config_path = codex_home / 'config.toml'
+    original = config_path.read_bytes()
+    models = official_cache(codex_home)
+    source = source or {'type': 'yaml', 'path': str(default_models_path())}
+    settings = {'port': port, 'source': source,
+                'official_models': [m['slug'] for m in models],
+                'local_token': secrets.token_urlsafe(32),
+                'catalog': str(runtime / 'models.json'), 'max_concurrent_requests': 4,
+                'management_auth_required': management_auth_required,
+                'disable_legacy_plugin': True, 'official_header_passthrough': True}
+    external = load_source(settings)
+    merged = merged_catalog(models, external)
+    external_keys = [key for key, value in external.models.items() if value['enabled']]
+    settings.update(models=[m['slug'] for m in merged['models']])
+    update_cc_snapshot(settings, merged, external)
+    if external_keys:
+        settings['deepseek_model'] = external_keys[0]
+    candidate = candidate_config(original.decode(), settings).encode()
+    runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_write(runtime / 'models.json', json.dumps(merged, ensure_ascii=False))
+    private_write(runtime / 'settings.json', json.dumps(settings))
+    private_write(runtime / 'original-config.toml', original)
+    private_write(runtime / 'desktop-config.toml', candidate)
+    state = {'config_path': str(config_path), 'original_sha256': digest(original),
+             'candidate_sha256': digest(candidate), 'activated': False}
+    private_write(runtime / 'state.json', json.dumps(state))
+    print('已准备本机模型路由，尚未修改 Codex 用户配置：' + str(runtime))
+
+
+def health(settings, ensure_forwarding=False):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    from management.runtime import management_port
+    failure = None
+    for port in (management_port(settings), settings['port']):
+        try:
+            with opener.open(f'http://127.0.0.1:{port}/healthz', timeout=3) as response:
+                if json.load(response) != {'service': 'connected-native-gateway', 'version': 1}:
+                    raise ValueError('Unexpected service at the configured port')
+        except (OSError, ValueError) as error:
+            failure = error
+            continue
+        if ensure_forwarding and port == management_port(settings):
+            ensure_forwarding_ready(settings)
+        return
+    raise failure
+
+
+def ensure_forwarding_ready(settings):
+    from management.runtime import management_port, FORWARDING_CONTROL_TIMEOUT
+    request = urllib.request.Request(
+        f'http://127.0.0.1:{management_port(settings)}/manage/api/forwarding/ensure',
+        data=b'{}', headers={'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + settings.get('management_token', '')})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=FORWARDING_CONTROL_TIMEOUT) as response:
+        json.load(response)
+
+
+def start_service(settings):
+    try:
+        health(settings)
+    except (OSError, ValueError):
+        healthy = False
+    else:
+        healthy = True
+    if healthy:
+        if not (RUNTIME / 'service.pid').exists():
+            matches = list(owned_gateway_processes())
+            if len(matches) == 1:
+                private_write(RUNTIME / 'service.pid', str(matches[0].pid))
+            elif len(matches) > 1:
+                raise ValueError('Multiple gateway processes use this runtime')
+            else:
+                raise ValueError('Port is serving a gateway not owned by this runtime')
+        return print('本机服务已在运行')
+    # Keep inherited startup stderr separate: Windows cannot rotate an inherited open file.
+    with (RUNTIME / 'service.startup.stderr').open('wb') as err:
+        # Suppress the console throughout Windows venv interpreter redirection.
+        # DETACHED_PROCESS can let the redirected console executable create a new window.
+        options = ({'creationflags': subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
+                   if WINDOWS else {'start_new_session': True})
+        entry = ([str(ROOT / 'src/gateway/entry.py')] if (ROOT / 'src/gateway/entry.py').is_file()
+                 else ['-m', 'gateway.server'])
+        process = subprocess.Popen([sys.executable, *entry,
+            '--settings', str(RUNTIME / 'settings.json')], cwd=ROOT, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=err, **options)
+    for _ in range(30):
+        if process.poll() is not None:
+            raise ValueError(f'网关在就绪前退出（退出码 {process.returncode}）；请检查 '
+                             f'{RUNTIME / "service.stderr"} 和 {RUNTIME / "service.startup.stderr"}')
+        try:
+            health(settings)
+            break
+        except (OSError, ValueError):
+            time.sleep(.1)
+    else:
+        process.terminate()
+        raise ValueError(f'管理服务启动后约 3 秒内未通过就绪检查；'
+                         '请检查端口占用、服务日志和本机网络权限')
+    private_write(RUNTIME / 'service.pid', str(process.pid))
+    print('本机服务已启动并通过就绪检查')
+
+def stop_windows_process(pid, missing_ok=False):
+    # psutil retains process identity across PID reuse when terminating/waiting.
+    import psutil
+    try:
+        process = psutil.Process(pid)
+        command = process.cmdline()
+        script = str(ROOT / 'src/gateway/entry.py')
+        settings = str(RUNTIME / 'settings.json')
+        normalize = lambda value: os.path.normcase(os.path.abspath(value))
+        owned_entry = (len(command) >= 2 and normalize(command[1]) in {
+            normalize(script), normalize(ROOT / 'scripts/gateway.py'),
+            normalize(ROOT / 'native_gateway/server.py')}) or command[1:3] == ['-m', 'gateway.server']
+        if (len(command) < 4 or not owned_entry
+                or '--settings' not in command
+                or command.index('--settings') + 1 >= len(command)
+                or normalize(command[command.index('--settings') + 1]) != normalize(settings)):
+            raise ValueError('PID does not belong to this gateway')
+        process.terminate()
+        process.wait(timeout=10)
+    except psutil.NoSuchProcess:
+        if not missing_ok:
+            raise ValueError('Gateway process is no longer running') from None
+    except (psutil.AccessDenied, psutil.TimeoutExpired):
+        raise ValueError('Unable to stop gateway; check process permissions and status') from None
+
+
+def owned_gateway_processes():
+    """Find this runtime's gateway when an older launch omitted service.pid."""
+    import psutil
+
+    script_paths = {os.path.normcase(os.path.abspath(ROOT / path)) for path in
+                    ('src/gateway/entry.py', 'scripts/gateway.py', 'native_gateway/server.py')}
+    expected_settings = os.path.normcase(os.path.abspath(RUNTIME / 'settings.json'))
+    for process in psutil.process_iter(('pid', 'cmdline')):
+        try:
+            command = process.info['cmdline'] or []
+            if len(command) < 3:
+                continue
+            entry = ((len(command) > 1 and os.path.normcase(os.path.abspath(command[1])) in script_paths)
+                     or command[1:3] == ['-m', 'gateway.server'])
+            if not entry or '--settings' not in command:
+                continue
+            index = command.index('--settings') + 1
+            if index < len(command) and os.path.normcase(os.path.abspath(command[index])) == expected_settings:
+                yield process
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            continue
+
+
+def stop_service(missing_ok=False):
+    from codex_integration.locking import DirectoryLock
+    with DirectoryLock(RUNTIME):
+        return _stop_service_locked(missing_ok)
+
+
+def _stop_service_locked(missing_ok=False):
+    pid_path = RUNTIME / 'service.pid'
+    pid = int(pid_path.read_text()) if pid_path.exists() else None
+    if pid is not None and pid <= 0:
+        raise ValueError('Invalid gateway PID')
+    if pid is None:
+        matches = list(owned_gateway_processes())
+        if not matches:
+            if missing_ok:
+                return
+            raise ValueError('Gateway process is not recorded and was not found')
+        if len(matches) > 1:
+            raise ValueError('Multiple gateway processes use this runtime; refusing to stop them')
+        pid = matches[0].pid
+    if WINDOWS:
+        stop_windows_process(pid, missing_ok)
+        pid_path.unlink(missing_ok=True)
+        return
+    result = subprocess.run(['ps', '-p', str(pid), '-o', 'command='], text=True, capture_output=True)
+    if result.returncode == 1 and not result.stdout.strip() and missing_ok:
+        pid_path.unlink()
+        return
+    result.check_returncode()
+    owned_entry = any(str(ROOT / path) in result.stdout for path in
+                      ('src/gateway/entry.py', 'scripts/gateway.py', 'native_gateway/server.py')) or ' -m gateway.server ' in result.stdout
+    if not owned_entry or str(RUNTIME / 'settings.json') not in result.stdout:
+        raise ValueError('PID does not belong to this gateway')
+    os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + 10
+    while True:
+        status = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='], text=True, capture_output=True)
+        if status.returncode == 1 and not status.stdout.strip():
+            break
+        status.check_returncode()
+        if status.stdout.strip().startswith('Z'):
+            break
+        if time.monotonic() >= deadline:
+            raise ValueError('Gateway did not stop; refusing to start a second process')
+        time.sleep(.1)
+    pid_path.unlink(missing_ok=True)
+
+
+def migrate_routing(config_path, settings, state, data, activating, expected_current=None):
+    from codex_integration.locking import DirectoryLock
+    with DirectoryLock(RUNTIME):
+        return _migrate_routing_locked(config_path, settings, state, data, activating, expected_current)
+
+
+def _migrate_routing_locked(config_path, settings, state, data, activating, expected_current=None):
+    """Commit CLI routing changes together with offline session metadata."""
+    from codex_integration.session_migration import plan, apply
+    provider = tomllib.loads(data.decode()).get('model_provider', 'openai')
+    if provider not in ('openai', PROVIDER):
+        raise ValueError('会话迁移只支持原生 OpenAI 与 Codex Hybrid 路由。')
+    name = 'desktop-config.toml' if activating else 'original-config.toml'
+    paths = (config_path, RUNTIME / name, RUNTIME / 'state.json')
+    before = {path: path.read_bytes() if path.exists() else None for path in paths}
+    if expected_current is not None and before[config_path] != expected_current:
+        raise ValueError('Codex 配置在迁移前发生变化，未应用切换。')
+    if json.loads(before[RUNTIME / 'state.json']) != state:
+        raise ValueError('实例配置在迁移前发生变化，未应用切换。')
+    data = retain_config_model(data, before[config_path])
+    migration = plan(config_path.parent, settings, provider)
+    state = dict(state, activated=activating)
+    name = 'desktop-config.toml' if activating else 'original-config.toml'
+    state['candidate_sha256' if activating else 'original_sha256'] = digest(data)
+    updates = {}
+    for path, after in [(config_path, data), (RUNTIME / name, data),
+                        (RUNTIME / 'state.json', json.dumps(state).encode())]:
+        updates[path] = (before[path], after)
+    backup = apply(migration, RUNTIME, updates)
+    if migration['count']:
+        print(f"已迁移 {migration['count']} 个本机会话；首次基线：{backup}")
+    return state
+
+
+ACTIONS = ('prepare', 'refresh-models', 'start', 'restart', 'stop', 'status',
+           'activate', 'rollback', 'uninstall', 'manage-url', 'recover-sessions', 'reset-session-baseline')
+
+
+def common_arguments(parser, defaults):
+    # Subcommands suppress unset values so options placed before the action survive.
+    value = (lambda item: item) if defaults else (lambda item: argparse.SUPPRESS)
+    parser.add_argument('--data-dir', type=Path, default=value(None),
+                        help='Private data directory (or CODEX_HYBRID_DATA_DIR)')
+    parser.add_argument('--port', type=int, default=value(18891))
+    parser.add_argument('--codex-home', type=Path,
+                        default=value(Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))))
+    parser.add_argument('--source', choices=['yaml', 'cc-switch'], default=value(None))
+    parser.add_argument('--models-config', type=Path, default=value(None))
+    parser.add_argument('--cc-db', type=Path, default=value(Path.home() / '.cc-switch/cc-switch.db'))
+
+
+def build_parser():
+    common = argparse.ArgumentParser(add_help=False)
+    common_arguments(common, defaults=False)
+    parser = argparse.ArgumentParser(description=__doc__, epilog='View instance settings: config [--data-dir PATH]')
+    common_arguments(parser, defaults=True)
+    commands = parser.add_subparsers(dest='action', required=True)
+    for action in ACTIONS:
+        command = commands.add_parser(action, parents=[common])
+        if action == 'recover-sessions':
+            command.add_argument('--backup', type=Path, required=True)
+        if action == 'manage-url':
+            command.add_argument('--management-auth', choices=['on', 'off'],
+                help='Set management-link authentication on or off')
+    return parser
+
+
+def main():
+    global RUNTIME
+    args = build_parser().parse_args()
+    if args.data_dir is not None or environment_value('DATA_DIR'):
+        RUNTIME = data_directory(args.data_dir)
+    check_legacy_installation(RUNTIME, explicit=args.data_dir is not None or bool(environment_value('DATA_DIR')))
+    from codex_integration.locking import DirectoryLock
+    mutation = args.action in {'prepare', 'refresh-models', 'activate', 'rollback', 'recover-sessions', 'reset-session-baseline'}
+    with DirectoryLock(RUNTIME, 'operation.lock' if mutation else 'control.lock'):
+        return run_action(args)
+
+
+def run_action(args):
+    from codex_integration.session_migration import cleanup_completed_records
+    cleanup_completed_records(RUNTIME)
+    if args.action == 'reset-session-baseline':
+        from codex_integration.session_migration import reset_baseline
+        reset_baseline(args.codex_home.expanduser().resolve(), RUNTIME)
+        return print('基线已重置；下一次实际修改前将重新备份当前状态。')
+    if args.action == 'recover-sessions':
+        from codex_integration.session_migration import recover
+        if not args.backup.resolve().is_relative_to((RUNTIME / 'session-migrations').resolve()):
+            raise ValueError('请指定本实例 session-migrations 下的备份目录。')
+        recover(args.backup)
+        return print('已恢复中断前的配置和会话。')
+    args.models_config = args.models_config or RUNTIME / 'models.yaml'
+    if args.action == 'prepare':
+        if not 1024 <= args.port <= 65535:
+            raise ValueError('Invalid unprivileged port')
+        return prepare(args.port, args.codex_home,
+            {'type': args.source or 'yaml', 'path': str((args.cc_db if args.source == 'cc-switch' else args.models_config).expanduser().resolve())})
+    if not (RUNTIME / 'state.json').is_file():
+        raise ValueError(f'No initialized router in {RUNTIME}; run install or prepare with the same --data-dir')
+    state = json.loads((RUNTIME / 'state.json').read_text())
+    settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
+    uninstalling = args.action == 'uninstall'
+    if uninstalling:
+        from codex_integration.session_migration import assert_stopped
+        assert_stopped(Path(state['config_path']).parent)
+        stop_service(missing_ok=True)
+        print('Codex Hybrid 本机服务已停止。')
+        config_path = Path(state['config_path'])
+        current = digest(config_path.read_bytes())
+        if current == state['original_sha256']:
+            try:
+                cleaned, removed = remove_bridge_provider_table(config_path.read_bytes().decode('utf-8'))
+            except ValueError as error:
+                print('无法安全移除 Codex 配置中的 provider 表：' + str(error))
+                return
+            if removed:
+                try:
+                    confirmed = input('发现 Codex 配置中仍保留 Codex Hybrid 本机服务使用的 provider 表。卸载将从 Codex 配置中移除此服务配置，输入 y 确认：[y/N] ')
+                except EOFError:
+                    confirmed = ''
+                if confirmed.strip().lower() not in ('y', 'yes'):
+                    print('已取消卸载。服务已停止，Codex 配置和本地数据均保留。')
+                    return
+                original = config_path.read_bytes()
+                if digest(original) != state['original_sha256']:
+                    print('确认期间 Codex 配置再次变化，已取消卸载。请检查后重试。')
+                    return
+                migrate_routing(config_path, settings, state, cleaned.encode(), False, original)
+                print('已从 Codex 配置中移除本地 provider 表。')
+            else:
+                migrate_routing(config_path, settings, state, config_path.read_bytes(), False)
+            print('Codex 配置已是安装前状态，无需回滚。')
+            print('卸载完成。配置文件和凭据仍保留在数据目录中：' + str(RUNTIME))
+            return
+        try:
+            confirmed = input('是否将 Codex 配置恢复为安装前备份？输入 y 确认，直接回车取消：[y/N] ')
+        except EOFError:
+            confirmed = ''
+        if confirmed.strip().lower() not in ('y', 'yes'):
+            print('已取消卸载。服务已停止，Codex 配置和本地数据均保留。')
+            return
+        args.action = 'rollback'
+    if args.action == 'manage-url':
+        if args.management_auth is not None:
+            stop_service(missing_ok=True)
+            from codex_integration.locking import DirectoryLock
+            with DirectoryLock(RUNTIME):
+                settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
+                settings['management_auth_required'] = args.management_auth == 'on'
+                private_write(RUNTIME / 'settings.json', json.dumps(settings))
+            start_service(settings)
+            # Gateway startup may have generated the management token.
+            settings = json.loads((RUNTIME / 'settings.json').read_text(encoding='utf-8'))
+        health(settings)
+        token = settings.get('management_token') if settings.get('management_auth_required', False) else ''
+        if settings.get('management_auth_required', False) and not token:
+            raise ValueError('Restart the gateway to enable its management page')
+        from management.runtime import management_port
+        print(json.dumps({'url': f'http://127.0.0.1:{management_port(settings)}/manage/{"#" + token if token else ""}'}))
+        return
+    if args.action == 'refresh-models':
+        codex_home = args.codex_home if '--codex-home' in sys.argv or os.environ.get('CODEX_HOME') else Path(state['config_path']).parent
+        original_models = official_cache(codex_home, settings)
+        if args.source:
+            settings['source'] = {'type': args.source, 'path': str((
+                args.cc_db if args.source == 'cc-switch' else args.models_config).expanduser().resolve())}
+        external = load_source(settings)
+        merged = merged_catalog(original_models, external)
+        settings['official_catalog'] = original_models
+        settings['official_models'] = [m['slug'] for m in original_models]
+        settings['models'] = [m['slug'] for m in merged['models']]
+        update_cc_snapshot(settings, merged, external)
+        keys = [key for key, model in external.models.items() if model['enabled']]
+        if keys:
+            settings['deepseek_model'] = keys[0]
+        private_write(Path(settings['catalog']), json.dumps(merged, ensure_ascii=False))
+        private_write(RUNTIME / 'settings.json', json.dumps(settings))
+        print('Preserved official catalog and refreshed external entries; restart service and desktop to reload.')
+        return
+
+    if args.action in ('start', 'restart'):
+        if args.action == 'restart':
+            stop_service(missing_ok=True)
+        start_service(settings)
+    elif args.action == 'stop':
+        stop_service()
+        print('Stopped. If activated, roll back configuration before starting another Codex turn.')
+    elif args.action == 'status':
+        try:
+            health(settings)
+            running = True
+        except (OSError, ValueError):
+            running = False
+        current = digest(Path(state['config_path']).read_bytes())
+        config_state = ('activated' if current == state['candidate_sha256'] else
+                        'original' if current == state['original_sha256'] else 'modified_since_prepare')
+        catalog_path = Path(settings.get('catalog', RUNTIME / 'models.json'))
+        catalog_models = []
+        if catalog_path.is_file():
+            try:
+                catalog_models = json.loads(catalog_path.read_text(encoding='utf-8')).get('models', [])
+            except (OSError, ValueError, TypeError):
+                catalog_models = []
+        # Show human-facing model names while retaining stable keys for selection.
+        models = [{'name': item.get('display_name') or item.get('model_id') or item.get('slug') or '未知模型',
+                   'enabled': item.get('enabled', True)}
+                  for item in catalog_models if isinstance(item, dict)]
+        import unicodedata
+
+        def visual_width(value):
+            return sum(2 if unicodedata.east_asian_width(char) in ('F', 'W') else 1 for char in str(value))
+
+        def pad(value, width):
+            value = str(value)
+            return value + ' ' * max(0, width - visual_width(value))
+
+        def row(label, value):
+            print(f'│ {pad(label, 16)} │ {value}')
+
+        source = settings.get('source') or {}
+        source_label = {'cc-switch': 'CC Switch', 'yaml': 'YAML'}.get(source.get('type'), source.get('type', '未知'))
+        print('Codex Hybrid 状态')
+        print('┌──────────────────┬──────────────────────────────────────────────')
+        row('服务状态', '运行中' if running else '未运行')
+        row('监听端口', settings['port'])
+        from management.runtime import management_port
+        row('管理端口', management_port(settings))
+        row('客户端路由', '已启用' if config_state == 'activated' else '未启用')
+        row('配置状态', {'activated': '已接入', 'original': '未接入',
+                         'modified_since_prepare': '初始化后有修改'}.get(config_state, config_state))
+        row('配置来源', source_label)
+        if source.get('path'):
+            row('来源位置', source['path'])
+        row('数据目录', str(RUNTIME))
+        row('Codex 配置', state.get('config_path', '未知'))
+        row('管理页鉴权', '已开启' if settings.get('management_auth_required', False) else '关闭')
+        print('└──────────────────┴──────────────────────────────────────────────')
+        print('\n可用模型')
+        name_width = max([12, *(visual_width(model['name']) for model in models)])
+        print(f'┌─{"─" * name_width}─┬──────┐')
+        print(f'│ {pad("模型名称", name_width)} │ 状态 │')
+        print(f'├─{"─" * name_width}─┼──────┤')
+        if models:
+            for model in models:
+                state_label = '启用' if model['enabled'] else '禁用'
+                print(f"│ {pad(model['name'], name_width)} │ {state_label} │")
+        else:
+            print(f'│ {pad("未找到模型信息", name_width)} │      │')
+        print(f'└─{"─" * name_width}─┴──────┘')
+    else:
+        config_path = Path(state['config_path'])
+        activating = args.action == 'activate'
+        candidate_path = RUNTIME / 'desktop-config.toml'
+        current_data = config_path.read_bytes()
+        current = digest(current_data)
+        expected = state['original_sha256'] if activating else state['candidate_sha256']
+        target = state['candidate_sha256'] if activating else state['original_sha256']
+        if current == target:
+            migrate_routing(config_path, settings, state, current_data, activating, current_data)
+            return print('Configuration and sessions are in the requested state')
+        if current != expected and activating:
+            raise ValueError('Configuration changed since preparation; refusing to overwrite newer edits')
+        if activating:
+            health(settings, ensure_forwarding=True)
+        data = (RUNTIME / ('desktop-config.toml' if activating else 'original-config.toml')).read_bytes()
+        if digest(data) != target:
+            raise ValueError('Prepared file was changed; refusing activation/rollback')
+        removed_bridge = False
+        if uninstalling:
+            try:
+                cleaned, removed = remove_bridge_provider_table(data.decode())
+            except ValueError as error:
+                print('无法安全移除备份中的本地 provider 表：' + str(error))
+                return
+            if removed:
+                data = cleaned.encode()
+                removed_bridge = True
+        if current != expected:
+            print('检测到初始化后 Codex 配置又有修改（例如由 CC Switch 修改）。')
+            print('回滚会覆盖这些修改，并恢复安装前备份：' + str(config_path))
+            try:
+                confirmed = input('输入 yes 确认覆盖并恢复，直接回车取消：')
+            except EOFError:
+                confirmed = ''
+            if confirmed.strip().lower() != 'yes':
+                return print('已取消回滚；Codex 配置未更改。服务已停止，数据仍保留。' if uninstalling
+                             else '已取消回滚；Codex 配置未更改。')
+            if config_path.read_bytes() != current_data:
+                print('确认期间 Codex 配置再次变化，已取消回滚。请检查后重试。')
+                return
+            recovery = RUNTIME / ('pre-rollback-' + secrets.token_hex(6) + '.toml')
+            private_write(recovery, current_data)
+            print('已在回滚前备份当前配置：' + str(recovery))
+        # Commit routing and index changes while retaining the current model setting.
+        migrate_routing(config_path, settings, state, data, activating, current_data)
+        if uninstalling:
+            print('已恢复安装前的 Codex 配置。请完全退出并重新打开 Codex。')
+            print('卸载完成。配置文件和凭据仍保留在数据目录中：' + str(RUNTIME))
+        else:
+            print(('已启用路由' if activating else '已恢复配置') + '；请完全退出并重新打开 Codex 以重新加载。')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, OSError, StopIteration, subprocess.CalledProcessError) as error:
+        from cli.diagnostics import report_error
+        report_error(error, '服务命令执行失败')
+        raise SystemExit(1)

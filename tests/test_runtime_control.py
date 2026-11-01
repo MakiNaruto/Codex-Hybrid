@@ -14,8 +14,8 @@ from unittest.mock import patch
 import urllib.error
 import urllib.request
 
-from desktop import service
-from desktop.locking import DirectoryLock
+from codex_integration import service
+from codex_integration.locking import DirectoryLock
 from gateway.server import Server, route, sse_events
 from management.runtime import ManagementContext, ForwardingRuntime, handler, management_port
 from management.service import Management
@@ -57,7 +57,7 @@ class RuntimeTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.close_server)
-        processes = patch('desktop.process_state._candidate_processes', return_value=[])
+        processes = patch('codex_integration.process_state._candidate_processes', return_value=[])
         processes.start()
         self.addCleanup(processes.stop)
 
@@ -184,7 +184,7 @@ class RuntimeTests(unittest.TestCase):
         self.assert_state_available_while_starting(True)
 
     def assert_state_available_during_desktop(self, phase):
-        from desktop import client
+        from codex_integration import client
         entered, release = threading.Event(), threading.Event()
         errors, results = [], []
 
@@ -273,7 +273,7 @@ class RuntimeTests(unittest.TestCase):
             release.set()
 
     def test_managed_desktop_logging_uses_existing_queue_and_counts_disk_failures(self):
-        from desktop import client
+        from codex_integration import client
         from gateway.runtime_log import RuntimeLog
         log = RuntimeLog(self.directory)
         self.addCleanup(log.close)
@@ -354,7 +354,7 @@ class RuntimeTests(unittest.TestCase):
     def test_settings_snapshot_reloads_after_cooperating_cli_write(self):
         script = '''import json,sys
 from pathlib import Path
-from desktop.locking import DirectoryLock
+from codex_integration.locking import DirectoryLock
 p=Path(sys.argv[1])
 with DirectoryLock(p.parent):
  s=json.loads(p.read_text());s['official_models']=['official','new'];p.write_text(json.dumps(s))
@@ -593,7 +593,7 @@ with DirectoryLock(p.parent):
 
     def test_other_instance_cannot_migrate_the_same_codex_home(self):
         script = """import sys,time
-from desktop.locking import DirectoryLock
+from codex_integration.locking import DirectoryLock
 with DirectoryLock(sys.argv[1],'.codex-hybrid.lock'):
  print('locked',flush=True);time.sleep(10)
 """
@@ -650,7 +650,7 @@ class LockTests(unittest.TestCase):
 
     def test_operation_and_service_locks_exclude_other_processes(self):
         script = '''import sys
-from desktop.locking import DirectoryLock
+from codex_integration.locking import DirectoryLock
 from model_catalog.catalog import ConfigError
 try:
  with DirectoryLock(sys.argv[1],sys.argv[2]): pass
@@ -668,7 +668,7 @@ except ConfigError:
 
     def test_process_death_releases_ownership_without_deleting_inode(self):
         script = '''import sys,time
-from desktop.locking import DirectoryLock
+from codex_integration.locking import DirectoryLock
 with DirectoryLock(sys.argv[1],'service.lock'):
  print('locked',flush=True);time.sleep(10)
 '''

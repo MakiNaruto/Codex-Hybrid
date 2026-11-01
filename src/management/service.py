@@ -36,9 +36,9 @@ class Management:
         self.directory = self.settings_path.parent
         self.route = route
         self.sse_events = sse_events
-        from desktop.locking import ConfigurationLock
+        from codex_integration.locking import ConfigurationLock
         self.lock = ConfigurationLock(self)
-        from desktop.session_migration import cleanup_completed_records
+        from codex_integration.session_migration import cleanup_completed_records
         with self.lock:
             cleanup_completed_records(self.directory)
         self.revision_secret = secrets.token_bytes(32)
@@ -169,7 +169,7 @@ class Management:
             if config.get('profile'):
                 return 'unsupported'
             provider = config.get('model_provider', 'openai')
-            from desktop.configuration import PROVIDER
+            from codex_integration.configuration import PROVIDER
             return 'project' if provider == PROVIDER else 'openai' if provider == 'openai' else 'unsupported'
         except (OSError, ValueError, KeyError):
             return 'unavailable'
@@ -184,7 +184,7 @@ class Management:
                 self.publish()
             *_, migration, revision = self.routing_plan(mode)
             process = self.process_state()
-            from desktop import client as desktop_client
+            from codex_integration import client as desktop_client
             target = desktop_client.discover(migration['home'])
             desktop = {'available': bool(target), 'running': False, 'status': 'unavailable'}
             if target:
@@ -204,7 +204,7 @@ class Management:
                     'restart_client': True, 'activity': self.activity_state(), 'codex_process': process}
 
     def process_state(self):
-        from desktop.process_state import codex_process_state
+        from codex_integration.process_state import codex_process_state
         try:
             state = json.loads((self.directory/'state.json').read_text())
             home = Path(state['config_path']).parent
@@ -259,7 +259,7 @@ class Management:
 
     def _set_routing(self, mode, revision, confirm_activity, desktop_action,
                      desktop_was_running, desktop_ticket):
-        from desktop import client as desktop_client
+        from codex_integration import client as desktop_client
         with self.lock:
             before = self.routing_plan(mode)
             if not isinstance(revision, str) or not hmac.compare_digest(revision, before[-1]):
@@ -349,7 +349,7 @@ class Management:
             return settings['official_catalog']
         state_path = self.directory / 'state.json'
         if state_path.exists():
-            from desktop.service import official_cache
+            from codex_integration.service import official_cache
             state = json.loads(state_path.read_text(encoding='utf-8'))
             return official_cache(Path(state['config_path']).parent, settings)
         models = settings.get('cc_snapshot', {}).get('models')

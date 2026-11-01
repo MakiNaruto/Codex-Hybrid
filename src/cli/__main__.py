@@ -9,12 +9,12 @@ def main():
         del sys.argv[1]
     try:
         if len(sys.argv) > 1 and sys.argv[1] == 'config':
-            from desktop.preferences import configure
+            from codex_integration.preferences import configure
             return configure(sys.argv[2:])
         if wizard:
             from cli.setup_wizard import main as run
         else:
-            from desktop.service import main as run
+            from codex_integration.service import main as run
         return run()
     except (ValueError, OSError, StopIteration, subprocess.CalledProcessError) as error:
         from cli.diagnostics import report_error

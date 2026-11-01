@@ -6,7 +6,7 @@ import tomllib
 
 
 def report_error(error, context='操作失败'):
-    import desktop.service as desktop
+    from codex_integration import service
 
     print(f'{context} [{type(error).__name__}]', file=sys.stderr)
     if isinstance(error, subprocess.CalledProcessError):
@@ -30,7 +30,7 @@ def report_error(error, context='操作失败'):
             print('  原因：' + str(error), file=sys.stderr)
     elif isinstance(error, StopIteration):
         print('  未找到所需条目，请检查模型和运行状态。', file=sys.stderr)
-    print(f'  数据目录：{desktop.RUNTIME}', file=sys.stderr)
+    print(f'  数据目录：{service.RUNTIME}', file=sys.stderr)
     for name in ('service.stderr', 'service.jsonl', 'service.startup.stderr'):
-        path = desktop.RUNTIME / name
+        path = service.RUNTIME / name
         print(f'  日志：{path}' + ('' if path.exists() else '（尚未创建）'), file=sys.stderr)

@@ -5,7 +5,7 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-from desktop.controller import Controller
+from codex_integration.controller import Controller
 from model_catalog.catalog import ConfigError
 
 
@@ -50,7 +50,7 @@ class ControllerTests(unittest.TestCase):
             'status': 'not_detected', 'process_count': 0, 'clients': {}, 'observed_at': None})
         self.process.start()
         self.addCleanup(self.process.stop)
-        self.discover = patch('desktop.client.discover', return_value=None)
+        self.discover = patch('codex_integration.client.discover', return_value=None)
         self.discover.start()
         self.addCleanup(self.discover.stop)
 
@@ -156,9 +156,9 @@ class ControllerTests(unittest.TestCase):
 
     def test_restart_commands_are_macos_only_and_require_explicit_confirmation(self):
         self.initialize()
-        with patch('desktop.controller.sys.platform', 'win32'):
+        with patch('codex_integration.controller.sys.platform', 'win32'):
             self.assertEqual(self.call('preview_restart')['error'], 'INVALID_REQUEST')
-        with patch('desktop.controller.sys.platform', 'darwin'), \
+        with patch('codex_integration.controller.sys.platform', 'darwin'), \
                 patch.object(self.controller.restart, 'preview', return_value={'ticket': 'fixture'}) as preview, \
                 patch.object(self.controller.restart, 'confirm') as confirm:
             self.assertTrue(self.call('preview_restart')['ok'])
@@ -172,7 +172,7 @@ class ControllerTests(unittest.TestCase):
         self.initialize()
         self.assertTrue(self.commit('project')['ok'])
         self.controller.runtime.running = False
-        with patch('desktop.controller.sys.platform', 'darwin'), \
+        with patch('codex_integration.controller.sys.platform', 'darwin'), \
                 patch.object(self.controller.restart, 'confirm') as confirm:
             self.assertEqual(self.call('restart_codex', ticket='fixture', confirm_activity=True)['error'], 'FORWARDING_UNAVAILABLE')
             confirm.assert_not_called()
@@ -181,10 +181,10 @@ class ControllerTests(unittest.TestCase):
         from types import SimpleNamespace
         self.initialize()
         process = SimpleNamespace(pid=7, create_time=lambda: 42.0)
-        with patch('desktop.controller.sys.platform', 'darwin'), \
-                patch('desktop.client.discover', return_value={'bundle': '/fixture/Codex.app'}), \
-                patch('desktop.client.processes', return_value=[process]), \
-                patch('desktop.client.close') as close:
+        with patch('codex_integration.controller.sys.platform', 'darwin'), \
+                patch('codex_integration.client.discover', return_value={'bundle': '/fixture/Codex.app'}), \
+                patch('codex_integration.client.processes', return_value=[process]), \
+                patch('codex_integration.client.close') as close:
             restart = self.call('preview_restart')['result']
             self.assertTrue(self.call('preview_routing', mode='project')['ok'])
             self.assertEqual(self.call('restart_codex', ticket=restart['ticket'], confirm_activity=True)['error'], 'INVALID_PREVIEW')
@@ -193,7 +193,7 @@ class ControllerTests(unittest.TestCase):
             close.assert_not_called()
 
     def test_unsupported_restart_never_initializes_or_claims_a_directory(self):
-        with patch('desktop.controller.sys.platform', 'win32'):
+        with patch('codex_integration.controller.sys.platform', 'win32'):
             self.assertEqual(self.call('preview_restart')['error'], 'INVALID_REQUEST')
             self.assertEqual(self.call('cancel_restart')['error'], 'INVALID_REQUEST')
         self.assertFalse(self.directory.exists())

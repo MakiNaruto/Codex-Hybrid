@@ -8,7 +8,7 @@
 - `app-icon-draft.png`：1254 × 1254 RGBA 独立应用图标设计稿。
 - `menubar-mark-draft.png`：1254 × 1254 RGBA 单色菜单栏图形设计稿。
 
-使用内置 imagegen 生成。用户选定并要求替换后，已接入 `desktop/stage0/tauri/icons/` 的 macOS 专用资源。
+使用内置 imagegen 生成。用户选定并要求替换后，已接入 `apps/desktop/stage0/tauri/icons/` 的 macOS 专用资源。
 已检查两份独立 PNG 的尺寸、RGBA 格式以及透明度范围（0–255）。
 这些文件保留为原始设计母稿。接入时清除了透明区域的低透明度生成残留，导出 1024 × 1024 的 `icon-macos.png` 和多尺寸 `icon.icns`，以及纯黑 RGB、以透明度定义轮廓的 44 × 44 `tray.png`。macOS 使用专用 Tauri 配置，Windows PNG 与 ICO 保持原样。
 

@@ -117,4 +117,5 @@ cd codex-hybrid
 | [命令与安装进阶](docs/zh-CN/cli.md) | 全部常用命令、默认值、私密链接、自定义路径 |
 | [使用与验证](docs/zh-CN/usage.md) | 连接测试、主会话、原生子 agent 示例与验证边界 |
 | [常见问题](docs/zh-CN/troubleshooting.md) | 模型未出现、401、安装失败、回滚 |
-| [工作原理](docs/zh-CN/architecture.md) | 请求路由与凭据边界 |
+| [工作原理](docs/zh-CN/architecture.md) | 目录结构、网页与桌面职责、请求路由与凭据边界 |
+| [桌面应用与构建](apps/desktop/README.md) | Tauri 外壳、Intel Mac 构建与平台验证范围 |

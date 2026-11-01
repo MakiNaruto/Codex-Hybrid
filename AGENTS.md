@@ -31,8 +31,10 @@
 
 ## 桌面与脚本入口
 
-- 桌面公共入口：`src/desktop/client.py`。
-- Windows：`src/desktop/windows_client.py`、`src/desktop/windows_processes.py`、`src/desktop/windows_restart_manager.py`；使用 Windows 进程与 Restart Manager 机制。
-- macOS：`src/desktop/macos_client.py`；使用应用标识、Apple events 与 Launch Services 机制。
+- Tauri 应用与构建工具：`apps/desktop/`。共用管理业务与网页 HTTP 入口：`src/management/`；两端共用页面：`src/management/web/`。
+- CLI、网页与桌面共用的 Codex 本机集成：`src/codex_integration/`。不要在桌面外壳内复制配置、会话迁移或进程控制业务。
+- 桌面公共入口：`src/codex_integration/client.py`。
+- Windows：`src/codex_integration/windows_client.py`、`src/codex_integration/windows_processes.py`、`src/codex_integration/windows_restart_manager.py`；使用 Windows 进程与 Restart Manager 机制。
+- macOS：`src/codex_integration/macos_client.py`；使用应用标识、Apple events 与 Launch Services 机制。
 - 安装和服务脚本：分别检查 `scripts/` 中 Windows `.cmd` / PowerShell 与 macOS `.sh` 的实际入口。
-- 平台行为与已验证边界另见 `desktop/docs/web-desktop-alignment.md`。
+- 平台行为与已验证边界另见 `apps/desktop/docs/web-desktop-alignment.md`。

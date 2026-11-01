@@ -1,7 +1,7 @@
 import tomllib
 import unittest
 
-from desktop.service import PROVIDER, candidate_config, is_bridge_provider, remove_bridge_provider_table
+from codex_integration.service import PROVIDER, candidate_config, is_bridge_provider, remove_bridge_provider_table
 
 
 class ProviderConfigTests(unittest.TestCase):

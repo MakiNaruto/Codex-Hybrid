@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 import psutil
 
-from desktop import windows_client as client
+from codex_integration import windows_client as client
 
 
 class WindowsClientTests(unittest.TestCase):

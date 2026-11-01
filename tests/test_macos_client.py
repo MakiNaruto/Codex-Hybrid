@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from desktop import macos_client as client
+from codex_integration import macos_client as client
 
 
 class MacOSClientTests(unittest.TestCase):

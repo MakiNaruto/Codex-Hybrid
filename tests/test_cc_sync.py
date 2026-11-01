@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from gateway.server import route, sse_events
 from management.service import Management, private_write
-from desktop import service
+from codex_integration import service
 import test_cc_model_identity as identity
 
 

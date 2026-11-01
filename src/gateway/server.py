@@ -125,7 +125,7 @@ def refresh_official_directory(owner, headers, query=''):
         return None
     settings_path = getattr(owner, 'settings_path', None)
     if settings_path:
-        from desktop.locking import DirectoryLock
+        from codex_integration.locking import DirectoryLock
         from management.service import private_write
     # Fetch outside the lock, then merge with the latest committed settings.
     # Management and forwarding run in different processes.
@@ -142,7 +142,7 @@ def refresh_official_directory(owner, headers, query=''):
             state_path = Path(settings_path).parent / 'state.json'
             try:
                 state = json.loads(state_path.read_text(encoding='utf-8'))
-                from desktop.service import official_cache
+                from codex_integration.service import official_cache
                 for model in official_cache(Path(state['config_path']).parent, settings):
                     known[model['slug']] = model
             except (OSError, ValueError, KeyError, TypeError):
@@ -739,7 +739,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--settings', type=Path, required=True)
     args = parser.parse_args()
-    from desktop.locking import DirectoryLock
+    from codex_integration.locking import DirectoryLock
     from gateway.runtime_log import RuntimeLog
     from management.runtime import serve
     import sys

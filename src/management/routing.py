@@ -5,7 +5,7 @@ import json
 import tomllib
 from pathlib import Path
 
-from desktop.configuration import PROVIDER, candidate_config, digest, managed, restore
+from codex_integration.configuration import PROVIDER, candidate_config, digest, managed, restore
 from model_catalog.catalog import ConfigError
 
 
@@ -50,7 +50,7 @@ def prepare(directory, settings, mode):
 def plan(directory, settings, mode, revision_secret):
     """Bind the config rewrite and session migration to one preview revision."""
     state, path, current, baseline, result = prepare(directory, settings, mode)
-    from desktop.session_migration import plan as plan_migration
+    from codex_integration.session_migration import plan as plan_migration
     provider = 'codex-hybrid' if mode == 'project' else 'openai'
     migration = plan_migration(path.parent, settings, provider, best_effort=True)
     revision = hmac.new(revision_secret,
@@ -75,7 +75,7 @@ def commit(directory, settings, mode, revision_secret, revision, confirm_activit
         raise ConfigError('CLIENT_CONFIG_CHANGED')
     if path.read_bytes().decode('utf-8') != current:
         raise ConfigError('CLIENT_CONFIG_CHANGED')
-    from desktop.session_migration import apply, log_warnings
+    from codex_integration.session_migration import apply, log_warnings
     updates = {}
 
     def update(file, value):

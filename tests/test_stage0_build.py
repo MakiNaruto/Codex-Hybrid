@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 import tempfile
 
-spec = importlib.util.spec_from_file_location('stage0_build', Path(__file__).resolve().parents[1] / 'desktop/stage0/build_probe.py')
+spec = importlib.util.spec_from_file_location('stage0_build', Path(__file__).resolve().parents[1] / 'apps/desktop/stage0/build_probe.py')
 build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 
@@ -28,7 +28,7 @@ class Stage0BuildTests(unittest.TestCase):
             self.assertEqual((frameworks / 'Python-link').read_text(), 'updated runtime')
 
     def test_macos_dynamic_backend_is_bundled_only_for_macos(self):
-        self.assertEqual(build.hidden_imports('Darwin'), ['desktop.macos_client'])
+        self.assertEqual(build.hidden_imports('Darwin'), ['codex_integration.macos_client'])
         self.assertEqual(build.hidden_imports('Windows'), [])
 
     def test_macos_avoids_onefile_extraction_and_windows_keeps_onefile(self):

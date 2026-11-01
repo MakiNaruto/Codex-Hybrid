@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, Mock
 
-from desktop.controller import Controller
+from codex_integration.controller import Controller
 from model_catalog.catalog import ConfigError
 
 
@@ -14,9 +14,9 @@ class ExistingServiceTests(unittest.TestCase):
             directory = Path(tmp)
             (directory / 'settings.json').write_text('{}')
             controller = Controller(directory=directory)
-            with patch('desktop.controller.sys.platform', 'darwin'), \
+            with patch('codex_integration.controller.sys.platform', 'darwin'), \
                     patch.object(controller, 'own', side_effect=ConfigError('SERVICE_ALREADY_RUNNING')), \
-                    patch('desktop.existing_service.ExistingService') as adapter:
+                    patch('codex_integration.existing_service.ExistingService') as adapter:
                 adapter.return_value.api.return_value = {'models': ['fixture'], 'routing_mode': 'openai',
                                                          'forwarding': {'status': 'running'}}
                 result = controller.request({'action': 'web_api', 'method': 'GET', 'path': 'state', 'body': None})
@@ -33,12 +33,12 @@ class ExistingServiceTests(unittest.TestCase):
             directory = Path(tmp)
             (directory / 'settings.json').write_text('{}')
             controller = Controller(directory=directory)
-            with patch('desktop.controller.sys.platform', 'win32'), \
+            with patch('codex_integration.controller.sys.platform', 'win32'), \
                     patch.object(controller, 'own', side_effect=ConfigError('SERVICE_ALREADY_RUNNING')):
                 self.assertEqual(controller.request({'action': 'status'})['error'], 'SERVICE_ALREADY_RUNNING')
 
     def test_adapter_keeps_token_off_frontend_and_never_uses_system_proxy(self):
-        from desktop.existing_service import ExistingService
+        from codex_integration.existing_service import ExistingService
         with patch.object(ExistingService, '_verify_owner'):
             service = ExistingService({'port': 18891, 'management_token': 'fixture-token'}, '/fixture')
         import io
@@ -51,8 +51,8 @@ class ExistingServiceTests(unittest.TestCase):
             self.assertFalse(any(type(handler).__name__ == 'ProxyHandler' for handler in service.opener.handlers))
 
     def test_unrelated_service_is_never_contacted(self):
-        from desktop.existing_service import ExistingService
-        with tempfile.TemporaryDirectory() as tmp, patch('desktop.existing_service.build_opener') as opener:
+        from codex_integration.existing_service import ExistingService
+        with tempfile.TemporaryDirectory() as tmp, patch('codex_integration.existing_service.build_opener') as opener:
             with self.assertRaises(ConfigError):
                 ExistingService({'port': 18891}, tmp)
             opener.assert_not_called()
@@ -63,11 +63,11 @@ class ExistingServiceTests(unittest.TestCase):
         state = {'routing_mode': 'project', 'forwarding': {'status': 'running'}}
         controller.existing_service.api.side_effect = lambda path, *args: (
             {'active_requests': 2} if path == 'activity' else dict(state))
-        with patch('desktop.controller.sys.platform', 'darwin'), \
-                patch('desktop.client.discover', return_value={'bundle': '/fixture/Codex.app'}), \
-                patch('desktop.client.processes', return_value=[Mock(pid=17, create_time=lambda: 100)]), \
-                patch('desktop.client.close', return_value=True) as close, \
-                patch('desktop.client.launch', return_value='started') as launch:
+        with patch('codex_integration.controller.sys.platform', 'darwin'), \
+                patch('codex_integration.client.discover', return_value={'bundle': '/fixture/Codex.app'}), \
+                patch('codex_integration.client.processes', return_value=[Mock(pid=17, create_time=lambda: 100)]), \
+                patch('codex_integration.client.close', return_value=True) as close, \
+                patch('codex_integration.client.launch', return_value='started') as launch:
             preview = controller.request({'action': 'preview_restart'})
             self.assertTrue(preview['ok'], preview)
             self.assertEqual(preview['result']['activity']['active_requests'], 2)
@@ -97,7 +97,7 @@ class ExistingServiceTests(unittest.TestCase):
         controller = Controller(directory='/fixture')
         controller.existing_service = Mock()
         controller.existing_service.api.side_effect = ConfigError('SERVICE_UNREACHABLE')
-        with patch('desktop.controller.sys.platform', 'darwin'), \
+        with patch('codex_integration.controller.sys.platform', 'darwin'), \
                 patch.object(controller.restart, 'confirm') as confirm:
             result = controller.request({'action': 'restart_codex', 'ticket': 'fixture',
                                          'confirm_activity': True})
