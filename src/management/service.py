@@ -402,6 +402,23 @@ class Management:
                 self.last_synced_at = None
             return {'saved': True, 'restart_client_for_model_list': True}
 
+    def model_labels(self):
+        """Resolve logged model keys to the provider and name shown in the model list."""
+        try:
+            with self.lock:
+                if self.gateway.settings['source']['type'] == 'cc-switch':
+                    labels = {}
+                    for entry in getattr(self.cc_catalog, 'inventory', None) or []:
+                        for model in entry['models']:
+                            labels[entry['provider_key'] + '/' + model['model_id']] = (
+                                entry['name'], model.get('display_name') or model['model_id'])
+                    return labels
+                catalog = load_source(self.gateway.settings)
+                return {key: (model['provider'], model['display_name'])
+                        for key, model in catalog.models.items()}
+        except (OSError, ValueError, KeyError, TypeError):
+            return {}
+
     def view(self):
         with self.lock:
             settings = self.gateway.settings

@@ -46,6 +46,10 @@ class CCSyncTests(unittest.TestCase):
                             {'Authorization': 'Bearer subscription-test-only'}, settings)[1]
             self.assertEqual(payload['model'], model)
 
+    def test_model_labels_follow_the_cc_switch_list(self):
+        self.manager.sync_cc()
+        self.assertEqual(self.manager.model_labels()['record-a/model-a'], ('Vendor', 'Label model-a'))
+
     def test_prepare_persists_the_same_explicit_bindings_as_the_published_directory(self):
         home = self.fixture.root / 'codex'
         home.mkdir()

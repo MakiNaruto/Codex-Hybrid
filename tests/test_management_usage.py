@@ -49,6 +49,18 @@ class UsageTests(unittest.TestCase):
             (root/'service.jsonl.1').write_text('{}')
             self.assertEqual(report(root)['state'], 'partial')
 
+    def test_model_labels_follow_the_reported_models(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            now = 200000
+            (root/'service.jsonl').write_text(json.dumps(
+                {'time': now, 'model': 'record/model-a', 'status': 'completed'})+'\n')
+            labeled = report(root, days=1, now=now,
+                             labels={'record/model-a': ('Vendor', 'Label model-a')})
+            row = labeled['models'][0]
+            self.assertEqual((row['provider_name'], row['model_name']), ('Vendor', 'Label model-a'))
+            self.assertNotIn('model_name', report(root, days=1, now=now)['models'][0])
+
     def test_period_validation(self):
         with self.assertRaises(ValueError):
             report(Path('.'), days=2)
@@ -62,7 +74,7 @@ class UsageHTTPTests(unittest.TestCase):
         from management.http import handle
         with TemporaryDirectory() as temp:
             gateway = SimpleNamespace(settings={'management_auth_required': True, 'management_token': 'fixture'},
-                                      manager=SimpleNamespace(directory=Path(temp)))
+                                      manager=SimpleNamespace(directory=Path(temp), model_labels=lambda: {}))
             for query, authorized, status in [('days=7', False, 403), ('days=7', True, 200),
                     ('days=1', True, 200), ('days=30', True, 200), ('days=2', True, 400),
                     ('days=7&days=1', True, 400), ('days=', True, 400)]:

@@ -17,9 +17,10 @@ def token_count(value):
     return value if type(value) is int and 0 <= value <= 10**12 else None
 
 
-def report(directory, days=7, now=None):
+def report(directory, days=7, now=None, labels=None):
     if type(days) is not int or days not in (1, 7, 30):
         raise ValueError('Unsupported usage period')
+    labels = labels if isinstance(labels, dict) else {}
     now = time.time() if now is None else now
     cutoff = now - days * 86400
     step = 3600 if days == 1 else 86400
@@ -52,8 +53,12 @@ def report(directory, days=7, now=None):
                             or status not in REQUEST_STATUSES):
                         continue
                     if model not in models:
-                        models[model] = {'model': model, **counts(),
-                                         'series': [dict(time=b, **counts()) for b in buckets]}
+                        row = {'model': model, **counts(),
+                               'series': [dict(time=b, **counts()) for b in buckets]}
+                        label = labels.get(model)
+                        if label:
+                            row['provider_name'], row['model_name'] = label
+                        models[model] = row
                     row = models[model]
                     bucket = row['series'][int((timestamp - start) // step)]
                     values = counts()

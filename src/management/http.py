@@ -73,7 +73,8 @@ def handle(handler, gateway, method):
             periods = parse_qs(urlsplit(handler.path).query, keep_blank_values=True).get('days', ['7'])
             if len(periods) != 1 or periods[0] not in {'1', '7', '30'}:
                 reply(400, {'code': 'INVALID_USAGE_PERIOD'}); return True
-            reply(200, report(manager.directory, days=int(periods[0]))); return True
+            reply(200, report(manager.directory, days=int(periods[0]),
+                              labels=manager.model_labels())); return True
         if method == 'GET' and handler.path == '/manage/api/activity':
             reply(200, manager.activity_state()); return True
         if method == 'GET' and handler.path == '/manage/api/state':

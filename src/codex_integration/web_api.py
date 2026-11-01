@@ -64,7 +64,8 @@ def handle(controller, request):
         return manager.process_state()
     if path.startswith('usage?days='):
         from management.usage import report
-        return report(manager.directory, days=int(path.split('=', 1)[1]))
+        return report(manager.directory, days=int(path.split('=', 1)[1]),
+                      labels=manager.model_labels())
     if path.startswith('diagnostics?days='):
         from management.diagnostics import report
         days = path.split('=', 1)[1]
