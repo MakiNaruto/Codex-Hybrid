@@ -1,6 +1,6 @@
 //! AppKit alerts run on the main thread; controller requests stay asynchronous.
-use objc2::MainThreadMarker;
-use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSAlertStyle};
+use objc2::{runtime::NSObjectProtocol, sel, MainThreadMarker};
+use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSAlertStyle, NSApplication};
 use objc2_foundation::NSString;
 
 pub async fn show(
@@ -31,6 +31,20 @@ pub async fn show(
                 button.setKeyEquivalent(&NSString::from_str("\u{1b}"));
             }
         }
+        // Make only the alert key before activation; never show the management window.
+        alert.layout();
+        let window = alert.window();
+        window.center();
+        window.makeKeyAndOrderFront(None);
+        let application = NSApplication::sharedApplication(mtm);
+        if application.respondsToSelector(sel!(activate)) {
+            application.activate();
+        } else {
+            // activate() was introduced in macOS 14; retain older macOS support.
+            #[allow(deprecated)]
+            application.activateIgnoringOtherApps(true);
+        }
+        window.orderFrontRegardless();
         let response = alert.runModal() - NSAlertFirstButtonReturn;
         let choice = usize::try_from(response)
             .ok()

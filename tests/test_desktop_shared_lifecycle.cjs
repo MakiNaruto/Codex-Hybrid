@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
-function fixture({draft=false,restored=true,hint=true,nativeChoice=0,restartAvailable=true,clientRunning=true,preference="ask",requestError=null,externalService=false}={}){
+function fixture({draft=false,restored=true,hint=true,nativeChoice=0,restartAvailable=true,clientRunning=true,preference="ask",requestError=null,externalService=false,activeRequests=2,operationResult={}}={}){
   const events={},calls=[],notes=[],nodes={};let exits=0;
   const node=id=>{
     if(!nodes[id]){const listeners={};nodes[id]={hidden:false,disabled:false,checked:false,open:false,
@@ -11,7 +11,7 @@ function fixture({draft=false,restored=true,hint=true,nativeChoice=0,restartAvai
       close(){this.open=false;for(const cb of listeners.close||[])cb();},focus(){}};}
     return nodes[id];
   };
-  const desktop={pendingWrites:0,request:async r=>{calls.push(r);if(r.action===requestError)throw Error('SERVICE_UNREACHABLE');if(r.action==='preview_routing')return {revision:'rev',desktop_ticket:'route-ticket',desktop:{available:true,status:'known',running:clientRunning},activity:{active_requests:2}};if(r.action==='preview_restart')return {available:restartAvailable,ticket:'signed',activity:{active_requests:2},status:'running'};return {};}};
+  const desktop={pendingWrites:0,request:async r=>{calls.push(r);if(r.action===requestError)throw Error('SERVICE_UNREACHABLE');if(r.action==='preview_routing')return {revision:'rev',desktop_ticket:'route-ticket',desktop:{available:true,status:'known',running:clientRunning},activity:{active_requests:activeRequests}};if(r.action==='preview_restart')return {available:restartAvailable,ticket:'signed',activity:{active_requests:activeRequests},status:'running'};return operationResult;}};
   const request=desktop.request;
   desktop.api=async(path,body)=>{calls.push({action:'api',path,body});return request({action:path==='routing/preview'?'preview_routing':'set_routing',...body});};
   if(externalService)desktop.request=async r=>{
@@ -114,4 +114,28 @@ test('macOS tray routing shares the working web adapter when a web service owns 
   assert.deepEqual(f.calls.filter(r=>r.action==='api').map(r=>r.path),['routing/preview','routing']);
   assert.equal(f.calls.some(r=>r.action==='set_routing'),true);
   assert.equal(f.calls.some(r=>r.title==='操作未完成'),false);
+});
+
+test('native confirmations keep task impact and omit routine migration statistics',async()=>{
+  for(const event of ['desktop-routing-requested','desktop-restart-requested']){
+    const f=fixture();await f.events[event](macEvent);
+    const confirmation=f.calls.find(r=>r.action==='alert');
+    assert.match(confirmation.detail,/中断.*任务/);
+    assert.match(confirmation.detail,/2.*请求/);
+    assert.doesNotMatch(confirmation.detail,/索引|涉及会话|活动请求：|审批|强制结束/);
+    assert.ok(confirmation.detail.length<120);
+  }
+});
+test('native confirmations omit idle request counts',async()=>{
+  const f=fixture({activeRequests:0});await f.events['desktop-routing-requested'](macEvent);
+  assert.doesNotMatch(f.calls.find(r=>r.action==='alert').detail,/请求/);
+});
+test('native routing result is concise and distinguishes manual recovery from success',async()=>{
+  const f=fixture({nativeChoice:1,operationResult:{desktop_result:'close_failed'}});
+  await f.events['desktop-routing-requested'](macEvent);
+  const result=f.calls.filter(r=>r.action==='alert').at(-1);
+  assert.equal(result.title,'混合路由已关闭');
+  assert.match(result.detail,/手动重启/);
+  assert.doesNotMatch(result.detail,/基线|索引|网关/);
+  assert.ok(result.detail.length<80);
 });

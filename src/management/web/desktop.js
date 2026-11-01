@@ -37,10 +37,23 @@
   }
   const alert=(title,detail,buttons=['好的'])=>native.core.invoke('desktop_alert',{title,detail,buttons});
   async function nativeAction(fn){
-    if(blocked()){await alert('暂不能操作','请先完成当前操作，保存或取消草稿，并关闭当前弹窗。');return;}
+    if(blocked()){await alert('暂不能操作','请先完成当前操作，或保存、取消未完成的编辑。');return;}
     busy=true;
     try{await fn();}catch(error){message(errorMessage(error),true);await alert('操作未完成',errorMessage(error));}
     finally{busy=false;}
+  }
+  function activityNote(preview){
+    const count=preview.activity?.active_requests;
+    return count>0?'\n当前有 '+count+' 个请求正在进行。':count==null?'\n当前请求状态未知。':'';
+  }
+  function nativeRoutingResult(result){
+    const outcomes={started:'已请求启动 Codex。',already_running:'Codex 已在运行。',
+      close_failed:'Codex 未能退出，请手动重启。',launch_unconfirmed:'未能确认 Codex 启动，请手动打开。',
+      unavailable:'未找到 Codex，请手动打开。',unknown:'无法确认 Codex 状态，请手动重启。',
+      state_changed:'Codex 状态已变化，请手动重启。',not_running:'Codex 未运行，请手动打开。'};
+    let text=outcomes[result.desktop_result]||'请重启 Codex 使更改生效。';
+    if(result.warnings?.length)text+='\n'+result.warnings.map(warning=>warning.message).join('\n');
+    return text;
   }
   async function nativeRouting(){
     await nativeAction(async()=>{
@@ -57,12 +70,15 @@
         if(possible)buttons.push(verb+'并'+(client.running?'重启':'启动')+' Codex');
         let committed=false;
         try{
-          const detail=(mode==='project'?'启用混合路由':'恢复接入前的路由配置')+'，同时更新本地会话索引，保留历史内容。\n涉及会话：'+(preview.session_count??'未知')+'；需补齐索引：'+(preview.index_repair_count??0)+'；缺少历史文件：'+(preview.missing_rollouts??0)+'。\n活动请求：'+(preview.activity?.active_requests??'未知')+'。重启可能中断所有 Codex 窗口中的任务；CLI / VS Code 请自行重启。'+(possible?'\n是否同时'+(client.running?'重启':'启动')+' Codex？':'\n请自行打开或重启 Codex 加载配置。');
+          let detail=mode==='project'?'使用已配置的模型，保留现有会话。':'恢复 Codex 原生路由，保留现有会话。';
+          detail+=possible&&client.running?'\n重启可能中断 Codex 所有窗口中的任务。':'\n请重新打开 Codex 使更改生效。';
+          detail+=activityNote(preview);
+          if(preview.missing_rollouts>0)detail+='\n部分历史文件缺失，请在管理页面检查。';
           const choice=await alert(verb+'混合路由？',detail,buttons);
           if(choice!==1&&!(choice===2&&possible))return;
           committed=true;
           const result=await desktop.api('routing',{mode,revision:preview.revision,confirm_activity:true,desktop_action:choice===2,desktop_was_running:!!client?.running,desktop_ticket:preview.desktop_ticket});
-          await alert('混合路由',routingResultText(mode,result));
+          await alert('混合路由已'+verb,nativeRoutingResult(result));
         }finally{if(!committed)await desktop.request({action:'cancel_preview'});}
       }finally{routingSaving=false;await refresh();renderRouting();}
     });
@@ -74,15 +90,15 @@
       let committed=false;
       try{
         if(!preview.available){
-          const labels={not_running:'Codex 未运行，本入口不会启动 Codex。',unavailable:'无法识别 Codex 安装，请手动操作。',unknown:'无法确认 Codex 运行状态，已阻止自动重启。'};
-          await alert('无法重启 Codex',labels[preview.status]||'当前无法安全重启，请检查运行状态。');return;
+          const labels={not_running:'请先打开 Codex。',unavailable:'未找到 Codex，请手动打开。',unknown:'无法确认运行状态，请手动重启。'};
+          await alert('无法重启 Codex',labels[preview.status]||'请检查 Codex 状态后重试。');return;
         }
-        const choice=await alert('重启 Codex？','将正常退出并重新打开整个 Codex，可能中断所有窗口中的任务。\n网关活动请求：'+(preview.activity?.active_requests??'未知')+'。工具执行或等待审批可能仍在进行。不会强制结束进程，也不保证恢复任务。',['取消','重启 Codex']);
+        const choice=await alert('重启 Codex？','将退出并重新打开 Codex，可能中断所有窗口中的任务。'+activityNote(preview),['取消','重启 Codex']);
         if(choice!==1)return;
         committed=true;
         const result=await desktop.request({action:'restart_codex',ticket:preview.ticket,confirm_activity:true});
-        const outcomes={started:'已尝试启动 Codex，请检查客户端是否正常打开。',close_failed:'Codex 正常退出未完成，未尝试启动，请手动检查。',launch_unconfirmed:'未能确认 Codex 启动成功，请手动检查。'};
-        await alert('重启 Codex',outcomes[result.desktop_result]||'重启请求已结束，请检查 Codex 状态。');
+        const outcomes={started:'已请求重新打开 Codex。',close_failed:'Codex 未能退出，请手动重启。',launch_unconfirmed:'未能确认 Codex 启动，请手动打开。'};
+        await alert('重启 Codex',outcomes[result.desktop_result]||'请检查 Codex 是否已重新打开。');
       }finally{if(!committed)await desktop.request({action:'cancel_restart'});}
     });
   }

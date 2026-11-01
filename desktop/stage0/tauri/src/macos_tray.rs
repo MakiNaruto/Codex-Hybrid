@@ -95,7 +95,10 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
                         .set_checked(items.enabled.load(Ordering::Acquire));
                 }
             }
-            crate::show_main(app);
+            // Routing and restart use standalone native dialogs, even when hidden.
+            if matches!(event.id.as_ref(), "open" | "safe-exit") {
+                crate::show_main(app);
+            }
             let name = match event.id.as_ref() {
                 "routing" => Some("desktop-routing-requested"),
                 "restart-codex" => Some("desktop-restart-requested"),
