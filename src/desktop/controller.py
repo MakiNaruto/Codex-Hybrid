@@ -107,7 +107,7 @@ class Controller:
         if self.existing_service is not None:
             state = self.existing_service.api('state')
             return {'configured': True, 'routing': state['routing_mode'],
-                    'forwarding': state['forwarding'], 'restart_supported': False,
+                    'forwarding': state['forwarding'], 'restart_supported': True,
                     'external_service': True, 'recovery_required': False}
         mode = self.manager.routing_state()
         forwarding = self.runtime.snapshot()
@@ -151,23 +151,31 @@ class Controller:
             return {'stopped': True}
         if not self.ensure_manager():
             raise ConfigError('NOT_CONFIGURED')
-        if self.existing_service is not None:
-            raise ConfigError('SERVICE_ALREADY_RUNNING')
         if action in ('preview_restart', 'cancel_restart', 'restart_codex'):
             if action == 'cancel_restart':
                 self.restart.cancel()
                 return {'cancelled': True}
+            # Read the current owner's state again at confirmation time.
+            if self.existing_service is not None:
+                state = self.existing_service.api('state')
+                mode, forwarding = state['routing_mode'], state['forwarding']
+            else:
+                mode, forwarding = self.manager.routing_state(), self.runtime.snapshot()
             # Do not reopen a client into an unavailable gateway.
-            if self.manager.routing_state() == 'project' and self.runtime.snapshot()['status'] != 'running':
+            if mode == 'project' and forwarding['status'] != 'running':
                 self.restart.cancel()
                 raise ConfigError('FORWARDING_UNAVAILABLE')
             if action == 'preview_restart':
                 self.pending = None
-                return self.restart.preview(self.manager.activity_state())
+                activity = (self.existing_service.api('activity') if self.existing_service is not None
+                            else self.manager.activity_state())
+                return self.restart.preview(activity)
             if not request['confirm_activity']:
                 self.restart.cancel()
                 raise ConfigError('INVALID_REQUEST')
             return self.restart.confirm(request['ticket'])
+        if self.existing_service is not None:
+            raise ConfigError('SERVICE_ALREADY_RUNNING')
         if action == 'save_provider':
             self.pending = None
             with self.manager.lock:

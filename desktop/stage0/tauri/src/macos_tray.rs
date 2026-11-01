@@ -8,7 +8,6 @@ use tauri::{
 };
 
 struct TrayItems {
-    status: MenuItem<tauri::Wry>,
     routing: CheckMenuItem<tauri::Wry>,
     enabled: AtomicBool,
 }
@@ -42,7 +41,9 @@ pub fn update(app: &tauri::AppHandle, response: Option<&Value>) {
         Some(r) => labels(&r["result"]),
         None => ("状态不可用，请打开窗口检查".into(), false),
     };
-    let _ = items.status.set_text(&status);
+    let _ = items.routing.set_enabled(response.is_some_and(|r| {
+        r["ok"] == true && matches!(r["result"]["routing"].as_str(), Some("project" | "openai"))
+    }));
     items.enabled.store(enabled, Ordering::Release);
     let _ = items.routing.set_checked(enabled);
     if let Some(tray) = app.tray_by_id("hybrid") {
@@ -51,18 +52,24 @@ pub fn update(app: &tauri::AppHandle, response: Option<&Value>) {
 }
 
 pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let status = MenuItem::with_id(app, "tray-status", "正在读取状态…", false, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", "打开 Codex Hybrid", true, None::<&str>)?;
-    let routing = CheckMenuItem::with_id(app, "routing", "开启", true, false, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "管理", true, None::<&str>)?;
+    let routing = CheckMenuItem::with_id(app, "routing", "混合路由", false, false, None::<&str>)?;
     let restart = MenuItem::with_id(app, "restart-codex", "重启 Codex…", true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, "safe-exit", "退出应用…", true, None::<&str>)?;
+    let exit = MenuItem::with_id(app, "safe-exit", "退出…", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
+    let exit_separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&status, &separator, &open, &routing, &restart, &exit],
+        &[
+            &open,
+            &separator,
+            &routing,
+            &restart,
+            &exit_separator,
+            &exit,
+        ],
     )?;
     app.manage(TrayItems {
-        status,
         routing,
         enabled: AtomicBool::new(false),
     });
@@ -72,6 +79,13 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         .tooltip("Codex Hybrid")
         .menu(&menu)
         .on_menu_event(|app, event| {
+            // Tauri sends application-menu events here too.
+            if !matches!(
+                event.id.as_ref(),
+                "open" | "routing" | "restart-codex" | "safe-exit"
+            ) {
+                return;
+            }
             if event.id.as_ref() == "routing" {
                 // Native check items toggle on click. Keep the actual state until
                 // the existing preview/confirmation flow completes successfully.
@@ -89,7 +103,7 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
                 _ => None,
             };
             if let Some(name) = name {
-                let _ = app.emit(name, ());
+                let _ = app.emit(name, serde_json::json!({"native_confirmation":true}));
             }
         })
         .build(app)?;

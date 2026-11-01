@@ -35,6 +35,57 @@
       message(result.error==='EXIT_BLOCKED'?'暂不能退出：接入仍开启，或客户端仍可能依赖网关。请关闭接入并检查客户端后重试。':'退出未完成，请检查状态后重试。',true);
     });
   }
+  const alert=(title,detail,buttons=['好的'])=>native.core.invoke('desktop_alert',{title,detail,buttons});
+  async function nativeAction(fn){
+    if(blocked()){await alert('暂不能操作','请先完成当前操作，保存或取消草稿，并关闭当前弹窗。');return;}
+    busy=true;
+    try{await fn();}catch(error){message(errorMessage(error),true);await alert('操作未完成',errorMessage(error));}
+    finally{busy=false;}
+  }
+  async function nativeRouting(){
+    await nativeAction(async()=>{
+      await refresh();
+      if(!state){await alert('尚未初始化','请先在管理窗口初始化配置。');return;}
+      if(state.routing_operation){await alert('正在切换','请等待当前接入操作完成。');return;}
+      const mode=routingEnabled()?'openai':'project',verb=mode==='project'?'开启':'关闭';
+      routingSaving=true;renderRouting();
+      try{
+        const preview=await desktop.api('routing/preview',{mode});
+        const client=preview.desktop;
+        const possible=client?.available&&client.status==='known'&&(mode==='project'||client.running)&&state.desktop_preferences?.[mode]!=='never';
+        const buttons=['取消','仅'+verb];
+        if(possible)buttons.push(verb+'并'+(client.running?'重启':'启动')+' Codex');
+        let committed=false;
+        try{
+          const detail=(mode==='project'?'启用混合路由':'恢复接入前的路由配置')+'，同时更新本地会话索引，保留历史内容。\n涉及会话：'+(preview.session_count??'未知')+'；需补齐索引：'+(preview.index_repair_count??0)+'；缺少历史文件：'+(preview.missing_rollouts??0)+'。\n活动请求：'+(preview.activity?.active_requests??'未知')+'。重启可能中断所有 Codex 窗口中的任务；CLI / VS Code 请自行重启。'+(possible?'\n是否同时'+(client.running?'重启':'启动')+' Codex？':'\n请自行打开或重启 Codex 加载配置。');
+          const choice=await alert(verb+'混合路由？',detail,buttons);
+          if(choice!==1&&!(choice===2&&possible))return;
+          committed=true;
+          const result=await desktop.api('routing',{mode,revision:preview.revision,confirm_activity:true,desktop_action:choice===2,desktop_was_running:!!client?.running,desktop_ticket:preview.desktop_ticket});
+          await alert('混合路由',routingResultText(mode,result));
+        }finally{if(!committed)await desktop.request({action:'cancel_preview'});}
+      }finally{routingSaving=false;await refresh();renderRouting();}
+    });
+  }
+  async function nativeRestart(){
+    await nativeAction(async()=>{
+      message('正在检查 Codex 状态…');
+      const preview=await desktop.request({action:'preview_restart'});
+      let committed=false;
+      try{
+        if(!preview.available){
+          const labels={not_running:'Codex 未运行，本入口不会启动 Codex。',unavailable:'无法识别 Codex 安装，请手动操作。',unknown:'无法确认 Codex 运行状态，已阻止自动重启。'};
+          await alert('无法重启 Codex',labels[preview.status]||'当前无法安全重启，请检查运行状态。');return;
+        }
+        const choice=await alert('重启 Codex？','将正常退出并重新打开整个 Codex，可能中断所有窗口中的任务。\n网关活动请求：'+(preview.activity?.active_requests??'未知')+'。工具执行或等待审批可能仍在进行。不会强制结束进程，也不保证恢复任务。',['取消','重启 Codex']);
+        if(choice!==1)return;
+        committed=true;
+        const result=await desktop.request({action:'restart_codex',ticket:preview.ticket,confirm_activity:true});
+        const outcomes={started:'已尝试启动 Codex，请检查客户端是否正常打开。',close_failed:'Codex 正常退出未完成，未尝试启动，请手动检查。',launch_unconfirmed:'未能确认 Codex 启动成功，请手动检查。'};
+        await alert('重启 Codex',outcomes[result.desktop_result]||'重启请求已结束，请检查 Codex 状态。');
+      }finally{if(!committed)await desktop.request({action:'cancel_restart'});}
+    });
+  }
   async function toggleRouting(){
     await guarded(async()=>{
       await refresh();
@@ -78,6 +129,12 @@
     finally{$('desktop-initialize').disabled=false;}
   });
   for(const [name,handler] of [['desktop-exit-requested',exitApp],['desktop-routing-requested',toggleRouting],['desktop-restart-requested',previewRestart]]){
-    native.event.listen(name,handler).catch(()=>message('桌面菜单连接失败，请重新打开应用后重试。',true));
+    native.event.listen(name,event=>{
+      if(event?.payload?.native_confirmation){
+        if(name==='desktop-routing-requested')return nativeRouting();
+        if(name==='desktop-restart-requested')return nativeRestart();
+      }
+      return handler();
+    }).catch(()=>message('桌面菜单连接失败，请重新打开应用后重试。',true));
   }
 })();

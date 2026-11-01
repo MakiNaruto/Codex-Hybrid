@@ -6,6 +6,8 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 #[cfg(target_os = "macos")]
+mod macos_dialog;
+#[cfg(target_os = "macos")]
 mod macos_tray;
 
 struct Session {
@@ -257,6 +259,24 @@ fn request_native_exit(app: &tauri::AppHandle) {
     });
 }
 
+#[tauri::command]
+async fn desktop_alert(
+    app: tauri::AppHandle,
+    title: String,
+    detail: String,
+    buttons: Vec<String>,
+) -> Result<usize, String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos_dialog::show(&app, title, detail, buttons).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, title, detail, buttons);
+        Err("此弹窗仅适用于 macOS".into())
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Control::default())
@@ -293,7 +313,8 @@ fn main() {
             probe_report,
             desktop_snapshot,
             desktop_manage,
-            desktop_exit
+            desktop_exit,
+            desktop_alert
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

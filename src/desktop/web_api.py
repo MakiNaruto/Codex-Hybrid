@@ -48,9 +48,11 @@ def handle(controller, request):
             return {'configured': False}
         raise ConfigError('NOT_CONFIGURED')
     if controller.existing_service is not None:
+        if request['method'] == 'POST':
+            controller.restart.cancel()
         result = controller.existing_service.api(path, request['method'], body)
         if path == 'state':
-            result.update(configured=True, restart_supported=False, external_service=True)
+            result.update(configured=True, restart_supported=True, external_service=True)
         return result
     manager = controller.manager
     if path == 'state':
