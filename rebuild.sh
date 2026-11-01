@@ -11,9 +11,28 @@ cp desktop/stage0/tauri/target/debug/hybrid-stage0-shell \
 cp desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin \
   "desktop/build/stage0/Codex Hybrid Tray Preview.app/Contents/MacOS/hybrid-stage0-probe"
 
-# The macOS sidecar is onedir; copy its libraries alongside the executable.
-ditto desktop/dist/stage0/_internal \
-  "desktop/build/stage0/Codex Hybrid Tray Preview.app/Contents/MacOS/_internal"
+# A PyInstaller executable inside Contents/MacOS looks in Contents/Frameworks.
+# Verify the installed executable, not only the standalone dist copy.
+.venv/bin/python - <<'RUNTIME'
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+spec = importlib.util.spec_from_file_location('build_probe', 'desktop/stage0/build_probe.py')
+build = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(build)
+app = Path('desktop/build/stage0/Codex Hybrid Tray Preview.app')
+build.install_macos_runtime(app, Path('desktop/dist/stage0/_internal'))
+with tempfile.TemporaryDirectory() as home:
+    result = subprocess.run([str((app / 'Contents/MacOS/hybrid-stage0-probe').resolve()),
+                             'desktop-snapshot'], env={**os.environ, 'HOME': home},
+                            capture_output=True, text=True, timeout=15, check=True)
+    assert json.loads(result.stdout)['status'] == 'not_configured'
+print('Packaged macOS Python runtime verified.')
+RUNTIME
 
 # Keep the Finder/Dock icon aligned with the replaceable icon assets.
 python3 - <<'ICONS'
@@ -33,4 +52,6 @@ with plist_path.open("wb") as stream:
     plistlib.dump(info, stream)
 ICONS
 
-open "./desktop/build/stage0/Codex Hybrid Tray Preview.app"
+if [[ "${STAGE0_OPEN_APP:-1}" == 1 ]]; then
+  open "./desktop/build/stage0/Codex Hybrid Tray Preview.app"
+fi

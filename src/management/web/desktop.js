@@ -4,6 +4,7 @@
   const desktop=window.hybridDesktop;
   if(!desktop)return;
   const native=window.__TAURI__;
+  window.addEventListener('hybrid-management-ready',()=>refreshClientProcesses());
   let busy=false,restartPreview=null;
   function blocked(){
     if(busy||routingSaving||sourceSaving||modelSaving||desktop.pendingWrites||dirtyCards().length||document.querySelector('dialog[open]')){

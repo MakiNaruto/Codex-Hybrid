@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
 
 spec = importlib.util.spec_from_file_location('stage0_build', Path(__file__).resolve().parents[1] / 'desktop/stage0/build_probe.py')
 build = importlib.util.module_from_spec(spec)
@@ -9,6 +10,23 @@ spec.loader.exec_module(build)
 
 
 class Stage0BuildTests(unittest.TestCase):
+    def test_app_runtime_is_available_where_pyinstaller_looks_inside_macos_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            libraries = root / 'libraries'
+            libraries.mkdir()
+            (libraries / 'Python').write_text('runtime fixture')
+            (libraries / 'Python-link').symlink_to('Python')
+            app = root / 'Preview.app'
+            build.install_macos_runtime(app, libraries)
+            frameworks = app / 'Contents/Frameworks'
+            self.assertEqual((frameworks / 'Python').read_text(), 'runtime fixture')
+            # Rebuilding must remain safe and resolve to the newly copied runtime.
+            (libraries / 'Python').write_text('updated runtime')
+            build.install_macos_runtime(app, libraries)
+            self.assertEqual((frameworks / 'Python').read_text(), 'updated runtime')
+            self.assertEqual((frameworks / 'Python-link').read_text(), 'updated runtime')
+
     def test_macos_dynamic_backend_is_bundled_only_for_macos(self):
         self.assertEqual(build.hidden_imports('Darwin'), ['desktop.macos_client'])
         self.assertEqual(build.hidden_imports('Windows'), [])

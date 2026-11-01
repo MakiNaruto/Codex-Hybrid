@@ -1,17 +1,19 @@
 //! macOS-only native tray. API: https://v2.tauri.app/learn/system-tray/
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
 
 struct TrayItems {
     status: MenuItem<tauri::Wry>,
-    routing: MenuItem<tauri::Wry>,
+    routing: CheckMenuItem<tauri::Wry>,
+    enabled: AtomicBool,
 }
 
-fn labels(status: &Value) -> (String, &'static str) {
+fn labels(status: &Value) -> (String, bool) {
     let mode = status["routing"].as_str().unwrap_or("unavailable");
     let forwarding = match status["forwarding"]["status"].as_str() {
         Some("stopped") => "已停止",
@@ -26,24 +28,23 @@ fn labels(status: &Value) -> (String, &'static str) {
         "openai" => "原生",
         _ => "未准备或未知",
     };
-    let action = match mode {
-        "project" => "关闭 Codex 接入…",
-        "openai" => "开启 Codex 接入…",
-        _ => "检查接入配置…",
-    };
-    (format!("接入：{routing} · 网关：{forwarding}"), action)
+    (
+        format!("接入：{routing} · 网关：{forwarding}"),
+        mode == "project",
+    )
 }
 
 pub fn update(app: &tauri::AppHandle, response: Option<&Value>) {
     let Some(items) = app.try_state::<TrayItems>() else {
         return;
     };
-    let (status, action) = match response.filter(|r| r["ok"] == true) {
+    let (status, enabled) = match response.filter(|r| r["ok"] == true) {
         Some(r) => labels(&r["result"]),
-        None => ("状态不可用，请打开窗口检查".into(), "检查接入配置…"),
+        None => ("状态不可用，请打开窗口检查".into(), false),
     };
     let _ = items.status.set_text(&status);
-    let _ = items.routing.set_text(action);
+    items.enabled.store(enabled, Ordering::Release);
+    let _ = items.routing.set_checked(enabled);
     if let Some(tray) = app.tray_by_id("hybrid") {
         let _ = tray.set_tooltip(Some(format!("Codex Hybrid · {status}")));
     }
@@ -52,7 +53,7 @@ pub fn update(app: &tauri::AppHandle, response: Option<&Value>) {
 pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "tray-status", "正在读取状态…", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "打开 Codex Hybrid", true, None::<&str>)?;
-    let routing = MenuItem::with_id(app, "routing", "检查接入配置…", true, None::<&str>)?;
+    let routing = CheckMenuItem::with_id(app, "routing", "开启", true, false, None::<&str>)?;
     let restart = MenuItem::with_id(app, "restart-codex", "重启 Codex…", true, None::<&str>)?;
     let exit = MenuItem::with_id(app, "safe-exit", "退出应用…", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
@@ -60,13 +61,26 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         app,
         &[&status, &separator, &open, &routing, &restart, &exit],
     )?;
-    app.manage(TrayItems { status, routing });
+    app.manage(TrayItems {
+        status,
+        routing,
+        enabled: AtomicBool::new(false),
+    });
     TrayIconBuilder::with_id("hybrid")
         .icon(tauri::include_image!("icons/tray.png"))
         .icon_as_template(true)
         .tooltip("Codex Hybrid")
         .menu(&menu)
         .on_menu_event(|app, event| {
+            if event.id.as_ref() == "routing" {
+                // Native check items toggle on click. Keep the actual state until
+                // the existing preview/confirmation flow completes successfully.
+                if let Some(items) = app.try_state::<TrayItems>() {
+                    let _ = items
+                        .routing
+                        .set_checked(items.enabled.load(Ordering::Acquire));
+                }
+            }
             crate::show_main(app);
             let name = match event.id.as_ref() {
                 "routing" => Some("desktop-routing-requested"),
@@ -98,17 +112,17 @@ mod tests {
         let (status, action) =
             labels(&json!({"routing":"openai","forwarding":{"status":"running"}}));
         assert_eq!(status, "接入：原生 · 网关：运行中");
-        assert_eq!(action, "开启 Codex 接入…");
+        assert!(!action);
         let (status, action) =
             labels(&json!({"routing":"project","forwarding":{"status":"fault"}}));
         assert_eq!(status, "接入：已接入 · 网关：故障");
-        assert_eq!(action, "关闭 Codex 接入…");
+        assert!(action);
     }
     #[test]
     fn missing_status_never_claims_connection() {
         assert_eq!(
             labels(&Value::Null),
-            ("接入：未准备或未知 · 网关：未知".into(), "检查接入配置…")
+            ("接入：未准备或未知 · 网关：未知".into(), false)
         );
     }
 }

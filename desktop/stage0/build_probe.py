@@ -11,6 +11,25 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def install_macos_runtime(app, libraries):
+    """PyInstaller uses Contents/Frameworks when its executable is inside MacOS."""
+    contents = Path(app) / 'Contents'
+    frameworks = contents / 'Frameworks'
+    if frameworks.is_symlink():
+        frameworks.unlink()
+    if frameworks.exists():
+        raise ValueError('Refusing to replace an existing app Frameworks directory')
+    target = contents / 'MacOS/_internal'
+    # This is generated runtime output. Replace it so removed modules and
+    # framework symlinks from an earlier build cannot survive a rebuild.
+    if target.is_symlink():
+        target.unlink()
+    elif target.exists():
+        shutil.rmtree(target)
+    shutil.copytree(libraries, target, symlinks=True)
+    frameworks.symlink_to('MacOS/_internal', target_is_directory=True)
+
+
 def hidden_imports(system):
     # desktop.client uses import_module; static dependency analysis cannot see it.
     # Windows packaging remains deferred and unchanged in this Intel Mac slice.

@@ -73,6 +73,9 @@ async fn request(
         *guard = None;
         return Err("控制程序已断开，请刷新检查恢复状态；操作未自动重试".into());
     }
+    #[cfg(target_os = "macos")]
+    let response = receive_bounded(session, request_timeout(&request)).await;
+    #[cfg(not(target_os = "macos"))]
     let response = receive(session).await;
     #[cfg(target_os = "macos")]
     if request["action"] == "status" {
@@ -105,6 +108,25 @@ async fn receive(session: &mut Session) -> Option<serde_json::Value> {
 }
 
 #[cfg(target_os = "macos")]
+fn request_timeout(request: &serde_json::Value) -> u64 {
+    if request["action"] == "web_api" && request["method"] == "POST" {
+        return if request["path"] == "test" { 75 } else { 120 };
+    }
+    match request["action"].as_str() {
+        Some("status" | "snapshot" | "web_api" | "shutdown") => 20,
+        _ => 120,
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn receive_bounded(session: &mut Session, seconds: u64) -> Option<serde_json::Value> {
+    tokio::time::timeout(std::time::Duration::from_secs(seconds), receive(session))
+        .await
+        .ok()
+        .flatten()
+}
+
+#[cfg(target_os = "macos")]
 async fn poll_status(app: &tauri::AppHandle) {
     let control = app.state::<Control>();
     let Ok(mut guard) = control.session.try_lock() else {
@@ -122,7 +144,7 @@ async fn poll_status(app: &tauri::AppHandle) {
         macos_tray::update(app, None);
         return;
     }
-    let response = receive(session).await;
+    let response = receive_bounded(session, 20).await;
     macos_tray::update(app, response.as_ref());
     if response.is_none() {
         *guard = None;
@@ -153,6 +175,14 @@ async fn desktop_snapshot(app: tauri::AppHandle) -> Result<serde_json::Value, St
 #[tauri::command]
 async fn desktop_exit(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let control = app.state::<Control>();
+    #[cfg(target_os = "macos")]
+    if control.session.lock().await.is_none() {
+        // No owner exists: startup failed or no request has started. Never spawn
+        // a new controller merely to quit a window that could not load.
+        control.protected.store(false, Ordering::Release);
+        app.exit(0);
+        return Ok(serde_json::json!({"ok":true}));
+    }
     if control.shutting_down.swap(true, Ordering::AcqRel) {
         return Err("正在退出应用".into());
     }
@@ -160,7 +190,18 @@ async fn desktop_exit(app: tauri::AppHandle) -> Result<serde_json::Value, String
     if !matches!(&response, Ok(value) if value["ok"] == true) {
         control.shutting_down.store(false, Ordering::Release);
     }
-    let response = response?;
+    let response = match response {
+        Ok(response) => response,
+        Err(error) => {
+            #[cfg(target_os = "macos")]
+            if control.session.lock().await.is_none() {
+                control.protected.store(false, Ordering::Release);
+                app.exit(0);
+                return Ok(serde_json::json!({"ok":true}));
+            }
+            return Err(error);
+        }
+    };
     if response.get("ok").and_then(|v| v.as_bool()) == Some(true) {
         let control = app.state::<Control>();
         *control.session.lock().await = None;
@@ -204,6 +245,18 @@ fn notify_exit_blocked(app: &tauri::AppHandle) {
     let _ = app.emit("desktop-exit-requested", ());
 }
 
+#[cfg(target_os = "macos")]
+fn request_native_exit(app: &tauri::AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Cmd+Q must work before the WebView has registered event listeners.
+        // A live routing dependency still uses the shared restoration preview.
+        if !matches!(desktop_exit(app.clone()).await, Ok(r) if r["ok"] == true) {
+            notify_exit_blocked(&app);
+        }
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Control::default())
@@ -229,7 +282,7 @@ fn main() {
                 app.set_menu(app_menu)?;
                 app.on_menu_event(|app, event| {
                     if event.id.as_ref() == "guarded-quit" {
-                        notify_exit_blocked(app);
+                        request_native_exit(app);
                     }
                 });
                 macos_tray::setup(app.handle())?;
@@ -267,8 +320,31 @@ fn main() {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 if app.state::<Control>().protected.load(Ordering::Acquire) {
                     api.prevent_exit();
+                    #[cfg(target_os = "macos")]
+                    request_native_exit(app);
+                    #[cfg(not(target_os = "macos"))]
                     notify_exit_blocked(app);
                 }
             }
         });
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod startup_tests {
+    use super::*;
+
+    #[test]
+    fn initial_reads_and_shutdown_are_bounded_without_shortening_writes() {
+        use serde_json::json;
+        assert_eq!(
+            request_timeout(&json!({"action":"web_api","method":"GET","path":"state"})),
+            20
+        );
+        assert_eq!(request_timeout(&json!({"action":"shutdown"})), 20);
+        assert_eq!(
+            request_timeout(&json!({"action":"web_api","method":"POST","path":"test"})),
+            75
+        );
+        assert_eq!(request_timeout(&json!({"action":"set_routing"})), 120);
+    }
 }

@@ -47,6 +47,11 @@ def handle(controller, request):
         if path == 'state':
             return {'configured': False}
         raise ConfigError('NOT_CONFIGURED')
+    if controller.existing_service is not None:
+        result = controller.existing_service.api(path, request['method'], body)
+        if path == 'state':
+            result.update(configured=True, restart_supported=False, external_service=True)
+        return result
     manager = controller.manager
     if path == 'state':
         return dict(manager.view(), configured=True, restart_supported=sys.platform == 'darwin')

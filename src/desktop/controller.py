@@ -14,7 +14,7 @@ ERRORS = management.ERRORS | web_api.ERRORS | {'EXIT_BLOCKED', 'CLIENT_CONFIG_CH
     'FORWARDING_START_FAILED', 'FORWARDING_UNAVAILABLE', 'CLIENT_BASELINE_UNAVAILABLE',
     'CLIENT_ROUTING_UNAVAILABLE', 'CLIENT_ROUTING_ALREADY_SET', 'SESSION_MIGRATION_CHANGED',
     'SESSION_MIGRATION_CODEX_RUNNING', 'SESSION_MIGRATION_PROCESS_CHECK_FAILED',
-    'SESSION_MIGRATION_RECOVERY_REQUIRED', 'SESSION_INDEX_REPAIR_INCOMPLETE'}
+    'SESSION_MIGRATION_RECOVERY_REQUIRED', 'SESSION_INDEX_REPAIR_INCOMPLETE', 'SERVICE_UNREACHABLE'}
 
 
 def validate(request):
@@ -58,6 +58,7 @@ class Controller:
         self.locks = ExitStack()
         self.owned = False
         self.manager = self.runtime = self.context = None
+        self.existing_service = None
         self.pending = None
         self.closed = False
         self.restart = Restart(self.codex_home)
@@ -68,6 +69,8 @@ class Controller:
             self.owned = True
 
     def ensure_manager(self):
+        if self.existing_service is not None:
+            return True
         if self.manager is not None:
             with self.manager.lock:
                 pass  # Refresh an externally committed settings snapshot.
@@ -75,7 +78,16 @@ class Controller:
         path = self.directory / 'settings.json'
         if not path.is_file():
             return False
-        self.own()
+        try:
+            self.own()
+        except ConfigError as error:
+            if sys.platform != 'darwin' or error.code != 'SERVICE_ALREADY_RUNNING':
+                raise
+            from desktop.existing_service import ExistingService
+            service = ExistingService(json.loads(path.read_text(encoding='utf-8')), self.directory)
+            service.api('state')  # Verify the local service before retaining the adapter.
+            self.existing_service = service
+            return True
         from management.runtime import ManagementContext, ForwardingRuntime
         from management.service import Management
         from gateway.server import route, sse_events
@@ -92,6 +104,11 @@ class Controller:
         if not self.ensure_manager():
             return {'configured': False, 'routing': 'unavailable', 'forwarding': {'status': 'stopped'},
                     'recovery_required': False}
+        if self.existing_service is not None:
+            state = self.existing_service.api('state')
+            return {'configured': True, 'routing': state['routing_mode'],
+                    'forwarding': state['forwarding'], 'restart_supported': False,
+                    'external_service': True, 'recovery_required': False}
         mode = self.manager.routing_state()
         forwarding = self.runtime.snapshot()
         return {'configured': True, 'routing': mode, 'forwarding': forwarding,
@@ -134,6 +151,8 @@ class Controller:
             return {'stopped': True}
         if not self.ensure_manager():
             raise ConfigError('NOT_CONFIGURED')
+        if self.existing_service is not None:
+            raise ConfigError('SERVICE_ALREADY_RUNNING')
         if action in ('preview_restart', 'cancel_restart', 'restart_codex'):
             if action == 'cancel_restart':
                 self.restart.cancel()

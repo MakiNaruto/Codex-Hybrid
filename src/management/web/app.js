@@ -363,7 +363,7 @@ async function refresh(automatic=false){
     if(window.hybridDesktop){
       $('desktop-setup').hidden=next.configured!==false;
       document.body.classList.toggle('desktop-unconfigured',next.configured===false);
-      if(next.configured===false){state=undefined;return;}
+      if(next.configured===false){state=undefined;$('readiness-summary').textContent='请先初始化管理配置';return;}
     }
     const changed=state&&JSON.stringify(state.sync_revision)!==JSON.stringify(next.sync_revision);
     if(automatic&&document.querySelector('#providers input:focus,#providers textarea:focus,#providers .help-trigger:focus,#providers select:focus'))return;
@@ -398,6 +398,9 @@ async function refresh(automatic=false){
     renderSyncStatus();
     if(firstDesktopState)window.dispatchEvent(new Event('hybrid-management-ready'));
     for(const mode of ['project','openai']){$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';syncDesktopSelect($('desktop-'+mode));}
+  }catch(error){
+    if(window.hybridDesktop&&!state)$('readiness-summary').textContent='配置读取失败：'+errorMessage(error)+' 可点击刷新重试。';
+    throw error;
   }finally{refreshing=false;}
 }
 for(const mode of ['independent','cc_switch'])$(mode).onclick=()=>changeSource(mode);
