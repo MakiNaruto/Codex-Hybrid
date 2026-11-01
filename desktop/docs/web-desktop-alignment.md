@@ -111,3 +111,9 @@ Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览
 macOS 同目录已有网页服务时，先根据 `service.pid` 与进程的 `--settings` 路径确认服务归属，再通过后台程序访问固定回环管理地址。前端仍仅使用私有 IPC，令牌不传到页面，不走上游代理，不跟随重定向；复用同一模型、诊断和接入接口。退出桌面仅断开连接，不停止已有网页服务。此模式下托盘接入切换与窗口开关复用同一管理接口；独立重启由 macOS 桌面控制器保管单次票据，预览和确认时读取已有网页服务的实时路由及转发状态，不接管或停止网页服务。Windows 继续保持原有单实例规则。
 
 配置读取成功后自动检测客户端和网关；失败或未初始化时结束“正在读取配置”的等待提示。macOS Cmd+Q 直接从原生层请求退出，不依赖页面事件监听已就绪；无控制进程时直接退出，有自管接入依赖时仍进入恢复确认流程。macOS 私有读取与退出响应最多等待 20 秒，写入不自动重试；后台断连仍按原有所有者丢失路径清理并保留恢复配置。
+
+## macOS 状态栏确认框焦点
+
+“混合路由”和“重启 Codex”共用独立原生确认框。异步预览完成后，显式调用 `NSApplication.activateIgnoringOtherApps(true)` 激活应用，与 Tauri 的 macOS `set_focus` 路径一致；不再在 macOS 14 及以上仅使用不保证激活成功的 `activate()`。确认框成为 key window 后请求激活，不主动显示或还原管理窗口。Windows 分支不变。
+
+隔离回归入口为 `desktop/stage0/tauri/examples/alert_focus_check.rs`，复用实际弹窗代码，不加载管理控制器、不操作 Codex。使用空临时目录设置 `HYBRID_ALERT_CHECK_DIR`，可用 `HYBRID_ALERT_CHECK_WINDOW=hidden|minimized` 设置初始窗口状态；运行后将其他应用置前，再在目录创建 `trigger`。`before.json` 的 `active: false` 才说明覆盖了后台激活场景；`during.json` 应为 `active: true`，取消后 `after.json` 可确认管理窗口仍隐藏或最小化。验证仅限 macOS Intel 本机的原生确认框和现有桌面事件回归，不代表 Windows、Apple Silicon、全屏空间或真实 Codex 重启验收。

@@ -17,7 +17,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 tokio = { version = "1", features = ["time"] }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAlert", "NSButton", "NSControl", "NSResponder", "NSView", "NSWindow", "NSApplication"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSAlert", "NSButton", "NSControl", "NSResponder", "NSView", "NSWindow", "NSApplication", "NSRunningApplication"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

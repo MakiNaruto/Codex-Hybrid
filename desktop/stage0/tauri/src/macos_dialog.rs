@@ -1,5 +1,5 @@
 //! AppKit alerts run on the main thread; controller requests stay asynchronous.
-use objc2::{runtime::NSObjectProtocol, sel, MainThreadMarker};
+use objc2::MainThreadMarker;
 use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSAlertStyle, NSApplication};
 use objc2_foundation::NSString;
 
@@ -37,13 +37,12 @@ pub async fn show(
         window.center();
         window.makeKeyAndOrderFront(None);
         let application = NSApplication::sharedApplication(mtm);
-        if application.respondsToSelector(sel!(activate)) {
-            application.activate();
-        } else {
-            // activate() was introduced in macOS 14; retain older macOS support.
-            #[allow(deprecated)]
-            application.activateIgnoringOtherApps(true);
-        }
+        // This is an explicit tray action, but its asynchronous preview has
+        // already lost the original menu event. Cooperative activate() can
+        // leave an existing background window's alert waiting in the Dock.
+        // Use the same explicit activation as Tauri's macOS set_focus path.
+        #[allow(deprecated)]
+        application.activateIgnoringOtherApps(true);
         window.orderFrontRegardless();
         let response = alert.runModal() - NSAlertFirstButtonReturn;
         let choice = usize::try_from(response)
