@@ -21,7 +21,8 @@ function report(period, errors = []) {
   return {service: {uptime_seconds: 120}, generated_at: 1700000000, period_days: period,
     log: {errors, state: 'available', coverage: {}}};
 }
-function setup() {
+function setup(desktop=false) {
+  const events={};
   const nodes = {}, requests = [], jobs = [], failures = [], downloads = [], messages = [], timers = [];
   const $ = id => nodes[id] ||= new Node('div');
   for (const period of ['1','7','30','all']) {
@@ -29,6 +30,7 @@ function setup() {
     $('diagnostic-period').append(button);
   }
   const context = vm.createContext({
+    window:{hybridDesktop:desktop,addEventListener:(name,fn)=>{events[name]=fn;}},
     $, el: (tag, text, cls) => new Node(tag, text, cls), help: () => new Node('button'),
     action: fn => {const job = fn(); jobs.push(job); job.catch(error => failures.push(error.message)); return job;},
     api: path => new Promise((resolve, reject) => requests.push({path, resolve, reject})),
@@ -38,7 +40,7 @@ function setup() {
     setTimeout: fn => timers.push(fn),
   });
   vm.runInContext(source, context);
-  return {$, requests, jobs, failures, downloads, messages, timers};
+  return {$, requests, jobs, failures, downloads, messages, timers, events};
 }
 
 test('loads the initial period and renders its empty state', async () => {
@@ -87,4 +89,9 @@ test('export downloads the selected report and releases its object URL', async (
   assert.equal(env.downloads[0].removed, true);
   assert.equal(button.disabled, false);
   env.timers[0](); assert.equal(env.messages.at(-1), 'blob:diagnostics');
+});
+
+test('desktop diagnostics wait until explicit initialization has produced a state',()=>{
+  const env=setup(true);assert.equal(env.requests.length,0);
+  env.events['hybrid-management-ready']();assert.equal(env.requests[0].path,'diagnostics?days=1');
 });

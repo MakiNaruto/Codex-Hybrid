@@ -4,12 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <script src="/manage/theme.js"></script>
+  <script src="./theme.js"></script>
   <title>Codex Hybrid · 模型管理</title>
-  <link rel="stylesheet" href="/manage/style.css">
-  <script src="/manage/app.js" defer></script>
-  <script src="/manage/models.js" defer></script>
-  <script src="/manage/diagnostics.js" defer></script>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./transport.js" defer></script>
+  <script src="./app.js" defer></script>
+  <script src="./models.js" defer></script>
+  <script src="./diagnostics.js" defer></script>
+  <script src="./desktop.js" defer></script>
 </head>
 <body>
 <main>
@@ -24,6 +26,12 @@
     <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1 id="page-title" tabindex="-1">模型管理</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
     <p id="page-intro" class="intro">选择要在 Codex 中使用的模型，连接与兼容设置集中管理。</p>
   </header>
+  <section id="desktop-setup" aria-labelledby="desktop-setup-title" hidden>
+    <h2 id="desktop-setup-title">欢迎使用 Codex Hybrid</h2>
+    <p>初始化后即可管理连接与模型。初始化不会开启 Codex 接入，也不会启动或重启 Codex。</p>
+    <p class="hint">请先安装并登录 Codex，确保本地存在官方模型缓存。</p>
+    <button id="desktop-initialize" type="button">初始化管理配置</button>
+  </section>
   <div id="page-models" class="management-page">
   <section class="providers-section" aria-labelledby="providers-heading">
     <div class="section-head"><div class="section-title"><h2 id="providers-heading">已添加模型</h2><span id="model-count" class="count-badge">0 个模型</span></div><div class="toolbar"><button id="publish" class="secondary" type="button">更新客户端模型列表</button><button id="refresh" class="secondary" type="button">刷新</button><button id="manage-connections" class="secondary" type="button">管理连接</button><button id="add-models" type="button">＋ 添加模型</button></div></div>
@@ -140,6 +148,14 @@
     <label id="desktop-action-row"><input id="desktop-action" type="checkbox"> <span id="desktop-action-label"></span></label>
     <details class="routing-details"><summary>查看影响详情</summary><p id="routing-dialog-details" class="hint"></p></details>
     <div class="dialog-actions"><button id="routing-dialog-cancel" type="submit" value="cancel" class="secondary" autofocus>取消</button><button id="routing-dialog-confirm" type="submit" value="confirm">确认</button></div>
+  </form>
+</dialog>
+<dialog id="desktop-restart-dialog" aria-labelledby="desktop-restart-title">
+  <form method="dialog">
+    <h2 id="desktop-restart-title">重启 Codex？</h2>
+    <p id="desktop-restart-summary"></p>
+    <label><input id="desktop-restart-ack" type="checkbox"> 我已确认重启可能中断正在执行的任务。</label>
+    <div class="dialog-actions"><button value="cancel" class="secondary" autofocus>取消</button><button id="desktop-restart-confirm" value="confirm">确认重启</button></div>
   </form>
 </dialog>
 <div id="notifications" class="notifications" aria-label="操作提示"><div id="message" role="status" aria-live="polite" aria-atomic="true"></div><button id="dismiss-message" type="button" class="dismiss-message" aria-label="关闭提示" hidden>×</button></div>

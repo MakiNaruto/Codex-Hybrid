@@ -30,6 +30,7 @@ def fixture(directory, port):
     config.write_text(original, encoding='utf-8')
     (directory / 'models.yaml').write_text('version: 1\nproviders: {}\n', encoding='utf-8')
     write_json(directory / 'models.json', {'models': [{'slug': 'fixture-official', 'priority': 1}]})
+    write_json(directory / 'models_cache.json', {'models': [{'slug': 'fixture-official', 'priority': 1}]})
     write_json(directory / 'state.json', {
         'config_path': str(config), 'activated': False,
         'original_sha256': hashlib.sha256(original.encode()).hexdigest(),
@@ -47,7 +48,7 @@ def fixture(directory, port):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--executable', type=Path, help='Frozen one-file executable; omit for source mode')
+    parser.add_argument('--executable', type=Path, help='Frozen executable; omit for source mode')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     results = []
@@ -72,6 +73,9 @@ def main():
         if args.executable:
             executable = directory / args.executable.name
             shutil.copy2(args.executable.resolve(), executable)
+            libraries = args.executable.resolve().parent / '_internal'
+            if libraries.is_dir():
+                shutil.copytree(libraries, directory / '_internal', symlinks=True)
             command = [str(executable)]
         else:
             command = [sys.executable, '-X', 'utf8', str(Path(__file__).with_name('probe.py'))]

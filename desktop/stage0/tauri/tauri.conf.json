@@ -4,17 +4,22 @@
   "version": "0.0.0",
   "identifier": "local.codex-hybrid.stage0",
   "build": {
-    "frontendDist": "../web"
+    "frontendDist": "../../../src/management/web"
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "title": "Codex Hybrid Stage0 Probe", "width": 760, "height": 560 }],
+    "windows": [{ "title": "Codex Hybrid · 桌面预览", "width": 900, "height": 640 }],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {
     "active": false,
-    "externalBin": ["../../dist/stage0/hybrid-stage0-probe"]
+    "externalBin": ["../../dist/stage0/hybrid-stage0-probe"],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

@@ -42,6 +42,8 @@ def handle(handler, gateway, method):
     static = {'/manage/': ('index.html', 'text/html; charset=utf-8'),
               '/manage/entry.js': ('entry.js', 'application/javascript; charset=utf-8'),
               '/manage/theme.js': ('theme.js', 'application/javascript; charset=utf-8'),
+              '/manage/transport.js': ('transport.js', 'application/javascript; charset=utf-8'),
+              '/manage/desktop.js': ('desktop.js', 'application/javascript; charset=utf-8'),
               '/manage/app.js': ('app.js', 'application/javascript; charset=utf-8'),
               '/manage/models.js': ('models.js', 'application/javascript; charset=utf-8'),
               '/manage/diagnostics.js': ('diagnostics.js', 'application/javascript; charset=utf-8'),

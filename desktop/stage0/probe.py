@@ -1,6 +1,7 @@
 """Isolated feasibility probe, not the production desktop control protocol.
 
-Requires an explicit fixture settings file. Never discovers real user configuration.
+Control/gateway modes require an explicit fixture settings file. The separate
+desktop-snapshot mode reads the fixed desktop directory without modifying it.
 """
 import argparse
 import io
@@ -71,9 +72,21 @@ def control(settings_path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('report', 'control', 'gateway'))
+    parser.add_argument('mode', choices=('report', 'control', 'gateway', 'desktop-snapshot', 'desktop-manage', 'desktop-controller'))
     parser.add_argument('--settings', type=Path)
     args = parser.parse_args()
+    if args.mode == 'desktop-controller':
+        from desktop.controller import main as controller
+        controller()
+        return
+    if args.mode == 'desktop-manage':
+        from desktop.management import main as manage
+        manage()
+        return
+    if args.mode == 'desktop-snapshot':
+        from desktop.snapshot import snapshot
+        print(json.dumps(snapshot(), ensure_ascii=False))
+        return
     if args.mode == 'report':
         print(json.dumps(report()))
         return
@@ -101,4 +114,6 @@ def main():
 
 
 if __name__ == '__main__':
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

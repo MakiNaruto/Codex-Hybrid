@@ -44,14 +44,17 @@ def official_cache(codex_home, settings=None):
     return models
 
 
-def prepare(port, codex_home, source=None):
+def prepare(port, codex_home, source=None, *, directory=None, management_auth_required=False):
     from desktop.locking import DirectoryLock
-    with DirectoryLock(RUNTIME):
-        return _prepare_locked(port, codex_home, source)
+    runtime = Path(directory) if directory is not None else RUNTIME
+    with DirectoryLock(runtime):
+        return _prepare_locked(port, codex_home, source, directory=runtime,
+                               management_auth_required=management_auth_required)
 
 
-def _prepare_locked(port, codex_home, source=None):
-    if (RUNTIME / 'state.json').exists():
+def _prepare_locked(port, codex_home, source=None, *, directory=None, management_auth_required=False):
+    runtime = Path(directory) if directory is not None else RUNTIME
+    if (runtime / 'state.json').exists():
         raise ValueError('Already prepared; use status/start/activate/rollback with the existing files')
     config_path = codex_home / 'config.toml'
     original = config_path.read_bytes()
@@ -60,8 +63,8 @@ def _prepare_locked(port, codex_home, source=None):
     settings = {'port': port, 'source': source,
                 'official_models': [m['slug'] for m in models],
                 'local_token': secrets.token_urlsafe(32),
-                'catalog': str(RUNTIME / 'models.json'), 'max_concurrent_requests': 4,
-                'management_auth_required': False,
+                'catalog': str(runtime / 'models.json'), 'max_concurrent_requests': 4,
+                'management_auth_required': management_auth_required,
                 'disable_legacy_plugin': True, 'official_header_passthrough': True}
     external = load_source(settings)
     merged = merged_catalog(models, external)
@@ -71,15 +74,15 @@ def _prepare_locked(port, codex_home, source=None):
     if external_keys:
         settings['deepseek_model'] = external_keys[0]
     candidate = candidate_config(original.decode(), settings).encode()
-    RUNTIME.mkdir(parents=True, exist_ok=True, mode=0o700)
-    private_write(RUNTIME / 'models.json', json.dumps(merged, ensure_ascii=False))
-    private_write(RUNTIME / 'settings.json', json.dumps(settings))
-    private_write(RUNTIME / 'original-config.toml', original)
-    private_write(RUNTIME / 'desktop-config.toml', candidate)
+    runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_write(runtime / 'models.json', json.dumps(merged, ensure_ascii=False))
+    private_write(runtime / 'settings.json', json.dumps(settings))
+    private_write(runtime / 'original-config.toml', original)
+    private_write(runtime / 'desktop-config.toml', candidate)
     state = {'config_path': str(config_path), 'original_sha256': digest(original),
              'candidate_sha256': digest(candidate), 'activated': False}
-    private_write(RUNTIME / 'state.json', json.dumps(state))
-    print('已准备本机模型路由，尚未修改 Codex 用户配置：' + str(RUNTIME))
+    private_write(runtime / 'state.json', json.dumps(state))
+    print('已准备本机模型路由，尚未修改 Codex 用户配置：' + str(runtime))
 
 
 def health(settings, ensure_forwarding=False):

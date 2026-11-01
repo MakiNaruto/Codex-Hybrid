@@ -95,7 +95,8 @@
     $('diagnostic-errors').replaceChildren(el('li','正在读取错误记录…','diagnostic-empty'));
     action(loadDiagnostics);
   };
-  action(loadDiagnostics);
+  if(window.hybridDesktop)window.addEventListener('hybrid-management-ready',()=>action(loadDiagnostics));
+  else action(loadDiagnostics);
   for(const id of ['refresh-diagnostics','export-diagnostics'])$(id).onclick=()=>action(async()=>{
     $(id).disabled=true;
     try{

@@ -544,3 +544,7 @@ body:has(dialog[open]) { overflow: hidden; }
   .model-detail-connection { margin-top: 16px; padding-top: 12px; }
   .model-detail-actions { margin-top: 16px; padding-block: 12px; }
 }
+
+/* Shared page in the desktop shell, before explicit initialization. */
+.desktop-unconfigured .management-page,.desktop-unconfigured .page-nav {display:none}
+#desktop-setup {padding:1.5rem 0}
