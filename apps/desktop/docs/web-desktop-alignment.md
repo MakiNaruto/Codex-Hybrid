@@ -117,3 +117,11 @@ macOS 同目录已有网页服务时，先根据 `service.pid` 与进程的 `--s
 “混合路由”和“重启 Codex”共用独立原生确认框。异步预览完成后，显式调用 `NSApplication.activateIgnoringOtherApps(true)` 激活应用，与 Tauri 的 macOS `set_focus` 路径一致；不再在 macOS 14 及以上仅使用不保证激活成功的 `activate()`。确认框成为 key window 后请求激活，不主动显示或还原管理窗口。Windows 分支不变。
 
 隔离回归入口为 `apps/desktop/stage0/tauri/examples/alert_focus_check.rs`，复用实际弹窗代码，不加载管理控制器、不操作 Codex。使用空临时目录设置 `HYBRID_ALERT_CHECK_DIR`，可用 `HYBRID_ALERT_CHECK_WINDOW=hidden|minimized` 设置初始窗口状态；运行后将其他应用置前，再在目录创建 `trigger`。`before.json` 的 `active: false` 才说明覆盖了后台激活场景；`during.json` 应为 `active: true`，取消后 `after.json` 可确认管理窗口仍隐藏或最小化。验证仅限 macOS Intel 本机的原生确认框和现有桌面事件回归，不代表 Windows、Apple Silicon、全屏空间或真实 Codex 重启验收。
+
+## 2026-11-02 接入页重构与桌面窗口密度
+
+桌面与浏览器继续共用 `src/management/web/`。接入与运行页改为“开关置顶”的主状态卡：左侧显示接入状态、可用第三方模型数量与下一步提示，右侧为接入开关；网关与客户端合并为一张状态卡，网关重试内联在网关行，客户端仍可手动检测。移除“使用准备”三步骤与 `renderReadiness()`，原先由 `#readiness-summary` 显示的读取失败与未初始化提示改由 `#access-note` 承载。
+
+`transport.js` 在确认 `window.hybridDesktop` 后给 `<html>` 添加 `desktop-shell` 类，仅桌面窗口启用紧凑的页头、导航、间距与字号；浏览器页面保持原有排版。桌面窗口无历史记录时默认打开接入页，浏览器仍默认模型管理。仅调整共享前端结构、样式与状态文案，未修改 Python 管理、路由、转发或诊断接口。
+
+验证：JavaScript 网页及桌面事件 83 项通过，Python 全量 427 项（425 通过、2 项平台相关跳过）通过；接入页、导航与初始化读写的 Node 用例已覆盖主状态卡文案、桌面默认页与移除 readiness 后的加载提示。未执行 Tauri 重新打包，也未对真实 Codex 执行接入切换、退出或重启，不代表 Windows、Apple Silicon 或实机窗口验收。

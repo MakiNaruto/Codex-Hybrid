@@ -336,17 +336,24 @@ function changeSource(mode,path){return action(async()=>{
   try{await api('source',{mode,cc_db_path:path});for(const card of dirtyCards())clearDirty(card);connectionResults.clear();await refresh();message('配置来源已更新。');}
   finally{sourceSaving=false;buttons.forEach(button=>button.disabled=false);}
 });}
-function renderReadiness(){
+function renderAccessSummary(){
   if(!state)return;
-  const enabled=state.models.filter(model=>model.enabled),missing=enabled.filter(model=>state.credential_status?.[model.provider]!=='available');
-  $('readiness-summary').textContent=state.source_error?'配置来源需要检查':enabled.length?enabled.length+' 个已启用模型 · '+state.official_model_count+' 个官方模型':'可先浏览管理页，稍后添加模型';
-  const steps=$('readiness-steps');steps.replaceChildren();
-  for(const [title,text] of [
-    ['1 · 配置模型',state.source_error?'来源无法读取，请检查来源配置':enabled.length?(missing.length?'有 '+missing.length+' 个模型未找到可用凭据':'模型和凭据已就绪，可点击测试连接'):'添加厂商与模型，或选择 CC Switch 来源'],
-    ['2 · Codex 接入',state.routing_mode==='project'?'接入配置已开启':state.routing_mode==='openai'?'准备好后开启下方 Codex 接入':'Codex 配置暂时无法切换'],
-    ['3 · 重启并验证',state.catalog_pending?'模型目录有变更，请先更新客户端模型列表':state.routing_mode==='project'?'在 Codex 选择第三方模型，发送一条测试消息':'接入后重启 Codex，再选择模型验证']]){
-    const item=el('li');item.append(el('strong',title),document.createTextNode(text));steps.append(item);
-  }
+  const enabled=(state.models||[]).filter(model=>model.enabled).length;
+  const official=Number.isFinite(state.official_model_count)?state.official_model_count:0;
+  const open=state.routing_mode==='project';
+  const switchable=['project','openai'].includes(state.routing_mode);
+  const headline=!switchable?'当前 Codex 配置无法切换接入'
+    :open?(enabled?'Codex 可使用 '+enabled+' 个第三方模型':'接入已开启，但还没有启用第三方模型')
+    :(official?'Codex 正在使用 '+official+' 个官方模型':'Codex 正在使用官方模型');
+  let note;
+  if(state.source_error)note='配置来源需要检查：'+state.source_error;
+  else if(state.catalog_pending)note='模型列表有变更，更新客户端模型列表后请重启客户端。';
+  else if(!enabled)note='先添加模型，再开启接入。';
+  else note=open?'在 Codex 中选择第三方模型即可使用。':'开启后，Codex 可调用你配置的第三方模型。';
+  // role="status" regions re-announce on every write, so only change real text.
+  const write=(id,text)=>{const node=$(id);if(node&&node.textContent!==text)node.textContent=text;};
+  write('access-headline',headline);
+  write('access-note',note);
 }
 let refreshing=false;
 function renderSyncStatus(){
@@ -363,7 +370,7 @@ async function refresh(automatic=false){
     if(window.hybridDesktop){
       $('desktop-setup').hidden=next.configured!==false;
       document.body.classList.toggle('desktop-unconfigured',next.configured===false);
-      if(next.configured===false){state=undefined;$('readiness-summary').textContent='请先初始化管理配置';return;}
+      if(next.configured===false){state=undefined;$('access-note').textContent='请先初始化管理配置';return;}
     }
     const changed=state&&JSON.stringify(state.sync_revision)!==JSON.stringify(next.sync_revision);
     if(automatic&&document.querySelector('#providers input:focus,#providers textarea:focus,#providers .help-trigger:focus,#providers select:focus'))return;
@@ -371,7 +378,7 @@ async function refresh(automatic=false){
       return;
     }
     const firstDesktopState=window.hybridDesktop&&!state;
-    state=next;renderRouting();renderReadiness();
+    state=next;renderRouting();renderAccessSummary();
     if(automatic&&changed)message('CC Switch 配置已更新；后续调用使用最新配置。');
     for(const mode of ['independent','cc_switch']){
       $(mode).classList.toggle('active',mode===state.mode);$(mode).setAttribute('aria-pressed',String(mode===state.mode));
@@ -399,7 +406,7 @@ async function refresh(automatic=false){
     if(firstDesktopState)window.dispatchEvent(new Event('hybrid-management-ready'));
     for(const mode of ['project','openai']){$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';syncDesktopSelect($('desktop-'+mode));}
   }catch(error){
-    if(window.hybridDesktop&&!state)$('readiness-summary').textContent='配置读取失败：'+errorMessage(error)+' 可点击刷新重试。';
+    if(window.hybridDesktop&&!state)$('access-note').textContent='配置读取失败：'+errorMessage(error)+' 可点击刷新重试。';
     throw error;
   }finally{refreshing=false;}
 }
@@ -585,7 +592,7 @@ async function refreshClientProcesses(){
     if(process.status==='rejected')failures.push('客户端进程');
     if(activity.status==='rejected')failures.push('网关活动');
     if(failures.length)$('client-process-note').textContent+=' '+failures.join('、')+'检测失败，已显示为状态未知。';
-  }finally{processesRefreshing=false;trigger.disabled=false;trigger.textContent='检测状态';trigger.removeAttribute('aria-busy');}
+  }finally{processesRefreshing=false;trigger.disabled=false;trigger.textContent='检测';trigger.removeAttribute('aria-busy');}
 }
 $('detect-processes').onclick=refreshClientProcesses;
 
@@ -643,7 +650,9 @@ function renderManagementPage(focusHeading=false){
   let remembered='';
   try{remembered=localStorage.getItem('hybrid-management-page')||'';}catch{}
   const requested=window.location.hash.slice(1)||remembered;
-  const current=Object.hasOwn(pages,requested)?requested:'models';
+  // The packaged window opens on the switch; browsers keep model management first.
+  const fallback=window.hybridDesktop?'access':'models';
+  const current=Object.hasOwn(pages,requested)?requested:fallback;
   try{localStorage.setItem('hybrid-management-page',current);}catch{}
   for(const key of Object.keys(pages))$('page-'+key).hidden=key!==current;
   for(const link of document.querySelectorAll('.page-nav a')){

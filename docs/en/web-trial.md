@@ -25,7 +25,7 @@ Restarting interrupts unfinished gateway requests, so wait for current tasks to 
 
 The manual restart steps below describe the earlier interface; consult [usage](usage.md) for the current controls.
 
-1. Check setup readiness and local service connection status at the top. Readable credentials and successful connections are shown separately; providers are not tested automatically.
+1. Check the access status card at the top (routing switch, enabled-model count, gateway status) and the local service connection status. Readable credentials and successful connections are shown separately; providers are not tested automatically.
 2. Search provider or model names and IDs, and switch between enabled-only and all-model filters.
 3. Edit a provider without saving and check the unsaved indicator. Edit and save another provider; the first draft should remain. Drafts are not stored in browser storage, so save before closing.
 4. Check validation for request timeouts, context limits, and output limits in advanced settings. Duplicate provider identifiers should be rejected.
@@ -37,7 +37,7 @@ The manual restart steps below describe the earlier interface; consult [usage](u
 ## Features implemented in that round
 
 - A setup-wizard option to configure models later in the web page, allowing management to start without third-party models.
-- Setup readiness, credential readability, search, and enabled-model filtering.
+- An access status card (switch first, gateway and client status combined into rows), credential readability, search, and enabled-model filtering.
 - Unsaved indicators and navigation/refresh/source-change warnings, with other provider drafts preserved after saving.
 - Test duration, provider request timeout editing, input validation, and clearer errors.
 - Persisted manual restart confirmation, distinct from verification that the client actually loaded changes.

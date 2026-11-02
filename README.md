@@ -74,7 +74,7 @@ The launcher creates `.venv`, installs dependencies, and opens the install wizar
 
 Turning the switch on backs up and updates Codex routing configuration. Turning it off restores the fields changed by this tool while preserving unrelated edits; the local service continues running. Switching also migrates local session routing metadata. Fully quit Codex and use an independent browser before confirming; see the [session migration guide](docs/en/session-migration.md).
 
-The web UI includes setup readiness, unsaved draft warnings, provider/model filtering, activity status, error summaries and local sanitized diagnostics. See the [web trial checklist](docs/en/web-trial.md).
+The **Access & runtime** page leads with an access status card (routing switch, enabled-model count, gateway and client status). The web UI also includes unsaved draft warnings, provider/model filtering, error summaries and local sanitized diagnostics. See the [web trial checklist](docs/en/web-trial.md).
 
 Private data is stored in `~/.codex-hybrid/` by default. Use the [local management page](http://127.0.0.1:18892/manage/) to add providers and models or update API keys. Management uses the forwarding port plus one by default (18892), or an explicit `management_port` in settings.json. Restart the service after upgrading and run `manage-url` for its current address.
 

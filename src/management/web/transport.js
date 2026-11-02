@@ -23,3 +23,5 @@ window.hybridDesktop = (() => {
     }
   };
 })();
+// The packaged window is 900x640; browser pages keep the roomier spacing.
+if(window.hybridDesktop&&window.document?.documentElement)window.document.documentElement.classList.add('desktop-shell');

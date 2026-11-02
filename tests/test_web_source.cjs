@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../src/management/web/app.js'), 'utf8');
-const helpers = source.slice(source.indexOf('let sourceSaving=false;'), source.indexOf('function renderReadiness()'));
+const helpers = source.slice(source.indexOf('let sourceSaving=false;'), source.indexOf('function renderAccessSummary('));
 
 function setup(mode) {
   const calls = [], controls = {};

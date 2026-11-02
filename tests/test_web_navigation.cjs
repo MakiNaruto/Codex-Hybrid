@@ -4,10 +4,10 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync('src/management/web/app.js','utf8');
 const navigation=source.slice(source.indexOf('function renderManagementPage'),source.indexOf("window.addEventListener('hashchange'"));
-function setup(hash){
+function setup(hash,desktop=false){
   const nodes=Object.fromEntries(['page-access','page-models','page-diagnostics','page-usage','page-title','page-intro'].map(id=>[id,{hidden:false,focus(){this.focused=true;}}]));
   const links=['access','models','diagnostics','usage'].map(page=>({dataset:{page},setAttribute(k,v){this[k]=v;},removeAttribute(k){delete this[k];}}));
-  const context=vm.createContext({window:{location:{hash}},document:{querySelectorAll:()=>links},$:id=>nodes[id]});
+  const context=vm.createContext({window:desktop?{location:{hash},hybridDesktop:{}}:{location:{hash}},document:{querySelectorAll:()=>links},$:id=>nodes[id]});
   vm.runInContext(navigation,context);return {context,nodes,links};
 }
 test('default and unknown routes show only models',()=>{
@@ -37,4 +37,22 @@ test('usage navigation shows the usage page and hides other pages',()=>{
   const {context,nodes}=setup('#usage');context.renderManagementPage();
   assert.equal(nodes['page-usage'].hidden,false);assert.equal(nodes['page-models'].hidden,true);
   assert.equal(context.document.title,'Codex Hybrid · 用量统计');
+});
+
+test('the desktop window opens on the access page',()=>{
+  for(const hash of ['', '#unknown']){
+    const {context,nodes,links}=setup(hash,true);context.renderManagementPage();
+    assert.equal(nodes['page-access'].hidden,false);
+    assert.equal(nodes['page-models'].hidden,true);
+    assert.equal(nodes['page-title'].textContent,'接入与运行');
+    assert.equal(links[0]['aria-current'],'page');
+  }
+});
+test('the desktop window still honors a remembered or linked page',()=>{
+  const linked=setup('#diagnostics',true);linked.context.renderManagementPage();
+  assert.equal(linked.nodes['page-diagnostics'].hidden,false);
+  const remembered=setup('',true);let saved='usage';
+  remembered.context.localStorage={getItem:()=>saved,setItem:(key,value)=>{saved=value;}};
+  remembered.context.renderManagementPage();
+  assert.equal(remembered.nodes['page-usage'].hidden,false);
 });
