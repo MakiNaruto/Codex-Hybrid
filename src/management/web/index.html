@@ -90,15 +90,22 @@
       <div id="usage-content" hidden>
         <div class="usage-metrics" id="usage-metrics"></div>
         <div class="usage-charts">
-          <div class="usage-panel"><div class="section-head"><h3>使用趋势</h3><div id="usage-metric" class="diagnostic-segments" role="group" aria-label="趋势指标"><button type="button" data-metric="total_tokens" aria-pressed="true">Tokens</button><button type="button" data-metric="requests" aria-pressed="false">请求数</button></div></div><p id="usage-trend-note" class="hint">每个模型一种颜色，柱内按模型堆叠 · 按 UTC 日期分组</p><div id="usage-model-legend" class="usage-model-legend" aria-label="模型颜色图例"></div><div class="usage-chart-stage"><div id="usage-trend"></div><div id="usage-chart-tooltip" class="usage-chart-tooltip" role="status" aria-live="polite" hidden></div></div><p id="usage-chart-detail" class="hint" aria-live="polite"></p></div>
+          <div class="usage-panel"><div class="section-head"><h3>使用趋势</h3><div id="usage-metric" class="diagnostic-segments" role="group" aria-label="趋势指标"><button type="button" data-metric="total_tokens" aria-pressed="true">Tokens</button><button type="button" data-metric="requests" aria-pressed="false">请求数</button></div></div><p id="usage-trend-note" class="hint">每个模型一种颜色，柱内按模型堆叠 · 按 UTC 日期分组</p><div id="usage-model-legend" class="usage-model-legend" aria-label="模型颜色图例"></div><div class="usage-chart-stage"><div id="usage-trend"></div><div id="usage-chart-tooltip" class="usage-chart-tooltip" role="status" aria-live="polite" hidden></div></div></div>
           <div class="usage-panel"><h3>模型用量排行</h3><p class="hint">按总 Token 用量排序 · 色条仅标识模型</p><div id="usage-ranking"></div></div>
         </div>
-        <div class="usage-panel usage-composition-panel"><div class="section-head"><div><h3>Token 构成</h3><p class="hint">每个模型单独展示，浅色为缓存命中，中色为缓存未命中，深色为输出</p></div></div><div id="usage-composition-charts" class="usage-composition-grid"></div><p id="usage-composition-detail" class="hint" role="status" aria-live="polite"></p></div>
+        <div class="usage-panel usage-composition-panel"><div class="section-head"><div><h3>Token 构成</h3><p class="hint">每个模型单独展示，浅色为缓存命中，中色为缓存未命中，深色为输出</p></div></div><div id="usage-composition-charts" class="usage-composition-grid"></div></div>
         <div class="usage-panel usage-details"><h3>模型用量明细</h3><p class="hint">缓存命中已包含在输入 Tokens 中；未命中输入按输入减去缓存命中计算。</p><div class="usage-table-scroll"><table class="usage-table"><caption class="hint">未返回用量的请求仅计入请求数。</caption><thead><tr><th scope="col">模型</th><th scope="col">请求数</th><th scope="col">输入 Tokens</th><th scope="col">缓存命中</th><th scope="col">缓存未命中</th><th scope="col">输出 Tokens</th><th scope="col">总 Tokens</th></tr></thead><tbody id="usage-model-rows"></tbody></table></div></div>
       </div>
       <p class="hint usage-footnote">仅统计经过 Hybrid 且已保留日志的请求，不代表服务商账单。历史记录可能因日志轮转被清理。</p>
     </section>
   </div>
+  <dialog id="usage-composition-dialog" class="usage-composition-dialog" aria-labelledby="usage-composition-dialog-title" aria-describedby="usage-composition-dialog-note">
+    <div class="usage-composition-dialog-heading">
+      <div><p class="eyebrow">模型用量</p><h2 id="usage-composition-dialog-title">Token 构成</h2><p id="usage-composition-dialog-note" class="hint"></p></div>
+      <button id="close-usage-composition-dialog" class="icon-button secondary" type="button" aria-label="关闭 Token 构成图">×</button>
+    </div>
+    <div id="usage-composition-dialog-body"></div>
+  </dialog>
   <div id="page-diagnostics" class="management-page" hidden>
   <section class="diagnostics-section" aria-labelledby="diagnostics-heading">
     <div class="section-head"><h2 id="diagnostics-heading">运行与诊断</h2><div class="toolbar"><button id="refresh-diagnostics" class="secondary" type="button">刷新 ↻</button><button id="export-diagnostics" class="secondary" type="button">下载诊断 ↓</button></div></div>

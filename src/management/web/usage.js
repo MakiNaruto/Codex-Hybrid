@@ -1,7 +1,11 @@
 'use strict';
 (() => {
   const fields=['requests','requests_with_usage','input_tokens','output_tokens','cached_tokens','total_tokens'];
-  const tokenParts=[['cached_tokens','cached','缓存命中'],['uncached_tokens','uncached','缓存未命中'],['output_tokens','output','输出']];
+  const tokenParts=[
+    {key:'cached_tokens',tone:'cached',label:'缓存命中',detailLabel:'输入（命中缓存）'},
+    {key:'uncached_tokens',tone:'uncached',label:'缓存未命中',detailLabel:'输入（未命中缓存）'},
+    {key:'output_tokens',tone:'output',label:'输出',detailLabel:'输出'}
+  ];
   const empty=()=>Object.fromEntries(fields.map(key=>[key,0]));
   const number=value=>value.toLocaleString('zh-CN');
   const compact=value=>new Intl.NumberFormat('zh-CN',{notation:'compact',maximumFractionDigits:1}).format(value);
@@ -11,7 +15,7 @@
   const tokenPartsFor=row=>({cached_tokens:Math.min(row.cached_tokens||0,row.input_tokens||0),uncached_tokens:uncached(row),output_tokens:row.output_tokens||0});
   const partsTotal=parts=>parts.cached_tokens+parts.uncached_tokens+parts.output_tokens;
   const partTotal=row=>partsTotal(tokenPartsFor(row));
-  let period='7',metric='total_tokens',data=null,requestId=0;
+  let period='7',metric='total_tokens',data=null,requestId=0,compositionDialogTrigger=null;
   function svgNode(tag,attrs,text){
     const node=document.createElementNS('http://www.w3.org/2000/svg',tag);
     for(const [key,value] of Object.entries(attrs))node.setAttribute(key,String(value));
@@ -71,12 +75,13 @@
   }
   function showTooltip(index,models){
     const time=data.buckets[index],tooltip=$('usage-chart-tooltip');
-    tooltip.replaceChildren();tooltip.hidden=false;
-    const heading=el('div',undefined,'usage-tooltip-heading'),title=el('strong',bucketLabel(time,true));
     const visibleModels=models.filter(row=>bucketValue(row,index)>0);
+    if(!visibleModels.length){hideTooltip();return;}
+    tooltip.replaceChildren();tooltip.hidden=false;
+    const heading=el('div',undefined,'usage-tooltip-heading'),title=el('strong',bucketLabel(time,true).replace(/ (?:UTC|本地时间)$/,''));
     let total=0;
     for(const row of visibleModels)total+=bucketValue(row,index);
-    heading.append(title,el('span',number(total)+(metric==='requests'?' 次':' Tokens')));
+    heading.append(title,el('span',number(total)+(metric==='requests'?' 次':'')));
     tooltip.append(heading);
     for(const row of visibleModels){
       const bucket=bucketFor(row,index),item=el('div',undefined,'usage-tooltip-model '+colorClass(row));
@@ -85,8 +90,6 @@
       item.append(line);
       tooltip.append(item);
     }
-    if(!visibleModels.length)tooltip.append(el('p','此时段暂无用量','usage-tooltip-empty'));
-    $('usage-chart-detail').textContent=bucketLabel(time,true)+' · '+(visibleModels.length?visibleModels.map(row=>modelSummary(row,index)).join(' · '):'此时段暂无用量');
   }
   function hideTooltip(){$('usage-chart-tooltip').hidden=true;}
   function renderTrend(models){
@@ -115,8 +118,8 @@
         group.append(svgNode('rect',{x:bucketX+(bucketWidth-barWidth)/2,y,width:barWidth,height,class:'usage-chart-bar '+colorClass(row)}));
       }
       const visibleModels=models.filter(row=>bucketValue(row,index)>0);
-      const detail=bucketLabel(time,true)+' · '+(visibleModels.length?visibleModels.map(row=>modelSummary(row,index)).join(' · '):'此时段暂无用量');
-      if(models.length){
+      if(visibleModels.length){
+        const detail=bucketLabel(time,true)+' · '+visibleModels.map(row=>modelSummary(row,index)).join(' · ');
         const hit=svgNode('rect',{x:bucketX,y:topY,width:bucketWidth,height:plotHeight,class:'usage-chart-hit',tabindex:0,role:'img','aria-label':detail});
         for(const event of ['pointerenter','focus'])hit.addEventListener(event,()=>showTooltip(index,models));
         for(const event of ['pointerleave','blur'])hit.addEventListener(event,hideTooltip);
@@ -126,7 +129,6 @@
       if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:234,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
     });
     root.append(svg);hideTooltip();
-    $('usage-chart-detail').textContent=models.length?'柱高表示对应时段内各模型用量之和；悬停或聚焦日期可查看每个模型的用量。':'时间范围内暂无模型用量。';
   }
   function compositionSummary(row,index){
     const bucket=bucketFor(row,index),parts=tokenPartsFor(bucket);
@@ -138,58 +140,76 @@
     const heading=el('div',undefined,'usage-composition-tooltip-heading');
     heading.append(el('strong',bucketLabel(data.buckets[index],true).replace(/ (?:UTC|本地时间)$/,'')),el('span',number(partsTotal(parts))));
     tooltip.append(heading);
-    for(const [key,tone,label] of [['cached_tokens','cached','输入（命中缓存）'],['uncached_tokens','uncached','输入（未命中缓存）'],['output_tokens','output','输出']]){
+    for(const part of tokenParts){
       const rowNode=el('div',undefined,'usage-composition-tooltip-row');
-      rowNode.append(el('span',undefined,'usage-composition-tooltip-swatch stack-'+tone),el('span',label),el('strong',number(parts[key])));
+      rowNode.append(el('span',undefined,'usage-composition-tooltip-swatch stack-'+part.tone),el('span',part.detailLabel),el('strong',number(parts[part.key])));
       tooltip.append(rowNode);
     }
   }
-  function renderCompositionChart(row){
-    const width=440,left=40,right=10,topY=18,plotHeight=94,baseline=topY+plotHeight,plotWidth=width-left-right;
-    const stage=el('div',undefined,'usage-composition-chart-stage');
-    const svg=svgNode('svg',{viewBox:'0 0 '+width+' 150',role:'group','aria-label':modelLabel(row)+'的 Token 构成趋势'});
+  function renderCompositionChart(row,expanded=false){
+    const width=expanded?760:440,left=expanded?52:40,right=expanded?18:10,topY=expanded?28:18,plotHeight=expanded?180:94,height=expanded?252:150,baseline=topY+plotHeight,plotWidth=width-left-right;
+    const stage=el('div',undefined,'usage-composition-chart-stage'+(expanded?' usage-composition-chart-stage-expanded':''));
+    const svg=svgNode('svg',{viewBox:'0 0 '+width+' '+height,role:'group','aria-label':modelLabel(row)+'的 Token 构成趋势'});
     const tooltip=el('div',undefined,'usage-composition-tooltip');
     tooltip.hidden=true;tooltip.setAttribute('aria-hidden','true');
-    const max=Math.max(1,...row.series.map(partTotal)),top=niceTop(max,2);
-    for(let i=0;i<=2;i++){
-      const y=topY+i*plotHeight/2;
-      svg.append(svgNode('line',{x1:left,x2:width-right,y1:y,y2:y,class:'usage-grid'}),svgNode('text',{x:left-7,y:y+4,'text-anchor':'end',class:'usage-axis'},compact(top*(2-i)/2)));
+    const max=Math.max(1,...row.series.map(partTotal)),top=niceTop(max,expanded?4:2),gridSteps=expanded?4:2;
+    for(let i=0;i<=gridSteps;i++){
+      const y=topY+i*plotHeight/gridSteps;
+      svg.append(svgNode('line',{x1:left,x2:width-right,y1:y,y2:y,class:'usage-grid'}),svgNode('text',{x:left-7,y:y+4,'text-anchor':'end',class:'usage-axis'},compact(top*(gridSteps-i)/gridSteps)));
     }
-    const bucketWidth=plotWidth/data.buckets.length,barWidth=Math.min(20,bucketWidth*.6);
-    const labels=new Set(data.buckets.length<=7?data.buckets.map((time,index)=>index):[0,.5,1].map(fraction=>Math.round((data.buckets.length-1)*fraction)));
+    const bucketWidth=plotWidth/data.buckets.length,barWidth=Math.min(expanded?28:20,bucketWidth*.62);
+    const labelCount=expanded?6:3;
+    const labels=new Set(data.buckets.length<=(expanded?10:7)?data.buckets.map((time,index)=>index):Array.from({length:labelCount},(_,index)=>Math.round((data.buckets.length-1)*index/(labelCount-1))));
     data.buckets.forEach((time,index)=>{
       const bucket=bucketFor(row,index),parts=tokenPartsFor(bucket),bucketX=left+index*bucketWidth,group=svgNode('g',{class:'usage-composition-bucket'});
       let y=baseline;
-      for(const [key,tone] of tokenParts){
-        const height=Math.max(parts[key]?0.8:0,parts[key]/top*plotHeight);
-        if(!height)continue;
-        y-=height;
-        group.append(svgNode('rect',{x:bucketX+(bucketWidth-barWidth)/2,y,width:barWidth,height,class:'usage-composition-bar stack-'+tone}));
+      for(const part of [...tokenParts].reverse()){
+        const partHeight=Math.max(parts[part.key]?0.8:0,parts[part.key]/top*plotHeight);
+        if(!partHeight)continue;
+        y-=partHeight;
+        group.append(svgNode('rect',{x:bucketX+(bucketWidth-barWidth)/2,y,width:barWidth,height:partHeight,class:'usage-composition-bar stack-'+part.tone}));
       }
-      const detail=compositionSummary(row,index),hit=svgNode('rect',{x:bucketX,y:topY,width:bucketWidth,height:plotHeight,class:'usage-composition-hit',tabindex:0,role:'img','aria-label':detail});
-      for(const event of ['pointerenter','focus'])hit.addEventListener(event,()=>{
-        compositionTooltip(row,index,tooltip);tooltip.hidden=false;$('usage-composition-detail').textContent=detail;
-      });
-      for(const event of ['pointerleave','blur'])hit.addEventListener(event,()=>{tooltip.hidden=true;});
-      group.append(hit);svg.append(group);
-      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:140,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
+      if(partsTotal(parts)>0){
+        const detail=compositionSummary(row,index),hit=svgNode('rect',{x:bucketX,y:topY,width:bucketWidth,height:plotHeight,class:'usage-composition-hit',tabindex:0,role:'img','aria-label':detail});
+        for(const event of ['pointerenter','focus'])hit.addEventListener(event,()=>{
+          compositionTooltip(row,index,tooltip);tooltip.hidden=false;
+        });
+        for(const event of ['pointerleave','blur'])hit.addEventListener(event,()=>{tooltip.hidden=true;});
+        group.append(hit);
+      }
+      svg.append(group);
+      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:expanded?234:140,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
     });
     stage.append(svg,tooltip);
     return stage;
   }
+  function openCompositionDialog(row,trigger){
+    const dialog=$('usage-composition-dialog'),title=$('usage-composition-dialog-title'),note=$('usage-composition-dialog-note'),content=$('usage-composition-dialog-body');
+    compositionDialogTrigger=trigger;
+    content.className='usage-composition-dialog-content '+colorClass(row);
+    title.textContent='Token 构成 · '+modelLabel(row);
+    note.textContent=periodLabel()+' · '+(calendarPeriod()?'按本地时间小时分组':'按 UTC 日期分组')+'。悬停或聚焦时段可查看分项用量。';
+    const summary=el('div',undefined,'usage-composition-dialog-summary');
+    summary.append(el('strong',modelLabel(row)),el('span',compact(partTotal(row))+' Tokens'));
+    const legend=el('div',undefined,'usage-composition-dialog-legend');legend.setAttribute('aria-label','Token 颜色图例');
+    for(const part of tokenParts)legend.append(el('span',part.label,'usage-composition-dialog-legend-item stack-'+part.tone));
+    content.replaceChildren(summary,legend,renderCompositionChart(row,true));
+    dialog.showModal();
+  }
   function renderComposition(models){
     const root=$('usage-composition-charts');root.replaceChildren();
-    if(!models.length){root.append(el('p','暂无模型用量','diagnostic-empty'));$('usage-composition-detail').textContent='此时间范围内暂无可查看的 Token 构成。';return;}
+    if(!models.length){root.append(el('p','暂无模型用量','diagnostic-empty'));return;}
     for(const row of models){
       const card=el('section',undefined,'usage-composition-card '+colorClass(row)),heading=el('div',undefined,'usage-composition-heading');
       const title=el('div'),summary=el('span',compact(partTotal(row))+' Tokens','usage-composition-total');
       title.append(el('h4',modelLabel(row)),summary);
-      const key=el('div',undefined,'usage-composition-key'),swatch=el('span',undefined,'usage-composition-swatch');
-      for(const [,tone] of tokenParts)swatch.append(el('span',undefined,'stack-'+tone));
-      key.append(swatch,el('span','缓存命中 / 未命中 / 输出'));
-      heading.append(title,key);card.append(heading,renderCompositionChart(row));root.append(card);
+      const expand=el('button','⤢','usage-composition-expand');
+      expand.type='button';
+      expand.setAttribute('aria-label','放大 '+modelLabel(row)+' 的 Token 构成图');
+      expand.title='放大 Token 构成图';
+      expand.onclick=()=>openCompositionDialog(row,expand);
+      heading.append(title,expand);card.append(heading,renderCompositionChart(row));root.append(card);
     }
-    $('usage-composition-detail').textContent='悬停或聚焦任一时段，可查看该模型的缓存命中、未命中与输出用量。';
   }
   function render(){
     if(!data)return;
@@ -238,6 +258,8 @@
     for(const option of $('usage-metric').querySelectorAll('button'))option.setAttribute('aria-pressed',String(option===button));render();
   };
   $('refresh-usage').onclick=load;
+  $('close-usage-composition-dialog').onclick=()=>$('usage-composition-dialog').close();
+  $('usage-composition-dialog').addEventListener('close',()=>{compositionDialogTrigger?.focus?.();compositionDialogTrigger=null;});
   window.addEventListener('hashchange',()=>{if(!$('page-usage').hidden)load();});
   if(window.hybridDesktop)window.addEventListener('hybrid-management-ready',()=>{if(!$('page-usage').hidden)load();});
   else if(!$('page-usage').hidden)load();

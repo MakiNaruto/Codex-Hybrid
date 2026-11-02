@@ -3,17 +3,22 @@ const {test}=require('node:test');
 const fs=require('node:fs');
 const vm=require('node:vm');
 class Node {
-  constructor(tag,text){this.tag=tag;this.textContent=text||'';this.children=[];this.dataset={};this.attributes={};this.value='';this.events={};}
+  constructor(tag,text){this.tag=tag;this.textContent=text||'';this.children=[];this.dataset={};this.attributes={};this.value='';this.events={};this.open=false;}
   append(...nodes){this.children.push(...nodes);}
   replaceChildren(...nodes){this.children=nodes;}
   get firstChild(){return this.children[0];}
   querySelectorAll(){return this.children;}
   setAttribute(key,value){this.attributes[key]=value;}
   addEventListener(event,fn){(this.events[event]??=[]).push(fn);}
+  showModal(){this.open=true;}
+  close(){this.open=false;for(const fn of this.events.close||[])fn();}
 }
 function setup(desktop=false,hidden=false){
-  const nodes={},events={},requests=[];
-  const $=id=>nodes[id]??=new Node('div');
+  const nodes={},events={},requests=[],accessed=new Set();
+  const $=id=>{
+    accessed.add(id);
+    return nodes[id]??=new Node('div');
+  };
   $('page-usage').hidden=hidden;
   for(const period of ['yesterday','today','7','30']){const button=new Node('button');button.dataset.period=period;$('usage-period').append(button);}
   for(const metric of ['total_tokens','requests']){const button=new Node('button');button.dataset.metric=metric;$('usage-metric').append(button);}
@@ -23,7 +28,7 @@ function setup(desktop=false,hidden=false){
     document:{createElementNS:(ns,tag)=>new Node(tag)},
     api:path=>new Promise((resolve,reject)=>requests.push({path,resolve,reject}))
   });
-  return {$,events,requests};
+  return {$,events,requests,accessed};
 }
 const report=(tokens=120)=>({generated_at:1700000000,period:'7',period_days:7,period_start:1699833600,period_end:1700000000,bucket_seconds:86400,buckets:[1699920000],state:'available',models:[{model:'<model>',requests:2,requests_with_usage:1,input_tokens:100,output_tokens:20,cached_tokens:40,total_tokens:tokens,series:[{requests:2,requests_with_usage:1,input_tokens:100,output_tokens:20,cached_tokens:40,total_tokens:tokens}]}]});
 const tick=()=>new Promise(setImmediate);
@@ -60,9 +65,7 @@ test('stacks models in the trend and separates token composition by model',async
   assert.equal(hit.children.length,0);
   hit.events.focus[0]();
   assert.equal(env.$('usage-chart-tooltip').hidden,false);
-  assert.match(env.$('usage-chart-detail').textContent,/<model> 120 Tokens/);
-  assert.doesNotMatch(env.$('usage-chart-detail').textContent,/缓存命中/);
-  assert.doesNotMatch(env.$('usage-chart-detail').textContent,/zero/);
+  assert.doesNotMatch(env.$('usage-chart-tooltip').children[0].children[1].textContent,/zero/);
   const cards=env.$('usage-composition-charts').children;
   assert.equal(cards.length,3);
   assert.match(cards[0].className,/usage-color-0/);
@@ -73,6 +76,13 @@ test('stacks models in the trend and separates token composition by model',async
   assert.ok(compositionClasses.some(name=>name.includes('stack-cached')));
   assert.ok(compositionClasses.some(name=>name.includes('stack-uncached')));
   assert.ok(compositionClasses.some(name=>name.includes('stack-output')));
+  const compositionBars=compositionGroups[0].children
+    .filter(node=>node.attributes.class?.includes('usage-composition-bar'))
+    .sort((left,right)=>Number(left.attributes.y)-Number(right.attributes.y));
+  assert.deepEqual(
+    compositionBars.map(node=>node.attributes.class.match(/stack-(\w+)/)[1]),
+    ['cached','uncached','output']
+  );
   compositionGroups[0].children.at(-1).events.focus[0]();
   const compositionTooltip=compositionStage.children.find(node=>node.tag==='div'&&node.className.includes('usage-composition-tooltip'));
   assert.equal(compositionTooltip.hidden,false);
@@ -82,9 +92,101 @@ test('stacks models in the trend and separates token composition by model',async
   assert.equal(compositionTooltip.children[1].children[2].textContent,'40');
   assert.equal(compositionTooltip.children[2].children[2].textContent,'60');
   assert.equal(compositionTooltip.children[3].children[2].textContent,'20');
-  assert.match(env.$('usage-composition-detail').textContent,/缓存命中 40/);
-  assert.match(env.$('usage-composition-detail').textContent,/未命中 60/);
-  assert.match(env.$('usage-composition-detail').textContent,/输出 20/);
+});
+test('keeps the trend tooltip heading compact',async()=>{
+  const env=setup(),data=report();
+  data.period='today';data.period_days=1;data.bucket_seconds=3600;data.period_start=1699920000;
+  env.requests[0].resolve(data);await tick();
+
+  const trend=env.$('usage-trend').children[0],trendGroups=trend.children.filter(node=>node.tag==='g');
+  const hit=trendGroups[0].children.find(node=>node.attributes.class==='usage-chart-hit');
+  hit.events.focus[0]();
+
+  const heading=env.$('usage-chart-tooltip').children[0];
+  assert.doesNotMatch(heading.children[0].textContent,/(?:UTC|本地时间)$/);
+  assert.equal(heading.children[1].textContent,'120');
+});
+test('replaces the token key with a button that opens an enlarged chart',async()=>{
+  const env=setup(),data=report();
+  env.requests[0].resolve(data);await tick();
+
+  const card=env.$('usage-composition-charts').children[0];
+  const heading=card.children[0];
+  const expand=heading.children.at(-1);
+  assert.equal(expand.tag,'button');
+  assert.match(expand.className,/usage-composition-expand/);
+  assert.equal(expand.textContent,'⤢');
+  assert.equal(expand.attributes['aria-label'],'放大 <model> 的 Token 构成图');
+  assert.doesNotMatch(JSON.stringify(card),/缓存命中 \/ 未命中 \/ 输出/);
+
+  expand.onclick();
+  const dialog=env.$('usage-composition-dialog');
+  assert.equal(dialog.open,true);
+  assert.equal(env.$('usage-composition-dialog-title').textContent,'Token 构成 · <model>');
+  const content=env.$('usage-composition-dialog-body');
+  assert.match(content.className,/usage-color-0/);
+  const legend=content.children.find(node=>node.className?.includes('usage-composition-dialog-legend'));
+  assert.deepEqual(
+    legend.children.map(node=>node.textContent),
+    ['缓存命中','缓存未命中','输出']
+  );
+  const stage=content.children.find(node=>node.className?.includes('usage-composition-chart-stage'));
+  assert.match(stage.className,/usage-composition-chart-stage-expanded/);
+});
+test('does not render hover details below the usage trend',async()=>{
+  const env=setup(),data=report();
+  env.requests[0].resolve(data);await tick();
+
+  const trend=env.$('usage-trend').children[0],trendGroups=trend.children.filter(node=>node.tag==='g');
+  const hit=trendGroups[0].children.find(node=>node.attributes.class==='usage-chart-hit');
+  hit.events.focus[0]();
+
+  assert.equal(env.$('usage-chart-tooltip').hidden,false);
+  assert.equal(env.accessed.has('usage-chart-detail'),false);
+  assert.doesNotMatch(fs.readFileSync('src/management/web/index.html','utf8'),/id="usage-chart-detail"/);
+});
+test('does not open empty trend buckets',async()=>{
+  const env=setup(),data=report();
+  data.buckets.push(1699923600);
+  data.models[0].series.push({requests:0,requests_with_usage:0,input_tokens:0,output_tokens:0,cached_tokens:0,total_tokens:0});
+  env.requests[0].resolve(data);await tick();
+
+  const trend=env.$('usage-trend').children[0],trendGroups=trend.children.filter(node=>node.tag==='g');
+  const emptyHit=trendGroups[1].children.find(node=>node.attributes.class==='usage-chart-hit');
+
+  assert.equal(emptyHit,undefined);
+  assert.equal(env.$('usage-chart-tooltip').hidden,true);
+});
+test('does not render hover details below token composition charts',async()=>{
+  const env=setup(),data=report();
+  env.requests[0].resolve(data);await tick();
+
+  const card=env.$('usage-composition-charts').children[0];
+  const stage=card.children.find(node=>node.tag==='div'&&node.className.includes('usage-composition-chart-stage'));
+  const svg=stage.children.find(node=>node.tag==='svg');
+  const hit=svg.children.find(node=>node.tag==='g').children.find(node=>node.attributes.class==='usage-composition-hit');
+  hit.events.focus[0]();
+
+  const tooltip=stage.children.find(node=>node.tag==='div'&&node.className.includes('usage-composition-tooltip'));
+  assert.equal(tooltip.hidden,false);
+  assert.equal(env.accessed.has('usage-composition-detail'),false);
+  assert.doesNotMatch(fs.readFileSync('src/management/web/index.html','utf8'),/id="usage-composition-detail"/);
+});
+test('does not open empty token composition buckets',async()=>{
+  const env=setup(),data=report();
+  data.buckets.push(1699923600);
+  data.models[0].series.push({requests:0,requests_with_usage:0,input_tokens:0,output_tokens:0,cached_tokens:0,total_tokens:0});
+  env.requests[0].resolve(data);await tick();
+
+  const card=env.$('usage-composition-charts').children[0];
+  const stage=card.children.find(node=>node.tag==='div'&&node.className.includes('usage-composition-chart-stage'));
+  const svg=stage.children.find(node=>node.tag==='svg');
+  const emptyGroup=svg.children.filter(node=>node.tag==='g')[1];
+  const emptyHit=emptyGroup.children.find(node=>node.attributes.class==='usage-composition-hit');
+  const tooltip=stage.children.find(node=>node.tag==='div'&&node.className.includes('usage-composition-tooltip'));
+
+  assert.equal(emptyHit,undefined);
+  assert.equal(tooltip.hidden,true);
 });
 test('renders list provider and model name instead of the raw key',async()=>{
   const env=setup(),data=report();
