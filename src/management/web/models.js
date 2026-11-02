@@ -64,7 +64,7 @@ async function removeListedModel(model,control,sourceId){
   modelSaving=true;control.disabled=true;control.textContent='删除中…';
   try{
     await api('models',{source_id:sourceId,updates:[{key:model.key,added:false}]});
-    await refresh();message('模型已从列表移除。列表变化请重启客户端加载。');
+    await refresh();message('模型已移除。重启 Codex 后，最新列表才会在 Codex 中生效。');
   }catch(error){message(errorMessage(error),true);}
   finally{modelSaving=false;control.disabled=false;control.textContent='删除';}
 }
@@ -125,7 +125,9 @@ async function persistModelUpdates(updates,dialog,errorId){
   $(errorId).textContent='';
   try{
     await api('models',{source_id:modelDialogSource,updates});
-    dialog.close();await refresh();message('模型设置已保存。列表变化请重启客户端加载。');
+    const listChanged=updates.some(update=>Object.hasOwn(update,'added'));
+    dialog.close();await refresh();
+    message(listChanged?'模型列表已更新。重启 Codex 后，新模型才会在 Codex 中生效。':'模型设置已保存。下一轮调用生效，无需重启 Codex。');
   }catch(error){$(errorId).textContent=errorMessage(error);}
   finally{modelSaving=false;dialog.removeAttribute('aria-busy');controls.forEach((control,i)=>control.disabled=previous[i]);updateAddCount();}
 }

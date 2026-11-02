@@ -241,7 +241,7 @@ function providerCard(id,original={}){
     const spec={...original,base_url:base.input.value.trim(),protocol:protocol.value,enabled:active.input.checked,models:collect(rows),parameters:JSON.parse(params.value),token_limit_field:tokenField.value,timeout_seconds:Number(timeout.input.value)};
     spec.responses_compatibility=protocol.value==='openai_responses'?compatibility.value:'native';spec.history_migration=protocol.value==='openai_responses'&&migration.input.checked;
     card.inert=true;
-    try{await api('provider',{id:pid.input.value.trim(),spec,api_key:key.input.value||undefined});key.input.value='';clearDirty(card);connectionResults.clear();await refresh();message('厂商与模型已保存。Key / API 下一轮生效；模型列表变动请重启客户端。');}
+    try{await api('provider',{id:pid.input.value.trim(),spec,api_key:key.input.value||undefined});key.input.value='';clearDirty(card);connectionResults.clear();await refresh();message('厂商与模型已保存。Key、API 地址和兼容设置下一轮生效；模型列表变动后请重启 Codex，新列表才会在 Codex 中生效。');}
     finally{card.inert=false;}
   },''));
   if(id)actions.append(button('删除厂商',async()=>{if(!confirm('删除此厂商及本工具中的模型配置？'))return;await api('provider',{id,delete:true});clearDirty(card);await refresh();},'text-danger'));
@@ -347,7 +347,7 @@ function renderAccessSummary(){
     :(official?'Codex 正在使用 '+official+' 个官方模型':'Codex 正在使用官方模型');
   let note;
   if(state.source_error)note='配置来源需要检查：'+state.source_error;
-  else if(state.catalog_pending)note='模型列表有变更，更新客户端模型列表后请重启客户端。';
+  else if(state.catalog_pending)note='模型列表有变更，保存模型设置后请重启 Codex。';
   else if(!enabled)note='先添加模型，再开启接入。';
   else note=open?'在 Codex 中选择第三方模型即可使用。':'开启后，Codex 可调用你配置的第三方模型。';
   // role="status" regions re-announce on every write, so only change real text.
@@ -401,7 +401,7 @@ async function refresh(automatic=false){
     if(!$('providers').children.length)$('providers').append(el('p',state.mode==='cc_switch'?'CC Switch 中暂无可读取的第三方 OpenAI 配置。':'尚无厂商，请添加厂商和模型。','hint'));
     if(state.source_error)message('配置来源提示：'+state.source_error,true);
     updateUnsaved();applyFilters();
-    $('catalog-status').textContent=state.catalog_pending?'模型列表有变更 · 更新列表后请重启客户端':'客户端模型列表已更新';
+    $('catalog-status').textContent=state.catalog_pending?'模型列表有变更 · 保存模型设置后请重启 Codex':'客户端模型列表已更新';
     renderSyncStatus();
     if(firstDesktopState)window.dispatchEvent(new Event('hybrid-management-ready'));
     for(const mode of ['project','openai']){$('desktop-'+mode).value=state.desktop_preferences?.[mode]||'ask';syncDesktopSelect($('desktop-'+mode));}
@@ -529,7 +529,6 @@ async function switchRouting(mode){
   }
 };
 $('save-path').onclick=()=>changeSource('cc_switch',$('db-path').value);
-$('publish').onclick=()=>action(async()=>{await api('publish',{});await refresh();message('客户端模型列表已更新，请重启客户端加载最新列表。');});
 $('refresh').onclick=()=>action(async()=>{if(!discardDrafts())return;message('');await refresh();});
 $('add-provider').onclick=()=>{const card=providerCard('');$('providers').prepend(card);markDirty(card);$('model-search').value='';$('model-filter').value='all';applyFilters();card.querySelector('input').focus();};
 action(refresh);

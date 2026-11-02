@@ -25,13 +25,14 @@ test('native settings and portable fallback retain per-model adaptations',()=>{
   assert.deepEqual(JSON.parse(JSON.stringify(context.modelDetailUpdate({key:'p/chat',protocol:'openai_chat_completions'}))),{key:'p/chat'});
 });
 function setup(failure){
-  const events=[],error={textContent:'old'},controls=[{disabled:false},{disabled:true}];
+  const events=[],messages=[],error={textContent:'old'},controls=[{disabled:false},{disabled:true}];
   const dialog={setAttribute(){},removeAttribute(){},querySelectorAll:()=>controls,close:()=>events.push('close')};
   const context=vm.createContext({modelSaving:false,modelDialogSource:'captured-source',
     $:()=>error,api:async(path,body)=>{events.push([path,JSON.parse(JSON.stringify(body))]);if(failure)throw Error('fixture');},
-    refresh:async()=>events.push('refresh'),message:()=>events.push('message'),errorMessage:()=> '保存失败',updateAddCount(){}});
+    refresh:async()=>events.push('refresh'),message:(text,isError)=>{events.push('message');messages.push([text,isError]);},
+    errorMessage:()=> '保存失败',updateAddCount(){}});
   vm.runInContext(persist,context);
-  return {context,events,error,controls,dialog};
+  return {context,events,messages,error,controls,dialog};
 }
 test('saving uses captured source and restores disabled controls',async()=>{
   const env=setup();
@@ -47,6 +48,19 @@ test('failed save keeps dialog open and displays recoverable error',async()=>{
   assert.equal(env.error.textContent,'保存失败');
   assert.equal(env.context.modelSaving,false);
   assert.deepEqual(env.controls.map(c=>c.disabled),[false,true]);
+});
+test('saving compatibility settings applies without requiring a client restart',async()=>{
+  const env=setup();
+  await env.context.persistModelUpdates([{key:'p/m',responses_compatibility:'portable'}],env.dialog,'error');
+  assert.match(env.messages[0][0],/下一轮调用生效/);
+  assert.match(env.messages[0][0],/无需重启 Codex/);
+  assert.doesNotMatch(env.messages[0][0],/请重启|需要重启/);
+});
+test('changing model-list membership asks the user to restart Codex',async()=>{
+  const env=setup();
+  await env.context.persistModelUpdates([{key:'p/m',added:true}],env.dialog,'error');
+  assert.match(env.messages[0][0],/重启 Codex/);
+  assert.match(env.messages[0][0],/新模型才会在 Codex 中生效/);
 });
 test('in-flight save prevents duplicate requests',async()=>{
   const env=setup();env.context.modelSaving=true;

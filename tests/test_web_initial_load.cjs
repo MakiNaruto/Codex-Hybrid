@@ -38,6 +38,12 @@ test('access page leads with the switch and carries no readiness steps',()=>{
   for(const id of ['access-headline','access-note','routing-status','routing-toggle','forwarding-status','detect-processes'])
     assert.match(html,new RegExp('id="'+id+'"'));
 });
+test('model management has no redundant manual publish control',()=>{
+  const html=fs.readFileSync('src/management/web/index.html','utf8');
+  assert.doesNotMatch(html,/id="publish"/);
+  assert.doesNotMatch(html,/>更新客户端模型列表<\/button>/);
+  assert.doesNotMatch(source,/\$\('publish'\)\.onclick/);
+});
 test('access headline reports the third-party models in use when routing is open',()=>{
   const nodes=summaryFixture({routing_mode:'project',models:Array.from({length:12},()=>({enabled:true})),
     official_model_count:5,catalog_pending:false,forwarding:{status:'running'}});
