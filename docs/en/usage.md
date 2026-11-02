@@ -71,7 +71,7 @@ On macOS, installation discovery validates the Codex bundle identifier and execu
 
 ### Usage statistics
 
-Both browser and desktop management pages include **Usage statistics** (用量统计), with 24-hour, 7-day and 30-day periods and model filtering. View total, input and output tokens, request counts, a token/request trend chart, model rankings and a breakdown table. Buckets use UTC hours (24-hour view) or dates; hover or focus a bar for its value. Cached tokens are included in input tokens.
+Both browser and desktop management pages include **Usage statistics** (用量统计), with yesterday, today, 7-day and 30-day periods and model filtering. Yesterday and today use the service computer's local calendar day, from 00:00 inclusive to the next 00:00 exclusive, and the trend shows 24 hourly buckets; today includes only requests recorded up to the current time. View total, input and output tokens, request counts, a token/request trend chart, model rankings and a breakdown table. The 7-day and 30-day views use UTC date buckets; hover or focus a bar for its value. Cached tokens are included in input tokens.
 
 Statistics cover requests routed through Hybrid in retained `service.jsonl` files and three rotated backups. Connection tests and calls bypassing the gateway are excluded. Requests without valid usage count toward requests only and are identified separately; failed requests with reported usage contribute tokens. Missing or unreadable logs are shown explicitly. Rotation can remove history, and these totals do not represent provider billing. Refresh to load newly recorded usage. No additional conversation content is collected or uploaded.
 

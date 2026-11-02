@@ -11,16 +11,36 @@
   const tokenPartsFor=row=>({cached_tokens:Math.min(row.cached_tokens||0,row.input_tokens||0),uncached_tokens:uncached(row),output_tokens:row.output_tokens||0});
   const partsTotal=parts=>parts.cached_tokens+parts.uncached_tokens+parts.output_tokens;
   const partTotal=row=>partsTotal(tokenPartsFor(row));
-  let days='7',metric='total_tokens',data=null,requestId=0;
+  let period='7',metric='total_tokens',data=null,requestId=0;
   function svgNode(tag,attrs,text){
     const node=document.createElementNS('http://www.w3.org/2000/svg',tag);
     for(const [key,value] of Object.entries(attrs))node.setAttribute(key,String(value));
     if(text!==undefined)node.textContent=text;
     return node;
   }
+  const pad=value=>String(value).padStart(2,'0');
+  const calendarPeriod=()=>data.period==='today'||data.period==='yesterday';
+  function dateLabel(time,local=false){
+    const date=new Date(time*1000),year=local?date.getFullYear():date.getUTCFullYear(),month=(local?date.getMonth():date.getUTCMonth())+1,day=local?date.getDate():date.getUTCDate();
+    return year+'-'+pad(month)+'-'+pad(day);
+  }
+  function hourLabel(time){
+    const date=new Date(time*1000),hour=calendarPeriod()?date.getHours():date.getUTCHours();
+    return pad(hour)+':00';
+  }
   function bucketLabel(time,full=false){
-    const date=new Date(time*1000);
-    return date.toISOString().slice(full?0:5,10)+(data.bucket_seconds===3600?' '+date.toISOString().slice(11,16):'')+(full?' UTC':'');
+    if(data.bucket_seconds===3600){
+      const date=new Date(time*1000),hour=calendarPeriod()?date.getHours():date.getUTCHours();
+      return (full?dateLabel(time,calendarPeriod())+' ':'')+pad(hour)+':00–'+pad(hour+1)+':00'+(full?(calendarPeriod()?' 本地时间':' UTC'):'');
+    }
+    return dateLabel(time).slice(full?0:5)+(full?' UTC':'');
+  }
+  function periodLabel(){
+    if(calendarPeriod()){
+      const name=data.period==='today'?'今天':'昨天';
+      return name+' '+dateLabel(data.period_start,true)+' · 00:00–24:00';
+    }
+    return '近'+(data.period_days||data.period)+'天';
   }
   function niceTop(value,steps=4){
     if(value<=steps)return steps;
@@ -71,6 +91,7 @@
   function hideTooltip(){$('usage-chart-tooltip').hidden=true;}
   function renderTrend(models){
     const root=$('usage-trend');root.replaceChildren();
+    $('usage-trend-note').textContent='每个模型一种颜色，柱内按模型堆叠 · '+(calendarPeriod()?'按本地时间小时分组 · 统计时段 00:00–24:00':'按 UTC 日期分组');
     const width=Math.max(640,data.buckets.length*26+76);
     const left=58,right=18,topY=28,plotHeight=180,baseline=topY+plotHeight,plotWidth=width-left-right;
     const svg=svgNode('svg',{viewBox:'0 0 '+width+' 252',role:'group','aria-label':metric==='requests'?'按模型堆叠的请求数趋势柱状图':'按模型堆叠的 Token 用量趋势柱状图'});
@@ -102,7 +123,7 @@
         group.append(hit);
       }
       svg.append(group);
-      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:234,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?new Date(time*1000).toISOString().slice(11,16):bucketLabel(time)));
+      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:234,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
     });
     root.append(svg);hideTooltip();
     $('usage-chart-detail').textContent=models.length?'柱高表示对应时段内各模型用量之和；悬停或聚焦日期可查看每个模型的用量。':'时间范围内暂无模型用量。';
@@ -115,7 +136,7 @@
     const bucket=bucketFor(row,index),parts=tokenPartsFor(bucket);
     tooltip.replaceChildren();
     const heading=el('div',undefined,'usage-composition-tooltip-heading');
-    heading.append(el('strong',bucketLabel(data.buckets[index],true).replace(' UTC','')),el('span',number(partsTotal(parts))));
+    heading.append(el('strong',bucketLabel(data.buckets[index],true).replace(/ (?:UTC|本地时间)$/,'')),el('span',number(partsTotal(parts))));
     tooltip.append(heading);
     for(const [key,tone,label] of [['cached_tokens','cached','输入（命中缓存）'],['uncached_tokens','uncached','输入（未命中缓存）'],['output_tokens','output','输出']]){
       const rowNode=el('div',undefined,'usage-composition-tooltip-row');
@@ -151,7 +172,7 @@
       });
       for(const event of ['pointerleave','blur'])hit.addEventListener(event,()=>{tooltip.hidden=true;});
       group.append(hit);svg.append(group);
-      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:140,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?new Date(time*1000).toISOString().slice(11,16):bucketLabel(time)));
+      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:140,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
     });
     stage.append(svg,tooltip);
     return stage;
@@ -182,7 +203,7 @@
     }
     const warnings={missing:'尚无请求日志。',unavailable:'日志无法读取，请稍后重试。',partial:'部分日志无法读取，统计不完整。',available:''};
     const missing=totals.requests-totals.requests_with_usage;
-    $('usage-status').textContent=warnings[data.state]+(totals.requests?number(totals.requests)+' 次请求 · '+(missing?number(missing)+' 次未返回有效用量 · ':''):'当前范围暂无请求记录 · ')+'更新于 '+new Date(data.generated_at*1000).toLocaleTimeString('zh-CN');
+    $('usage-status').textContent=periodLabel()+' · '+warnings[data.state]+(totals.requests?number(totals.requests)+' 次请求 · '+(missing?number(missing)+' 次未返回有效用量 · ':''):'当前范围暂无请求记录 · ')+'更新于 '+new Date(data.generated_at*1000).toLocaleTimeString('zh-CN');
     $('usage-content').hidden=data.state==='unavailable';
     renderTrend(models);renderLegend(models);renderComposition(models);
     const ranking=$('usage-ranking'),rows=$('usage-model-rows');ranking.replaceChildren();rows.replaceChildren();
@@ -199,7 +220,7 @@
   async function load(){
     const id=++requestId;$('usage-status').textContent='正在读取用量…';$('usage-content').hidden=true;
     try{
-      const result=await api('usage?days='+days);if(id!==requestId)return;
+      const result=await api('usage?period='+period);if(id!==requestId)return;
       data=result;const select=$('usage-model'),previous=select.value;
       select.replaceChildren(el('option','全部模型'));select.firstChild.value='';
       for(const row of data.models){const option=el('option',modelLabel(row));option.value=row.model;select.append(option);}
@@ -208,7 +229,7 @@
   }
   $('usage-model').onchange=render;
   for(const button of $('usage-period').querySelectorAll('button'))button.onclick=()=>{
-    days=button.dataset.days;
+    period=button.dataset.period;
     for(const option of $('usage-period').querySelectorAll('button'))option.setAttribute('aria-pressed',String(option===button));
     load();
   };

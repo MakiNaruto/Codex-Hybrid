@@ -226,9 +226,13 @@ class ControllerTests(unittest.TestCase):
         report = self.web('diagnostics?days=7')
         self.assertTrue(report['ok'], report)
         self.assertEqual(report['result']['period_days'], 7)
-        usage = self.web('usage?days=7')
+        usage = self.web('usage?period=today')
         self.assertTrue(usage['ok'], usage)
-        self.assertEqual(usage['result']['period_days'], 7)
+        self.assertEqual(usage['result']['period'], 'today')
+        self.assertEqual(usage['result']['period_days'], 1)
+        self.assertTrue(self.web('usage?period=yesterday')['ok'])
+        self.assertTrue(self.web('usage?period=7')['ok'])
+        self.assertTrue(self.web('usage?period=30')['ok'])
         self.assertEqual(self.config.read_text(), 'model = "official"\n')
         self.assertEqual(self.controller.runtime.started, 0)
 
@@ -249,7 +253,7 @@ class ControllerTests(unittest.TestCase):
                 ('shutdown', 'POST', {}), ('state', 'POST', {}), ('provider', 'GET', None),
                 ('provider', 'POST', {'id': 'demo', 'arbitrary': True}),
                 ('diagnostics?days=7&days=1', 'GET', None), ('diagnostics?days=2', 'GET', None),
-                ('usage?days=2', 'GET', None), ('usage?days=7&days=1', 'GET', None)]:
+                ('usage?period=2', 'GET', None), ('usage?period=7&period=30', 'GET', None)]:
             result = self.call('web_api', path=path, method=method, body=body)
             self.assertEqual(result['error'], 'INVALID_REQUEST', (path, result))
         self.assertFalse(self.directory.exists())

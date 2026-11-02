@@ -15,7 +15,7 @@ function setup(desktop=false,hidden=false){
   const nodes={},events={},requests=[];
   const $=id=>nodes[id]??=new Node('div');
   $('page-usage').hidden=hidden;
-  for(const days of ['1','7','30']){const button=new Node('button');button.dataset.days=days;$('usage-period').append(button);}
+  for(const period of ['yesterday','today','7','30']){const button=new Node('button');button.dataset.period=period;$('usage-period').append(button);}
   for(const metric of ['total_tokens','requests']){const button=new Node('button');button.dataset.metric=metric;$('usage-metric').append(button);}
   vm.runInNewContext(fs.readFileSync('src/management/web/usage.js','utf8'),{
     $,el:(tag,text,cls)=>{const node=new Node(tag,text);node.className=cls;return node;},Intl,Date,
@@ -25,7 +25,7 @@ function setup(desktop=false,hidden=false){
   });
   return {$,events,requests};
 }
-const report=(tokens=120)=>({generated_at:1700000000,bucket_seconds:86400,buckets:[1699920000],state:'available',models:[{model:'<model>',requests:2,requests_with_usage:1,input_tokens:100,output_tokens:20,cached_tokens:40,total_tokens:tokens,series:[{requests:2,requests_with_usage:1,input_tokens:100,output_tokens:20,cached_tokens:40,total_tokens:tokens}]}]});
+const report=(tokens=120)=>({generated_at:1700000000,period:'7',period_days:7,period_start:1699833600,period_end:1700000000,bucket_seconds:86400,buckets:[1699920000],state:'available',models:[{model:'<model>',requests:2,requests_with_usage:1,input_tokens:100,output_tokens:20,cached_tokens:40,total_tokens:tokens,series:[{requests:2,requests_with_usage:1,input_tokens:100,output_tokens:20,cached_tokens:40,total_tokens:tokens}]}]});
 const tick=()=>new Promise(setImmediate);
 test('renders totals, missing usage and model names as text',async()=>{
   const env=setup();env.requests[0].resolve(report());await tick();
@@ -96,11 +96,21 @@ test('renders list provider and model name instead of the raw key',async()=>{
   assert.equal(env.$('usage-model').children[1].value,'<model>');
 });
 test('latest period wins over stale successes and failures',async()=>{
-  const env=setup();env.$('usage-period').children[2].onclick();
-  assert.equal(env.requests[1].path,'usage?days=30');env.requests[1].resolve(report(500));await tick();
+  const env=setup();env.$('usage-period').children[3].onclick();
+  assert.equal(env.requests[1].path,'usage?period=30');env.requests[1].resolve(report(500));await tick();
   env.requests[0].reject(Error('stale'));await tick();
   assert.equal(env.$('usage-metrics').children[0].children[1].textContent,'500');
   assert.equal(env.$('usage-content').hidden,false);
+});
+test('today and yesterday load calendar-day periods and expose the full-day window',async()=>{
+  const env=setup();assert.equal(env.requests[0].path,'usage?period=7');
+  env.$('usage-period').children[1].onclick();assert.equal(env.requests[1].path,'usage?period=today');
+  const data=report();
+  data.period='today';data.period_days=1;data.bucket_seconds=3600;data.period_start=1699920000;
+  env.requests[1].resolve(data);await tick();
+  assert.match(env.$('usage-status').textContent,/今天/);
+  assert.match(env.$('usage-status').textContent,/00:00–24:00/);
+  env.$('usage-period').children[0].onclick();assert.equal(env.requests[2].path,'usage?period=yesterday');
 });
 test('failure hides old figures and refresh recovers',async()=>{
   const env=setup();env.requests[0].reject(Error('offline'));await tick();
@@ -110,5 +120,5 @@ test('failure hides old figures and refresh recovers',async()=>{
 });
 test('desktop waits for readiness, hidden page loads on navigation',()=>{
   const env=setup(true,true);assert.equal(env.requests.length,0);env.events['hybrid-management-ready']();assert.equal(env.requests.length,0);
-  env.$('page-usage').hidden=false;env.events.hashchange();assert.equal(env.requests[0].path,'usage?days=7');
+  env.$('page-usage').hidden=false;env.events.hashchange();assert.equal(env.requests[0].path,'usage?period=7');
 });

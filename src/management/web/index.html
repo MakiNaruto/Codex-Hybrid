@@ -81,8 +81,8 @@
     <section aria-labelledby="usage-heading">
       <div class="section-head"><div class="section-title"><h2 id="usage-heading">用量概览</h2><span class="count-badge">HYBRID</span></div><button id="refresh-usage" class="secondary" type="button">刷新 ↻</button></div>
       <div class="usage-controls">
-        <div id="usage-period" class="diagnostic-segments" role="group" aria-label="用量统计时间范围">
-          <button type="button" data-days="1" aria-pressed="false">近24小时</button><button type="button" data-days="7" aria-pressed="true">近7天</button><button type="button" data-days="30" aria-pressed="false">近30天</button>
+        <div id="usage-period" class="diagnostic-segments" role="group" aria-label="用量统计时间范围；昨天和今天按本地时间 00:00 至 24:00">
+          <button type="button" data-period="yesterday" aria-pressed="false">昨天</button><button type="button" data-period="today" aria-pressed="false">今天</button><button type="button" data-period="7" aria-pressed="true">近7天</button><button type="button" data-period="30" aria-pressed="false">近30天</button>
         </div>
         <label class="usage-model-filter" for="usage-model">模型 <select id="usage-model"><option value="">全部模型</option></select></label>
       </div>
@@ -90,7 +90,7 @@
       <div id="usage-content" hidden>
         <div class="usage-metrics" id="usage-metrics"></div>
         <div class="usage-charts">
-          <div class="usage-panel"><div class="section-head"><h3>使用趋势</h3><div id="usage-metric" class="diagnostic-segments" role="group" aria-label="趋势指标"><button type="button" data-metric="total_tokens" aria-pressed="true">Tokens</button><button type="button" data-metric="requests" aria-pressed="false">请求数</button></div></div><p class="hint">每个模型一种颜色，柱内按模型堆叠 · 按 UTC 分组</p><div id="usage-model-legend" class="usage-model-legend" aria-label="模型颜色图例"></div><div class="usage-chart-stage"><div id="usage-trend"></div><div id="usage-chart-tooltip" class="usage-chart-tooltip" role="status" aria-live="polite" hidden></div></div><p id="usage-chart-detail" class="hint" aria-live="polite"></p></div>
+          <div class="usage-panel"><div class="section-head"><h3>使用趋势</h3><div id="usage-metric" class="diagnostic-segments" role="group" aria-label="趋势指标"><button type="button" data-metric="total_tokens" aria-pressed="true">Tokens</button><button type="button" data-metric="requests" aria-pressed="false">请求数</button></div></div><p id="usage-trend-note" class="hint">每个模型一种颜色，柱内按模型堆叠 · 按 UTC 日期分组</p><div id="usage-model-legend" class="usage-model-legend" aria-label="模型颜色图例"></div><div class="usage-chart-stage"><div id="usage-trend"></div><div id="usage-chart-tooltip" class="usage-chart-tooltip" role="status" aria-live="polite" hidden></div></div><p id="usage-chart-detail" class="hint" aria-live="polite"></p></div>
           <div class="usage-panel"><h3>模型用量排行</h3><p class="hint">按总 Token 用量排序 · 色条仅标识模型</p><div id="usage-ranking"></div></div>
         </div>
         <div class="usage-panel usage-composition-panel"><div class="section-head"><div><h3>Token 构成</h3><p class="hint">每个模型单独展示，浅色为缓存命中，中色为缓存未命中，深色为输出</p></div></div><div id="usage-composition-charts" class="usage-composition-grid"></div><p id="usage-composition-detail" class="hint" role="status" aria-live="polite"></p></div>

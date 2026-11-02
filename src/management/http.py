@@ -70,10 +70,12 @@ def handle(handler, gateway, method):
             reply(200, report(manager, days=days)); return True
         if method == 'GET' and urlsplit(handler.path).path == '/manage/api/usage':
             from management.usage import report
-            periods = parse_qs(urlsplit(handler.path).query, keep_blank_values=True).get('days', ['7'])
-            if len(periods) != 1 or periods[0] not in {'1', '7', '30'}:
+            query = parse_qs(urlsplit(handler.path).query, keep_blank_values=True)
+            key = 'period' if set(query) == {'period'} else 'days' if set(query) == {'days'} else None
+            periods = query.get(key, []) if key else []
+            if len(periods) != 1 or periods[0] not in {'today', 'yesterday', '1', '7', '30'}:
                 reply(400, {'code': 'INVALID_USAGE_PERIOD'}); return True
-            reply(200, report(manager.directory, days=int(periods[0]),
+            reply(200, report(manager.directory, days=periods[0],
                               labels=manager.model_labels())); return True
         if method == 'GET' and handler.path == '/manage/api/activity':
             reply(200, manager.activity_state()); return True

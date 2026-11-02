@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -24,11 +25,11 @@ class UsageTests(unittest.TestCase):
                  'usage': {'input_tokens': True, 'output_tokens': -1, 'total_tokens': float('nan')}},
             ]
             (root/'service.jsonl').write_text('\n'.join(map(json.dumps, records))+'\n[]\ninvalid\n')
-            (root/'service.jsonl.1').write_text(json.dumps({'time': now-86400, 'model': 'other',
+            (root/'service.jsonl.1').write_text(json.dumps({'time': now-200, 'model': 'other',
                 'status': 'incomplete', 'usage': {'input_tokens': 10, 'output_tokens': 3,
                                                 'total_tokens': 13, 'cached_tokens': 99},
                 'message': 'secret', 'api_key': 'secret'}))
-            result = report(root, days=1, now=now)
+            result = report(root, days='today', now=now)
             self.assertEqual(len(result['models']), 3)
             first = next(m for m in result['models'] if m['model'] == 'provider/model')
             self.assertEqual(first['requests'], 2)
@@ -55,11 +56,52 @@ class UsageTests(unittest.TestCase):
             now = 200000
             (root/'service.jsonl').write_text(json.dumps(
                 {'time': now, 'model': 'record/model-a', 'status': 'completed'})+'\n')
-            labeled = report(root, days=1, now=now,
+            labeled = report(root, days='today', now=now,
                              labels={'record/model-a': ('Vendor', 'Label model-a')})
             row = labeled['models'][0]
             self.assertEqual((row['provider_name'], row['model_name']), ('Vendor', 'Label model-a'))
-            self.assertNotIn('model_name', report(root, days=1, now=now)['models'][0])
+            self.assertNotIn('model_name', report(root, days='today', now=now)['models'][0])
+
+    def test_calendar_periods_use_exclusive_local_midnight_boundaries(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            local_noon = datetime(2026, 11, 2, 12, 30).astimezone()
+            now = local_noon.timestamp()
+            today_start = local_noon.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            yesterday_start = (local_noon.replace(hour=0, minute=0, second=0, microsecond=0)
+                               - timedelta(days=1)).timestamp()
+            tomorrow_start = (local_noon.replace(hour=0, minute=0, second=0, microsecond=0)
+                              + timedelta(days=1)).timestamp()
+            records = [
+                {'time': yesterday_start - 1, 'model': 'model', 'status': 'completed'},
+                {'time': yesterday_start, 'model': 'model', 'status': 'completed'},
+                {'time': today_start - 1, 'model': 'model', 'status': 'completed'},
+                {'time': today_start, 'model': 'model', 'status': 'completed'},
+                {'time': today_start + 3600, 'model': 'model', 'status': 'completed'},
+                {'time': tomorrow_start, 'model': 'model', 'status': 'completed'},
+            ]
+            (root/'service.jsonl').write_text('\n'.join(map(json.dumps, records))+'\n')
+
+            today = report(root, days='today', now=now)
+            yesterday = report(root, days='yesterday', now=now)
+            legacy_today = report(root, days='1', now=now)
+
+            self.assertEqual(today['period'], 'today')
+            self.assertEqual(legacy_today['period'], 'today')
+            self.assertEqual(today['period_days'], 1)
+            self.assertEqual(today['period_start'], today_start)
+            self.assertEqual(today['period_end'], tomorrow_start)
+            self.assertEqual(today['bucket_seconds'], 3600)
+            self.assertEqual(len(today['buckets']), 24)
+            self.assertEqual(datetime.fromtimestamp(today['buckets'][0]).time(), time(0, 0))
+            self.assertEqual(today['models'][0]['requests'], 2)
+            self.assertEqual(sum(row['requests'] for row in today['models'][0]['series']), 2)
+
+            self.assertEqual(yesterday['period'], 'yesterday')
+            self.assertEqual(yesterday['period_start'], yesterday_start)
+            self.assertEqual(yesterday['period_end'], today_start)
+            self.assertEqual(len(yesterday['buckets']), 24)
+            self.assertEqual(yesterday['models'][0]['requests'], 2)
 
     def test_period_validation(self):
         with self.assertRaises(ValueError):
@@ -75,9 +117,10 @@ class UsageHTTPTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             gateway = SimpleNamespace(settings={'management_auth_required': True, 'management_token': 'fixture'},
                                       manager=SimpleNamespace(directory=Path(temp), model_labels=lambda: {}))
-            for query, authorized, status in [('days=7', False, 403), ('days=7', True, 200),
-                    ('days=1', True, 200), ('days=30', True, 200), ('days=2', True, 400),
-                    ('days=7&days=1', True, 400), ('days=', True, 400)]:
+            for query, authorized, status in [('period=7', False, 403), ('period=7', True, 200),
+                    ('period=today', True, 200), ('period=yesterday', True, 200),
+                    ('period=30', True, 200), ('period=2', True, 400),
+                    ('period=7&days=1', True, 400), ('period=', True, 400)]:
                 with self.subTest(query=query, authorized=authorized):
                     headers={'Host': '127.0.0.1:1234'}
                     if authorized:
@@ -88,4 +131,5 @@ class UsageHTTPTests(unittest.TestCase):
                     self.assertTrue(handle(handler, gateway, 'GET'))
                     handler.send_response.assert_called_once_with(status)
                     if status == 200:
-                        self.assertEqual(json.loads(handler.wfile.getvalue())['period_days'], int(query[5:]))
+                        result = json.loads(handler.wfile.getvalue())
+                        self.assertIn(result['period'], {'today', 'yesterday', 7, 30})
