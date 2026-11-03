@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 from gateway.server import route, sse_events
 from management.service import Management, private_write
+from model_catalog.catalog import ConfigError
+from model_catalog.sources import source_key
 from codex_integration import service
 import test_cc_model_identity as identity
 
@@ -50,6 +52,31 @@ class CCSyncTests(unittest.TestCase):
         self.manager.sync_cc()
         self.assertEqual(self.manager.model_labels()['record-a/model-a'], ('Vendor', 'Label model-a'))
 
+    def test_third_party_direct_publication_excludes_official_models(self):
+        config_path = self.fixture.root / 'config.toml'
+        config_path.write_text(
+            'model_provider = "custom"\n'
+            'model = "model-a"\n'
+            '[model_providers.custom]\n'
+            'base_url = "https://a.invalid/v1"\n'
+            'wire_api = "responses"\n',
+            encoding='utf-8',
+        )
+        (self.fixture.root / 'state.json').write_text(json.dumps({
+            'config_path': str(config_path),
+        }), encoding='utf-8')
+        self.gateway.settings['official_catalog'] = [{'slug': 'official'}]
+
+        self.manager.publish()
+
+        settings = self.gateway.settings
+        directory = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))
+        self.assertFalse(settings['official_models_enabled'])
+        self.assertEqual(settings['official_models'], [])
+        self.assertNotIn('official', settings['models'])
+        self.assertNotIn('official', [model['slug'] for model in directory['models']])
+        self.assertEqual(self.manager.view()['official_model_count'], 0)
+
     def test_prepare_persists_the_same_explicit_bindings_as_the_published_directory(self):
         home = self.fixture.root / 'codex'
         home.mkdir()
@@ -62,6 +89,31 @@ class CCSyncTests(unittest.TestCase):
         directory = json.loads((runtime / 'models.json').read_text(encoding='utf-8'))
         self.assertEqual(settings['cc_snapshot']['models'], directory['models'])
         self.assertEqual(set(settings['cc_snapshot']['bindings']), {'record-a/model-a', 'record-a/model-b'})
+
+    def test_prepare_from_third_party_excludes_official_models(self):
+        home = self.fixture.root / 'codex-third-party'
+        home.mkdir()
+        (home / 'config.toml').write_text(
+            'model_provider = "custom"\n'
+            'model = "model-a"\n'
+            '[model_providers.custom]\n'
+            'base_url = "https://a.invalid/v1"\n'
+            'wire_api = "responses"\n',
+            encoding='utf-8',
+        )
+        (home / 'models_cache.json').write_text(
+            '{"models": [{"slug": "gpt-private-template"}]}',
+            encoding='utf-8',
+        )
+        runtime = self.fixture.root / 'prepared-third-party'
+        with patch.object(service, 'RUNTIME', runtime), contextlib.redirect_stdout(io.StringIO()):
+            service.prepare(18891, home, {'type': 'cc-switch', 'path': str(self.fixture.database)})
+
+        settings = json.loads((runtime / 'settings.json').read_text(encoding='utf-8'))
+        directory = json.loads((runtime / 'models.json').read_text(encoding='utf-8'))
+        self.assertFalse(settings['official_models_enabled'])
+        self.assertEqual(settings['official_models'], [])
+        self.assertNotIn('gpt-private-template', [model['slug'] for model in directory['models']])
 
     def test_switching_to_independent_source_removes_cc_snapshot_and_stops_cc_updates(self):
         standalone = self.fixture.root / 'empty.yaml'
@@ -293,3 +345,112 @@ class CCSyncTests(unittest.TestCase):
             self.assertTrue(changed.wait(3))
             self.assertEqual(self.manager.sync_mode, 'periodic')
             self.manager.stop_sync()
+
+    def configure_codex(self, provider):
+        home = self.fixture.root / 'codex'
+        home.mkdir(exist_ok=True)
+        config = home / 'config.toml'
+        config.write_text(
+            'model_provider = "custom"\nmodel = "model-a"\n'
+            '[model_providers.custom]\n'
+            f'base_url = {json.dumps(provider["base_url"])}\n'
+            f'wire_api = {json.dumps(provider.get("wire_api", "responses"))}\n',
+            encoding='utf-8')
+        (home / 'models_cache.json').write_text('{"models": [{"slug": "official"}]}')
+        (self.fixture.root / 'state.json').write_text(json.dumps({'config_path': str(config)}))
+        return config
+
+    def reset_membership(self):
+        settings = self.gateway.settings
+        settings['models'] = ['official']
+        settings['model_preferences'] = {
+            source_key(settings['source']): {'added': [], 'compatibility': {}}}
+        private_write(self.path, json.dumps(settings))
+
+    def test_current_record_models_are_imported_once_and_other_records_stay_pending(self):
+        self.fixture.write_provider(identifier='record-b', base='https://b.invalid/v1')
+        self.configure_codex({'base_url': 'https://a.invalid/v1', 'wire_api': 'responses'})
+        self.reset_membership()
+
+        self.manager.publish()
+
+        settings = self.gateway.settings
+        preference = settings['model_preferences'][source_key(settings['source'])]
+        self.assertEqual(set(preference['added']), {'record-a/model-a', 'record-a/model-b'})
+        self.assertEqual(preference['imported_records'], ['codex/record-a'])
+        self.assertEqual(set(settings['models']),
+                         {'record-a/model-a', 'record-a/model-b'})
+        pending = {model['key'] for model in self.manager.view()['models'] if not model['enabled']}
+        self.assertEqual(pending, {'record-b/model-a', 'record-b/model-b'})
+
+    def test_deleted_imported_model_is_not_readded_but_later_models_are_manual(self):
+        self.configure_codex({'base_url': 'https://a.invalid/v1', 'wire_api': 'responses'})
+        self.reset_membership()
+        self.manager.publish()
+        self.manager.save_models(self.manager.view()['source_id'], [
+            {'key': 'record-a/model-a', 'added': False}])
+        self.fixture.write_provider(default='model-c', models=('model-a', 'model-b', 'model-c'))
+
+        self.assertTrue(self.manager.sync_cc())
+
+        settings = self.gateway.settings
+        preference = settings['model_preferences'][source_key(settings['source'])]
+        self.assertEqual(set(preference['added']), {'record-a/model-b'})
+        self.assertEqual(preference['imported_records'], ['codex/record-a'])
+        self.assertNotIn('record-a/model-a', settings['models'])
+        self.assertNotIn('record-a/model-c', settings['models'])
+        pending = {model['key'] for model in self.manager.view()['models']
+                   if not model['enabled']}
+        self.assertEqual(pending, {'record-a/model-a', 'record-a/model-c'})
+
+    def test_unmatched_current_provider_does_not_publish_partial_membership(self):
+        self.configure_codex({'base_url': 'https://unknown.invalid/v1', 'wire_api': 'responses'})
+        self.reset_membership()
+        before_settings = self.path.read_bytes()
+        before_catalog = Path(self.gateway.settings['catalog']).read_bytes()
+
+        with self.assertRaisesRegex(ConfigError, '^CC_ROUTING_PROVIDER_UNMATCHED$'):
+            self.manager.publish()
+
+        self.assertEqual(self.path.read_bytes(), before_settings)
+        self.assertEqual(Path(self.gateway.settings['catalog']).read_bytes(), before_catalog)
+
+    def test_unchanged_cc_snapshot_still_imports_a_newly_detected_current_record(self):
+        self.fixture.write_provider(identifier='record-b', base='https://b.invalid/v1')
+        self.assertTrue(self.manager.sync_cc())
+        self.configure_codex({'base_url': 'https://a.invalid/v1', 'wire_api': 'responses'})
+        self.gateway.settings.pop('model_preferences', None)
+
+        self.assertTrue(self.manager.sync_cc())
+
+        settings = self.gateway.settings
+        preference = settings['model_preferences'][source_key(settings['source'])]
+        self.assertEqual(set(preference['added']), {'record-a/model-a', 'record-a/model-b'})
+        self.assertEqual(preference['imported_records'], ['codex/record-a'])
+        pending = {model['key'] for model in self.manager.view()['models'] if not model['enabled']}
+        self.assertEqual(pending, {'record-b/model-a', 'record-b/model-b'})
+
+    def test_ambiguous_current_provider_does_not_publish_partial_membership(self):
+        self.fixture.write_provider(identifier='record-b')
+        self.configure_codex({'base_url': 'https://a.invalid/v1', 'wire_api': 'responses'})
+        self.reset_membership()
+        before_settings = self.path.read_bytes()
+        before_catalog = Path(self.gateway.settings['catalog']).read_bytes()
+
+        with self.assertRaisesRegex(ConfigError, '^CC_ROUTING_PROVIDER_AMBIGUOUS$'):
+            self.manager.publish()
+
+        self.assertEqual(self.path.read_bytes(), before_settings)
+        self.assertEqual(Path(self.gateway.settings['catalog']).read_bytes(), before_catalog)
+
+    def test_background_start_surfaces_unmatched_baseline_without_writing(self):
+        self.configure_codex({'base_url': 'https://unknown.invalid/v1', 'wire_api': 'responses'})
+        self.reset_membership()
+        before_settings = self.path.read_bytes()
+        before_catalog = Path(self.gateway.settings['catalog']).read_bytes()
+
+        self.manager.start_sync(interval=30)
+
+        self.assertEqual(self.manager.sync_error, 'CC_ROUTING_PROVIDER_UNMATCHED')
+        self.assertEqual(self.path.read_bytes(), before_settings)
+        self.assertEqual(Path(self.gateway.settings['catalog']).read_bytes(), before_catalog)

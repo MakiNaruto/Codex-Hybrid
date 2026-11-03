@@ -14,11 +14,45 @@ class ProviderConfigTests(unittest.TestCase):
         self.assertEqual(provider['request_max_retries'], 4)
         self.assertEqual(provider['stream_max_retries'], 5)
         self.assertEqual(provider['stream_idle_timeout_ms'], 300000)
+        self.assertTrue(provider['requires_openai_auth'])
         self.assertTrue(is_bridge_provider(provider))
         self.assertEqual(parsed['model'], 'gpt-6.1-sol')
         # Updating a generated config must not duplicate provider tables.
         self.assertEqual(tomllib.loads(candidate_config(result, self.settings)), parsed)
         self.assertEqual(candidate_config(result, self.settings), result)
+
+    def test_third_party_baseline_does_not_require_openai_login(self):
+        native = (
+            'model_provider = "custom"\n'
+            '[model_providers.custom]\n'
+            'base_url = "https://deepseek.invalid/v1"\n'
+            'wire_api = "responses"\n'
+            'requires_openai_auth = false\n'
+        )
+
+        result = candidate_config(native, self.settings)
+        provider = tomllib.loads(result)['model_providers'][PROVIDER]
+
+        self.assertFalse(provider['requires_openai_auth'])
+        self.assertTrue(is_bridge_provider(provider))
+        self.assertEqual(candidate_config(result, self.settings), result)
+
+    def test_third_party_baseline_ignores_inactive_bridge_auth_mode(self):
+        inactive_bridge = candidate_config('', self.settings)
+        bridge_table = inactive_bridge[inactive_bridge.index('[model_providers.codex-hybrid]'):]
+        native = (
+            'model_provider = "custom"\n'
+            '[model_providers.custom]\n'
+            'base_url = "https://deepseek.invalid/v1"\n'
+            'wire_api = "responses"\n'
+            'requires_openai_auth = false\n\n'
+            + bridge_table
+        )
+
+        result = candidate_config(native, self.settings)
+        provider = tomllib.loads(result)['model_providers'][PROVIDER]
+
+        self.assertFalse(provider['requires_openai_auth'])
 
     def test_legacy_config_upgrades_and_both_formats_can_be_removed(self):
         current = candidate_config('model = "gpt-6.1-sol"\n', self.settings)

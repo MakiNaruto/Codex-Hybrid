@@ -341,15 +341,20 @@ function renderAccessSummary(){
   const enabled=(state.models||[]).filter(model=>model.enabled).length;
   const official=Number.isFinite(state.official_model_count)?state.official_model_count:0;
   const open=state.routing_mode==='project';
-  const switchable=['project','openai'].includes(state.routing_mode);
+  const external=state.routing_mode==='external';
+  const switchable=['project','openai','external'].includes(state.routing_mode);
   const headline=!switchable?'当前 Codex 配置无法切换接入'
     :open?(enabled?'Codex 可使用 '+enabled+' 个第三方模型':'接入已开启，但还没有启用第三方模型')
+    :external?(state.routing_interrupted?'接管已中断 · 当前使用第三方直连配置':'当前使用第三方直连配置')
     :(official?'Codex 正在使用 '+official+' 个官方模型':'Codex 正在使用官方模型');
   let note;
   if(state.source_error)note='配置来源需要检查：'+state.source_error;
   else if(state.catalog_pending)note='模型列表有变更，保存模型设置后请重启 Codex。';
+  else if(external&&state.routing_interrupted)note='Codex 配置已在接管期间变化，请确认后重新开启接入。';
   else if(!enabled)note='先添加模型，再开启接入。';
-  else note=open?'在 Codex 中选择第三方模型即可使用。':'开启后，Codex 可调用你配置的第三方模型。';
+  else note=open?'在 Codex 中选择第三方模型即可使用。':
+    external?'开启后，Codex 可调用当前第三方直连配置和已添加的其他厂商模型。':
+    '开启后，Codex 可调用你配置的第三方模型。';
   // role="status" regions re-announce on every write, so only change real text.
   const write=(id,text)=>{const node=$(id);if(node&&node.textContent!==text)node.textContent=text;};
   write('access-headline',headline);
@@ -419,10 +424,11 @@ function renderRouting(){
   const progress=operation&&Object.hasOwn(phases,operation.phase)?phases[operation.phase]:'';
   const toggle=$('routing-toggle');
   toggle.setAttribute('aria-checked',String(routingEnabled()));
-  toggle.disabled=busy||!['project','openai'].includes(state?.routing_mode);
+  toggle.disabled=busy||!['project','openai','external'].includes(state?.routing_mode);
   toggle.setAttribute('aria-busy',String(busy));
   $('routing-status').textContent=progress||(routingSaving?'正在准备或切换…':routingError||(
-    state?.routing_mode==='project'?({running:'已开启',starting:'已开启 · 正在启动…',recovering:'已开启 · 正在自动重试…',fault:'已开启 · 模型转发异常',stopped:'已开启 · 模型转发未运行'}[state?.forwarding?.status]||'已开启 · 正在检查状态…'):state?.routing_mode==='openai'?'已关闭 · 使用原生路由':'无法切换：请检查 Codex 配置'));
+    state?.routing_interrupted&&state?.routing_mode!=='project'?'接管已中断 · Codex 配置已变化，请重新开启接入':
+    state?.routing_mode==='project'?({running:'已开启',starting:'已开启 · 正在启动…',recovering:'已开启 · 正在自动重试…',fault:'已开启 · 模型转发异常',stopped:'已开启 · 模型转发未运行'}[state?.forwarding?.status]||'已开启 · 正在检查状态…'):state?.routing_mode==='openai'?'已关闭 · 使用原生路由':state?.routing_mode==='external'?'已关闭 · 当前使用第三方直连配置':'无法切换：请检查 Codex 配置'));
   if(progress&&routingSaving&&$('routing-dialog').open&&$('routing-dialog-confirm').disabled){
     $('routing-dialog-description').textContent=progress;
   }
@@ -451,7 +457,7 @@ function confirmRouting(mode,preview){
   $('desktop-action-row').hidden=!possible||preference==='never';
   $('desktop-action-label').textContent=desktop?.running?'同时重启 Codex 桌面端':'完成后启动 Codex 桌面端';
   $('routing-dialog-title').textContent=verb+' Codex 接入？';
-  $('routing-dialog-description').textContent=(mode==='project'?'将启用混合路由':'将恢复接入前的路由配置')+'，并备份、更新本地会话索引，保留历史内容和配置中的模型。';
+  $('routing-dialog-description').textContent=(mode==='project'?'将启用混合路由并保留当前厂商模型':'将恢复开启接入前的第三方或原生配置')+'，并备份、更新本地会话索引，保留历史内容和无关配置修改。';
   renderClientProcesses(preview.codex_process);renderGatewayActivity(preview.activity);
   const warnings=(preview.warnings||[]).map(warning=>warning.message+'（'+warning.code+'）');
   if((preview.activity?.active_requests||0)>0)warnings.push('当前仍有请求正在执行，重启桌面端可能中断任务。');
@@ -459,7 +465,7 @@ function confirmRouting(mode,preview){
   warnings.push('自动操作仅针对本机 Codex 桌面端，重启可能影响所有桌面窗口的任务。其他客户端请自行重启。');
   if(!possible&&mode==='project')warnings.push('桌面端未识别、检测不完整或不支持自动操作，请自行打开或重启 Codex。');
   $('routing-dialog-warning').hidden=false;$('routing-dialog-warning').textContent=warnings.join(' ');
-  $('routing-dialog-details').textContent=[...(preview.changes||[]),mode==='openai'?'关闭后请选择官方模型。':''].filter(Boolean).join('\n\n');
+  $('routing-dialog-details').textContent=(preview.changes||[]).join('\n\n');
   dialog.querySelector('details').open=false;
   const confirm=$('routing-dialog-confirm');confirm.disabled=false;
   $('routing-dialog-cancel').hidden=false;
@@ -548,7 +554,7 @@ function renderForwarding(forwarding){
   let detail=status==='recovering'?'（第 '+forwarding.retry_attempt+'/'+forwarding.retry_limit+' 次，预计 '+new Date(forwarding.retry_at*1000).toLocaleTimeString()+' 重试）':'';
   const reasons={port_in_use:'转发端口已被占用，请关闭占用程序或修改端口后重试。',permission_denied:'系统拒绝启动或监听，请检查本机权限后重试。',startup_timeout:'网关未在规定时间内就绪，请查看日志后重试。',worker_exited:'网关在就绪前退出，请查看日志后重试。',invalid_configuration:'网关配置无法读取或格式无效，请检查配置后重试。',process_start_failed:'无法创建网关进程，请检查运行环境后重试。',worker_error:'网关启动发生异常，请查看日志后重试。'};
   if(status==='fault'&&Object.hasOwn(reasons,forwarding.error_reason))detail='：'+reasons[forwarding.error_reason];
-  if(status==='running'&&state?.routing_mode==='openai')detail='（接入已关闭，暂保留供运行中的客户端使用）';
+  if(status==='running'&&['openai','external'].includes(state?.routing_mode))detail='（接入已关闭，暂保留供运行中的客户端使用）';
   if(Number.isSafeInteger(forwarding.log_dropped_records)&&forwarding.log_dropped_records>0)detail+=' · 已丢弃 '+forwarding.log_dropped_records+' 条日志（积压或写入失败）';
   $('forwarding-status').textContent='管理服务可用 · 模型转发'+(labels[status]||'状态未知')+detail;
   $('retry-forwarding').hidden=state?.routing_mode!=='project'||!['fault','stopped'].includes(status);

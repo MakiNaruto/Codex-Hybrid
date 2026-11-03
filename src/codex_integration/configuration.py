@@ -37,7 +37,10 @@ def is_bridge_provider(provider):
                      and provider.get('stream_idle_timeout_ms') == 300000))
             and str(provider.get('base_url', '')).startswith('http://127.0.0.1:')
             and provider.get('wire_api') == 'responses'
-            and provider.get('requires_openai_auth') is True
+            # A bridge activated from a third-party direct configuration does
+            # not ask Codex for an OpenAI subscription login. The local
+            # X-Connected-Token still authenticates access to the gateway.
+            and type(provider.get('requires_openai_auth')) is bool
             and provider.get('supports_websockets') is False
             and isinstance(headers, dict)
             and set(headers) == {'X-Connected-Token'}
@@ -76,6 +79,17 @@ def remove_bridge_provider_table(original):
     return result, True
 
 
+def uses_openai_auth(config):
+    """Return whether Codex should expose and authenticate official models."""
+    if not isinstance(config, dict):
+        return True
+    provider_name = config.get('model_provider', 'openai')
+    if provider_name != PROVIDER:
+        return provider_name == 'openai'
+    provider = config.get('model_providers', {}).get(PROVIDER, {})
+    return provider.get('requires_openai_auth') is True
+
+
 def candidate_config(original, settings):
     parsed = tomllib.loads(original)
     if parsed.get('profile'):
@@ -83,6 +97,7 @@ def candidate_config(original, settings):
     existing_provider = parsed.get('model_providers', {}).get(PROVIDER)
     if existing_provider is not None and not is_bridge_provider(existing_provider):
         raise ValueError('Codex 配置中已有同名 provider，但无法确认由本项目生成；请先检查后再安装。')
+    requires_openai_auth = uses_openai_auth(parsed)
     if existing_provider is not None:
         original, _ = remove_bridge_provider_table(original)
         parsed = tomllib.loads(original)
@@ -105,7 +120,9 @@ def candidate_config(original, settings):
               (tables + '\n' if tables else '') +
               f'\n[model_providers.{PROVIDER}]\nname = "Codex Hybrid"\n'
               f'base_url = "http://127.0.0.1:{settings["port"]}"\n'
-              'wire_api = "responses"\nrequires_openai_auth = true\nsupports_websockets = false\n'
+              'wire_api = "responses"\n'
+              f'requires_openai_auth = {str(requires_openai_auth).lower()}\n'
+              'supports_websockets = false\n'
               'request_max_retries = 4\nstream_max_retries = 5\nstream_idle_timeout_ms = 300000\n'
               f'http_headers = {{ "X-Connected-Token" = {json.dumps(settings["local_token"])} }}\n')
     legacy_plugin = 'connected-models@connected-local'
@@ -144,6 +161,7 @@ def candidate_config(original, settings):
 
 
 ROOT_KEYS = ('model_provider', 'model_catalog_json')
+RESTORE_ROOT_KEYS = (*ROOT_KEYS, 'model')
 
 
 def managed(config):
@@ -158,10 +176,10 @@ def restore(current, baseline):
     result, _ = remove_bridge_provider_table(current)
     boundary = re.search(r'^\s*\[', result, re.MULTILINE)
     root, tables = (result[:boundary.start()], result[boundary.start():]) if boundary else (result, '')
-    for key in ROOT_KEYS:
+    for key in RESTORE_ROOT_KEYS:
         root = re.sub(r'^' + key + r'\s*=.*(?:\n|$)', '', root, flags=re.MULTILINE)
     values = ''.join(f'{key} = {json.dumps(native[key], ensure_ascii=False)}\n'
-                     for key in ROOT_KEYS if key in native)
+                     for key in RESTORE_ROOT_KEYS if key in native)
     # An inactive bridge table may have existed before this switch.
     provider = native.get('model_providers', {}).get(PROVIDER)
     if provider is not None:
@@ -179,7 +197,7 @@ def restore(current, baseline):
     tables = tables.strip('\r\n')
     result = values + root + ('\n' if root else '') + (tables + '\n' if tables else '')
     expected = copy.deepcopy(before)
-    for key in ROOT_KEYS:
+    for key in RESTORE_ROOT_KEYS:
         expected.pop(key, None)
         if key in native:
             expected[key] = native[key]

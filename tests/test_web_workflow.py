@@ -236,6 +236,43 @@ class WebWorkflowTests(unittest.TestCase):
         self.assertEqual(self.manager.view()['models'][0]['key'], 'example/test')
         self.assertEqual(self.manager.view()['credential_status']['example'], 'available')
 
+    def test_cc_switch_external_baseline_imports_current_vendor_and_keeps_others_pending(self):
+        (self.home/'config.toml').write_text(
+            'model_provider = "custom"\nmodel = "deepseek-v4-flash"\n'
+            '[model_providers.custom]\n'
+            'base_url = "https://deepseek.invalid/v1"\nwire_api = "responses"\n',
+            encoding='utf-8')
+        database = self.root/'cc.db'
+        with closing(sqlite3.connect(database)) as db:
+            db.execute('CREATE TABLE providers '
+                       '(id, app_type, name, settings_config, meta, sort_index, created_at)')
+            for identifier, name, base, models in [
+                    ('deepseek', 'DeepSeek', 'https://deepseek.invalid/v1',
+                     ['deepseek-v4-flash', 'deepseek-v4-pro']),
+                    ('glm', 'GLM', 'https://glm.invalid/v1', ['glm-5'])]:
+                raw = json.dumps({
+                    'auth': {'OPENAI_API_KEY': 'test-only'},
+                    'config': {'model_provider': 'custom', 'model': models[0],
+                               'model_providers': {'custom': {
+                                   'base_url': base, 'wire_api': 'responses'}}},
+                    'modelCatalog': {'models': [{'model': model} for model in models]},
+                })
+                db.execute('INSERT INTO providers VALUES (?,?,?,?,?,0,0)',
+                           (identifier, 'codex', name, raw, '{}'))
+            db.commit()
+
+        self.manager.set_source('cc_switch', str(database))
+
+        view = self.manager.view()
+        self.assertEqual(view['routing_mode'], 'external')
+        self.assertFalse(view['routing_interrupted'])
+        self.assertEqual(
+            {model['key'] for model in view['models'] if model['enabled']},
+            {'deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro'})
+        self.assertEqual(
+            {model['key'] for model in view['models'] if not model['enabled']},
+            {'glm/glm-5'})
+
     def test_setup_wizard_can_skip_credentials_and_paid_requests(self):
         from cli import setup_wizard
         runtime = self.root/'new-install'

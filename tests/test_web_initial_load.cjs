@@ -66,3 +66,9 @@ test('access summary surfaces source errors, pending catalog and an unusable con
   const blocked=summaryFixture({routing_mode:'unsupported',models:[{enabled:true}],official_model_count:1});
   assert.match(blocked['access-headline'].textContent,/无法切换/);
 });
+test('third-party direct configuration remains openable and explains what activation does',()=>{
+  const nodes=summaryFixture({routing_mode:'external',models:[{enabled:true}],official_model_count:0,
+    catalog_pending:false,forwarding:{status:'stopped'}});
+  assert.match(nodes['access-headline'].textContent,/第三方直连配置/);
+  assert.match(nodes['access-note'].textContent,/开启后/);
+});

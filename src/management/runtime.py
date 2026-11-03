@@ -233,7 +233,8 @@ class ForwardingRuntime:
     def stop_if_safe(self, manager):
         # Disk routing alone does not prove an existing client reloaded it.
         with self.lock:
-            if manager.routing_state() != 'openai' or self.context.activity.snapshot()['active_requests']:
+            if (manager.routing_state() not in {'openai', 'external'}
+                    or self.context.activity.snapshot()['active_requests']):
                 return False
             state = manager.process_state()
             if state['status'] != 'not_detected':

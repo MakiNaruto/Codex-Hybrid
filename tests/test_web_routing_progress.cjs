@@ -67,6 +67,28 @@ test('saved routing keeps the switch enabled across runtime states', () => {
   assert.equal(view.elements['routing-toggle']['aria-checked'], 'false');
 });
 
+test('third-party direct routing is switchable without claiming Hybrid is active', () => {
+  const view = setup(null);
+  view.context.state.routing_mode = 'external';
+  view.render();
+  assert.equal(view.elements['routing-toggle'].disabled, false);
+  assert.equal(view.elements['routing-toggle']['aria-checked'], 'false');
+  assert.match(view.elements['routing-status'].textContent, /第三方直连配置/);
+});
+
+test('external overwrite marks takeover as interrupted instead of running', () => {
+  const view = setup(null);
+  view.context.state = {
+    routing_mode: 'external',
+    routing_interrupted: true,
+    routing_operation: null,
+    forwarding: {status: 'stopped'},
+  };
+  view.render();
+  assert.match(view.elements['routing-status'].textContent, /接管已中断/);
+  assert.doesNotMatch(view.elements['routing-status'].textContent, /已开启/);
+});
+
 test('a late progress response cannot overwrite the completed operation', async () => {
   let finish;
   const view = setup(null, true, () => new Promise(resolve => { finish = resolve; }));

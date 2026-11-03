@@ -40,6 +40,16 @@ The wizard generates `setup-models.yaml` and `provider.env`, then asks whether t
 
 ## CC Switch
 
+### Activate Hybrid from a direct CC Switch provider
+
+Hybrid can be enabled when Codex's `config.toml` already selects a supported third-party `model_provider` from CC Switch. `config.toml` is authoritative; CC Switch's `providers.is_current` is auxiliary and neither overrides the file nor resolves ambiguity between records. The current provider table must match exactly one supported Codex record. No match or multiple matches rejects activation with `CC_ROUTING_PROVIDER_UNMATCHED` or `CC_ROUTING_PROVIDER_AMBIGUOUS` and leaves settings, catalog, and Codex configuration unchanged. Profiles, missing provider tables, unsupported protocols, and unreadable credentials retain their existing rejection behavior.
+
+The first time the current record is recognized, every parseable model in that record is imported into Hybrid. For example, a current DeepSeek record containing `deepseek-v4-flash` and `deepseek-v4-pro` adds both to the client list, while models from GLM, Qwen, and other records remain pending. This import happens once: models removed individually are not restored by a later sync or activation, and models added to the record later require manual selection in **Add models**. Import state is scoped by CC Switch database and record ID, never by provider or model display name.
+
+Activation saves the actual pre-activation `config.toml` as the restoration baseline, including the third-party `model_provider`, original model selection, and routing fields. Disabling Hybrid restores only fields managed by this tool and retains unrelated edits made while it was active; it does not force the official provider or model. If CC Switch overwrites the configuration while Hybrid is active, the page reports that takeover was interrupted. Hybrid does not reclaim or rewrite the file automatically; after confirming the current configuration, activate it again.
+
+When Hybrid is activated from a third-party direct configuration, the generated local provider uses `requires_openai_auth = false`, so Codex does not request an OpenAI login first. Third-party requests still require the local `X-Connected-Token` and use the credentials of their matching provider. In this mode the generated catalog contains only enabled third-party models; it neither queries OpenAI `/models` nor includes GPT-series official models. Third-party entries advertise `low`, `medium`, and `high` reasoning levels for selection in Codex. The generated provider retains `requires_openai_auth = true`, together with official models, only when Hybrid is activated from a native OpenAI configuration.
+
 ### Native Responses and explicit compatibility
 
 The management page labels the choice as the provider API protocol and persistently explains the forwarding mode for both manual and CC Switch provider cards. Chat Completions retains Responses-to-Chat conversion through this gateway. Some tool types, standalone notifications and reasoning history may be downgraded or unsupported; a passing connection test does not establish full desktop compatibility. This configuration requires the gateway rather than a direct Codex connection to Chat Completions.
@@ -60,7 +70,7 @@ For CC Switch, these fields are read from the selected `model_providers.<provide
 
 Each Codex model entry binds to the CC Switch provider record ID and exact model ID. Its `slug` is the original `provider-record-id/model-id`, without hashing, escaping, or splitting on slashes. The binding separately stores `provider_record_id`, `app_type`, and `model_id`. Display names are labels only. The imported catalog has no default model: calls require an explicit selection, and a model list can be imported without a configured default. CC Switch's `config.model`, when present, is included as an exact model entry.
 
-The gateway reads CC Switch at startup, then watches the database directory for database and `-wal` changes, merging consecutive events with a debounce of about 300 milliseconds. A safety check runs every 30 seconds; if notifications are unavailable, periodic checks continue. Synchronization continues with the management page closed. Page refreshes use the background cache without reading the database. The displayed sync time changes only when a snapshot is loaded or updated, not on unchanged checks. The directory, complete bindings, and source revision are stored together in `settings.json` under `cc_snapshot`; the client directory file is generated from that snapshot. Each sync replaces the entire CC directory, removes deleted entries and bindings, and preserves official models. Read or validation failures retain the previous snapshot and retry without publishing partial results. Deleting all supported provider records clears external models.
+The gateway reads CC Switch at startup, then watches the database directory for database and `-wal` changes, merging consecutive events with a debounce of about 300 milliseconds. A safety check runs every 30 seconds; if notifications are unavailable, periodic checks continue. Synchronization continues with the management page closed. Page refreshes use the background cache without reading the database. The displayed sync time changes only when a snapshot is loaded or updated, not on unchanged checks. The directory, complete bindings, and source revision are stored together in `settings.json` under `cc_snapshot`; the client directory file is generated from that snapshot. Each sync replaces the entire CC directory, removes deleted entries and bindings. Native OpenAI routing retains official models; routing from a third-party direct configuration publishes third-party models only. Read or validation failures retain the previous snapshot and retry without publishing partial results. Deleting all supported provider records clears external models.
 
 Renaming a provider or model, or changing the CC Switch default model, does not change an existing entry's identity. Addresses and credentials are reread for each request. Deleted models or provider records fail instead of falling back to another model. Bindings do not store raw credential-bearing configuration.
 
@@ -170,7 +180,7 @@ Saving independent configuration makes `managed-models.yaml` the active source w
 
 `prepare` reads the target Codex directory's `config.toml` and `models_cache.json`, then generates these files in the selected data directory:
 
-- `models.json`: preserves official models and appends enabled third-party models.
+- `models.json`: for native OpenAI routing, preserves official models and appends enabled third-party models; for third-party direct routing, it contains only third-party models.
 - `original-config.toml`: original configuration backup.
 - `desktop-config.toml`: complete candidate configuration for Codex.
 - `settings.json` and `state.json`: gateway settings, target path, and overwrite protection checks.
@@ -197,6 +207,8 @@ http_headers = { "X-Connected-Token" = "COPY_THE_LOCAL_TOKEN_FROM_THE_GENERATED_
 ```
 
 These retry and SSE idle values match the documented Codex defaults. Codex handles HTTP retries and stream recovery; the gateway does not replay failed upstream POSTs. The official upstream socket timeout is 300 seconds, rather than a total turn deadline. Third-party providers retain their configured `timeout_seconds`.
+
+The `requires_openai_auth = true` value above applies to a native OpenAI configuration. When activating from a third-party direct configuration, use the generated candidate, where this field is `false`, so Codex does not trigger OpenAI login.
 
 
 `model_provider` selects the gateway, `base_url` selects its listening address, and `model_catalog_json` is the generated catalog's absolute path. `X-Connected-Token` must match `local_token` in `settings.json`; it is not a provider API key. Use the generated candidate's port and TOML-escaped Windows paths.
@@ -253,4 +265,4 @@ This path streams immediately, without whole-generation buffering or generation 
 
 Model details offers a per-model compatibility switch. Hybrid stores this override and the added-model list in its private settings.json (`model_preferences`), without writing to CC Switch. YAML models may also specify responses_compatibility. Precedence: Hybrid model override → YAML model setting → provider setting → portable default for Responses. Chat does not expose this switch.
 
-Membership controls both publication and live routing. The first upgrade publication retains previously advertised models; later discoveries require adding explicitly. CC Switch database selections are scoped separately and restored when switching back. Saving a new model in independent management counts as an explicit Add; external source-file additions do not.
+Membership controls both publication and live routing. The first upgrade publication retains previously advertised models. The first recognition of the current Codex third-party record is the only automatic discovery import: all of that record's models are added once. Later discoveries require explicit selection, and removing an imported model does not silently restore it. CC Switch database selections are scoped separately and restored when switching back. Saving a new model in independent management counts as an explicit Add; external source-file additions do not.

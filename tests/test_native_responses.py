@@ -28,10 +28,12 @@ class NativeResponsesTests(unittest.TestCase):
             'credentials': {'api_key': 'test-only'}, 'models': {'model': {'model_id': 'upstream'}},
             'responses_compatibility': 'native', **options}}})
 
-    def routed(self, catalog):
+    def routed(self, catalog, headers=None):
         settings = {'source': {'type': 'yaml'}, 'models': ['vendor/model'], 'official_models': []}
+        if headers is None:
+            headers = {'Authorization': 'Bearer local-test-token'}
         with patch('gateway.server.load_source', return_value=catalog):
-            return route(self.body, {'Authorization': 'Bearer local-test-token'}, settings)
+            return route(self.body, headers, settings)
 
     def test_native_route_preserves_structure_and_fields_without_mutation(self):
         before = copy.deepcopy(self.body)
@@ -41,6 +43,23 @@ class NativeResponsesTests(unittest.TestCase):
         self.assertEqual(payload, dict(before, model='upstream'))
         self.assertEqual(self.body, before)
         self.assertIsInstance(adapt.__self__, NativeResponsesAdapter)
+
+    def test_external_model_does_not_require_openai_subscription_auth(self):
+        _, payload, headers, _ = self.routed(self.catalog(), {})
+
+        self.assertEqual(payload['model'], 'upstream')
+        self.assertEqual(headers['Authorization'], 'Bearer test-only')
+
+    def test_official_model_still_requires_openai_subscription_auth(self):
+        settings = {
+            'source': {'type': 'yaml'},
+            'models': ['gpt-test'],
+            'official_models': ['gpt-test'],
+        }
+        body = dict(self.body, model='gpt-test')
+
+        with self.assertRaisesRegex(ValueError, '^SUBSCRIPTION_AUTH_REQUIRED$'):
+            route(body, {}, settings)
 
     def test_native_events_preserve_namespaces_argument_deltas_and_spawn_arguments(self):
         _, _, _, adapt = self.routed(self.catalog())

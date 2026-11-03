@@ -15,7 +15,7 @@ import urllib.request
 
 from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
 from codex_integration.configuration import (
-    PROVIDER, digest, candidate_config, is_bridge_provider,
+    PROVIDER, digest, candidate_config, is_bridge_provider, uses_openai_auth,
     remove_bridge_provider_table, retain_config_model,
 )
 
@@ -59,15 +59,18 @@ def _prepare_locked(port, codex_home, source=None, *, directory=None, management
     config_path = codex_home / 'config.toml'
     original = config_path.read_bytes()
     models = official_cache(codex_home)
+    official_models_enabled = uses_openai_auth(tomllib.loads(original.decode('utf-8')))
+    published_official = models if official_models_enabled else []
     source = source or {'type': 'yaml', 'path': str(default_models_path())}
     settings = {'port': port, 'source': source,
-                'official_models': [m['slug'] for m in models],
+                'official_models': [m['slug'] for m in published_official],
+                'official_models_enabled': official_models_enabled,
                 'local_token': secrets.token_urlsafe(32),
                 'catalog': str(runtime / 'models.json'), 'max_concurrent_requests': 4,
                 'management_auth_required': management_auth_required,
                 'disable_legacy_plugin': True, 'official_header_passthrough': True}
     external = load_source(settings)
-    merged = merged_catalog(models, external)
+    merged = merged_catalog(models, external, include_official=official_models_enabled)
     external_keys = [key for key, value in external.models.items() if value['enabled']]
     settings.update(models=[m['slug'] for m in merged['models']])
     update_cc_snapshot(settings, merged, external)
@@ -423,9 +426,12 @@ def run_action(args):
             settings['source'] = {'type': args.source, 'path': str((
                 args.cc_db if args.source == 'cc-switch' else args.models_config).expanduser().resolve())}
         external = load_source(settings)
-        merged = merged_catalog(original_models, external)
+        official_models_enabled = settings.get('official_models_enabled', True)
+        merged = merged_catalog(original_models, external,
+                                include_official=official_models_enabled)
         settings['official_catalog'] = original_models
-        settings['official_models'] = [m['slug'] for m in original_models]
+        settings['official_models'] = ([m['slug'] for m in original_models]
+                                       if official_models_enabled else [])
         settings['models'] = [m['slug'] for m in merged['models']]
         update_cc_snapshot(settings, merged, external)
         keys = [key for key, model in external.models.items() if model['enabled']]

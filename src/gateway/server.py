@@ -120,6 +120,8 @@ def authenticated_official_catalog(headers, settings, opener, query=''):
 
 def refresh_official_directory(owner, headers, query=''):
     settings = owner.settings
+    if settings.get('official_models_enabled') is False:
+        return None
     official = authenticated_official_catalog(headers, settings, owner.opener, query)
     if official is None:
         return None
@@ -290,13 +292,15 @@ def route(body, headers, settings, deepseek=None):
     model = body.get('model')
     if model not in settings['models']:
         raise ConfigError('MODEL_NOT_ALLOWED')
-    auth = headers.get('Authorization', '')
-    if not auth.startswith('Bearer ') or len(auth) < 16:
-        raise ValueError('SUBSCRIPTION_AUTH_REQUIRED')
     if body.get('stream') is not True:
         raise ValueError('STREAM_REQUIRED')
     if 'source' in settings and model not in settings['official_models']:
+        # External providers use their own credentials. Codex may access the
+        # local bridge without an OpenAI subscription login in this mode.
         return external_route(body, settings)
+    auth = headers.get('Authorization', '')
+    if not auth.startswith('Bearer ') or len(auth) < 16:
+        raise ValueError('SUBSCRIPTION_AUTH_REQUIRED')
     if 'source' not in settings and model == deepseek['DEEPSEEK_MODEL']:
         adapter = NativeResponsesAdapter()
         payload = adapter.request(body)
@@ -456,6 +460,12 @@ class Gateway:
                 if not self.authorized():
                     return self.reply(401, {'error': {'message': 'LOCAL_AUTH_REQUIRED'}})
                 if self.path.split('?', 1)[0] == '/models':
+                    if owner.settings.get('official_models_enabled') is False:
+                        directory = cached_directory(owner.settings)
+                        if directory is None:
+                            return self.reply(502, {'error': {
+                                'message': 'LOCAL_MODEL_LIST_UNAVAILABLE'}})
+                        return self.reply(200, directory)
                     if not self.headers.get('Authorization', '').startswith('Bearer '):
                         return self.reply(401, {'error': {'message': 'SUBSCRIPTION_AUTH_REQUIRED'}})
                     directory = refresh_official_directory(
@@ -504,6 +514,7 @@ class Gateway:
                     requested_model = body.get('model')
                     if (isinstance(requested_model, str) and requested_model
                             and requested_model not in settings['models']
+                            and settings.get('official_models_enabled') is not False
                             and self.headers.get('Authorization', '').startswith('Bearer ')):
                         observation['phase'] = 'refresh_official_catalog'
                         refresh_official_directory(owner, self.headers)

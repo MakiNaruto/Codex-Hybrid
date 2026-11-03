@@ -13,8 +13,12 @@ import urllib.request
 
 import yaml
 
-from model_catalog.sources import Catalog, ConfigError, load_source, merged_catalog, update_cc_snapshot, apply_preferences, source_key
+from model_catalog.sources import (
+    Catalog, ConfigError, apply_preferences, import_current_cc_record, load_source,
+    merged_catalog, source_key, update_cc_snapshot,
+)
 from model_catalog.catalog import identifier, read_yaml, string
+from codex_integration.configuration import uses_openai_auth
 
 
 def private_write(path, value):
@@ -62,13 +66,21 @@ class Management:
             settings = self.gateway.settings
             repaired = False
             try:
-                official = self.official()
+                codex_config = self.current_codex_config()
+                official_models_enabled = (
+                    uses_openai_auth(codex_config) if codex_config is not None
+                    else settings.get('official_models_enabled', True)
+                )
+                official = self.official() if official_models_enabled else []
                 try:
                     current = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))['models']
                     previous = [model for model in current if model['slug'] in settings['official_models']]
                 except (OSError, ValueError, KeyError, TypeError):
                     previous = None
-                if official != previous:
+                stored_official_enabled = settings.get('official_models_enabled')
+                if (official != previous
+                        or (stored_official_enabled is not None
+                            and stored_official_enabled != official_models_enabled)):
                     self.publish()
                     repaired = True
                     settings = self.gateway.settings
@@ -85,10 +97,16 @@ class Management:
                     directory = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))
                 except (OSError, ValueError):
                     directory = {}
+                import_required = False
+                if codex_config is not None:
+                    preferences = copy.deepcopy(settings.get('model_preferences', {}).get(
+                        source_key(settings['source']), {'added': [], 'compatibility': {}}))
+                    import_required = import_current_cc_record(external, preferences, codex_config)
                 if (snapshot.get('revision') == external.source_revision
                         and snapshot.get('bindings') == external.bindings
                         and settings['models'] == [model['slug'] for model in snapshot.get('models', [])]
-                        and directory.get('models') == snapshot.get('models')):
+                        and directory.get('models') == snapshot.get('models')
+                        and not import_required):
                     self.sync_error = None
                     if self.cc_catalog is None:
                         self.cache_cc(external)
@@ -105,7 +123,12 @@ class Management:
             return
         self.sync_stop.clear()
         with self.lock:
-            self.publish()
+            try:
+                self.publish()
+            except ConfigError as error:
+                # Keep management available so the page can explain why the
+                # authoritative Codex configuration cannot be imported.
+                self.sync_error = error.code
         self.sync_cc()
 
         def watch():
@@ -163,16 +186,51 @@ class Management:
             self.desktop_records.close()
 
     def routing_state(self):
+        return self._routing_status()[0]
+
+    def routing_interrupted(self):
+        return self._routing_status()[1]
+
+    def _routing_status(self):
         try:
             state = json.loads((self.directory/'state.json').read_text())
             config = tomllib.loads(Path(state['config_path']).read_text(encoding='utf-8'))
             if config.get('profile'):
-                return 'unsupported'
+                return 'unsupported', bool(state.get('activated'))
             provider = config.get('model_provider', 'openai')
             from codex_integration.configuration import PROVIDER
-            return 'project' if provider == PROVIDER else 'openai' if provider == 'openai' else 'unsupported'
-        except (OSError, ValueError, KeyError):
-            return 'unavailable'
+            if provider == PROVIDER:
+                return 'project', False
+            if provider == 'openai':
+                return 'openai', bool(state.get('activated'))
+            source = self.gateway.settings.get('source', {})
+            catalog = self.cc_catalog
+            if source.get('type') == 'cc-switch' and catalog is not None:
+                try:
+                    from model_catalog.cc_switch import match_current_record
+                    match_current_record(catalog.inventory, config)
+                except ConfigError:
+                    pass
+                else:
+                    return 'external', bool(state.get('activated'))
+            return 'unsupported', bool(state.get('activated'))
+        except (OSError, ValueError, KeyError, TypeError):
+            return 'unavailable', False
+
+    def current_codex_config(self):
+        try:
+            state = json.loads((self.directory/'state.json').read_text())
+        except FileNotFoundError:
+            return None
+        try:
+            return tomllib.loads(Path(state['config_path']).read_text(encoding='utf-8'))
+        except (OSError, ValueError, KeyError, TypeError):
+            raise ConfigError('CLIENT_ROUTING_UNAVAILABLE') from None
+
+    @staticmethod
+    def external_codex_config(config):
+        return bool(config) and config.get('model_provider', 'openai') not in {
+            'openai', 'codex-hybrid'}
 
     def routing_plan(self, mode):
         from management.routing import plan
@@ -181,6 +239,8 @@ class Management:
     def preview_routing(self, mode):
         with self.lock:
             if mode == 'project':
+                from management.routing import validate_baseline
+                validate_baseline(self.directory, self.gateway.settings)
                 self.publish()
             *_, migration, revision = self.routing_plan(mode)
             process = self.process_state()
@@ -362,8 +422,20 @@ class Management:
         with self.lock:
             settings = copy.deepcopy(self.gateway.settings)
             old_source_key = source_key(settings['source'])
+            codex_config = self.current_codex_config()
+            official_models_enabled = (
+                uses_openai_auth(codex_config) if codex_config is not None
+                else settings.get('official_models_enabled', True)
+            )
+            settings['official_models_enabled'] = official_models_enabled
+            initial_external = (
+                [] if settings['source']['type'] == 'cc-switch'
+                and self.external_codex_config(codex_config)
+                else [key for key in settings['models']
+                      if key not in settings['official_models']]
+            )
             settings.setdefault('model_preferences', {}).setdefault(old_source_key, {
-                'added': [key for key in settings['models'] if key not in settings['official_models']],
+                'added': initial_external,
                 'compatibility': {}})
             if source is not None:
                 settings['source'] = source
@@ -372,9 +444,18 @@ class Management:
             external = catalog if catalog is not None else load_source(settings)
             settings['model_preferences'].setdefault(source_key(settings['source']), {
                 'added': [], 'compatibility': {}})
+            if settings['source']['type'] == 'cc-switch':
+                if codex_config is not None:
+                    import_current_cc_record(
+                        external,
+                        settings['model_preferences'][source_key(settings['source'])],
+                        codex_config,
+                    )
             external = apply_preferences(external, settings)
-            official = self.official()
-            merged = merged_catalog(official, external)
+            official_source = self.official()
+            official = official_source if official_models_enabled else []
+            merged = merged_catalog(
+                official_source, external, include_official=official_models_enabled)
             settings['official_models'] = [model['slug'] for model in official]
             settings['models'] = [m['slug'] for m in merged['models']]
             update_cc_snapshot(settings, merged, external)
@@ -385,7 +466,7 @@ class Management:
                 settings.pop('deepseek_model', None)
             catalog_path = Path(settings['catalog'])
             previous_catalog = (catalog_path.read_text(encoding='utf-8') if catalog_path.exists()
-                                else json.dumps({'models': self.official()}, ensure_ascii=False))
+                                else json.dumps({'models': official}, ensure_ascii=False))
             private_write(catalog_path, json.dumps(merged, ensure_ascii=False))
             try:
                 # The directory and its explicit bindings share one durable snapshot.
@@ -425,7 +506,9 @@ class Management:
             source = settings['source']
             cc_path = settings.get('cc_db_path', str(Path.home()/'.cc-switch/cc-switch.db'))
             mode = 'cc_switch' if source['type'] == 'cc-switch' else 'independent'
-            result = {'routing_mode': self.routing_state(), 'mode': mode, 'cc_db_path': source['path'] if mode == 'cc_switch' else cc_path,
+            routing_mode, routing_interrupted = self._routing_status()
+            result = {'routing_mode': routing_mode, 'routing_interrupted': routing_interrupted,
+                      'mode': mode, 'cc_db_path': source['path'] if mode == 'cc_switch' else cc_path,
                       'config': {'version': 1, 'providers': {}}, 'inventory': [], 'models': [],
                       'source_error': self.sync_error, 'sync_revision': None, 'catalog_pending': False,
                       'native_routing': True, 'official_model_count': len(settings['official_models']),
@@ -459,7 +542,13 @@ class Management:
                 result['config'] = read_yaml(source['path'])
                 for provider in result['config']['providers'].values():
                     provider['credentials'].pop('api_key', None)
-                result['catalog_pending'] = merged_catalog(self.official(), catalog) != json.loads(
+                official_models_enabled = settings.get('official_models_enabled', True)
+                official_source = self.official()
+                official = official_source if official_models_enabled else []
+                result['catalog_pending'] = merged_catalog(
+                    official_source, catalog,
+                    include_official=official_models_enabled,
+                ) != json.loads(
                     Path(settings['catalog']).read_text(encoding='utf-8'))
             except Exception as error:
                 result['source_error'] = error.code if isinstance(error, ConfigError) else 'SOURCE_UNAVAILABLE'
@@ -600,7 +689,8 @@ class Management:
                     if alias not in old_models and model.get('enabled', True):
                         preference['added'].append(model_key)
             preference['added'] = sorted(set(preference['added']) & set(catalog.models))
-            merged_catalog(self.official(), catalog)  # Validate publication before writing Key/config.
+            official_models_enabled = settings.get('official_models_enabled', True)
+            merged_catalog(self.official(), catalog, include_official=official_models_enabled)
             private_write(target, yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
             return self.publish({'type': 'yaml', 'path': str(target)}, catalog=catalog,
                                 extra={'standalone_source': {'type': 'yaml', 'path': str(target)},

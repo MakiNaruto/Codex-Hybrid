@@ -42,6 +42,16 @@
 
 ## CC Switch
 
+### 从 CC Switch 第三方直连开启 Hybrid
+
+当 Codex 的 `config.toml` 已直接使用 CC Switch 中的第三方 `model_provider` 时，也可以开启 Hybrid。当前配置以 `config.toml` 为准；CC Switch 的 `providers.is_current` 只作辅助展示，不能覆盖配置文件，也不能在多个记录之间替本工具猜选。当前 provider 表必须唯一匹配一个受支持的 Codex 记录。没有匹配或匹配到多个记录时会拒绝开启，并分别提示 `CC_ROUTING_PROVIDER_UNMATCHED` 或 `CC_ROUTING_PROVIDER_AMBIGUOUS`，不会写入设置、模型目录或 Codex 配置。profile、缺少 provider 表、协议不受支持和凭据不可解析仍按原规则拒绝。
+
+首次识别当前记录时，该记录的全部可解析模型会自动加入 Hybrid。例如当前使用 CC Switch 的 DeepSeek 记录并包含 `deepseek-v4-flash`、`deepseek-v4-pro`，两项都会进入“已添加模型”；GLM、千问等其他记录的模型仍只在待添加列表。自动加入只发生一次：之后逐个删除的模型不会因重新同步或重新开启而复活，记录后来新增的模型也需在“添加模型”中手动选择。自动加入状态按 CC Switch 数据库和记录 ID 隔离，不按厂商显示名或模型显示名推断。
+
+开启前的实际 `config.toml` 会作为恢复基线保存，包括第三方 `model_provider`、原模型选择和接入字段。关闭 Hybrid 时只恢复本工具管理的路由字段，保留开启期间对无关配置的修改，不强制切换成官方模型。若 CC Switch 在开启期间覆盖了当前配置，页面会显示接管已中断；Hybrid 不会自动抢回或重新写入配置，用户确认当前配置后需要重新开启。
+
+从第三方直连开启时，生成的本地 Hybrid provider 使用 `requires_openai_auth = false`，Codex 不会先要求 OpenAI 登录；第三方模型请求仍由本地 `X-Connected-Token` 校验，并使用对应厂商自己的 Key。此时生成的模型目录只包含已添加的第三方模型，不会请求 OpenAI `/models`，也不会混入 GPT 系列官方模型。第三方模型目录声明 `low`、`medium`、`high` 三档推理强度，可在 Codex 中选择。只有在 OpenAI 原生配置上开启 Hybrid 时，生成的 provider 才保留 `requires_openai_auth = true` 并继续使用官方模型。
+
 ### Responses 原生与兼容模式
 
 管理页将协议标为“供应商接口协议”，并在手动配置和 CC Switch 厂商卡片中持续展示实际转发方式。选择 Chat Completions 时，本工具保留 Responses → Chat Completions 转换；部分工具类型、独立工具通知和推理历史可能降级或不受支持，连接测试通过不代表全部桌面功能兼容。该配置需要通过本工具接入，不能据此认定 Codex 可以直连 Chat Completions。
@@ -66,7 +76,7 @@ CC Switch 模式从所选 `model_providers.<厂商>` TOML 配置读取同名字�
 
 每个 Codex 模型条目固定绑定 CC Switch 的厂商记录 ID 和确切模型 ID。`slug` 直接使用 `厂商记录ID/模型ID`，不哈希、不转义、不按斜杠拆分；绑定表单独保存 `provider_record_id`、`app_type` 和 `model_id`。显示名称仅用于展示。CC Switch 导入目录不设置默认模型，调用必须明确选择模型；仅提供模型列表而未配置默认模型也可导入。CC Switch 的 `config.model` 若存在，作为一个确切模型加入列表。
 
-网关启动时读取一次 CC Switch，随后监听数据库所在目录中数据库及 `-wal` 文件的变化，合并连续事件并等待约 300 毫秒后同步；另保留每 30 秒兜底检查，监听不可用时自动退回定期检查。管理页关闭时也继续同步，页面刷新只读取后台缓存，不再触发数据库读取。页面显示实际同步时间，无变化的检查不会更新时间。模型目录、完整绑定表和源版本一起保存在 `settings.json` 的 `cc_snapshot` 中，客户端目录文件由该快照生成。同步整体替换当前 CC Switch 目录，删除项和旧绑定一起移除，官方模型保留。读取或校验失败时保留上一份快照并重试，不发布部分结果。删除全部受支持的厂商记录后，外部模型列表清空。
+网关启动时读取一次 CC Switch，随后监听数据库所在目录中数据库及 `-wal` 文件的变化，合并连续事件并等待约 300 毫秒后同步；另保留每 30 秒兜底检查，监听不可用时自动退回定期检查。管理页关闭时也继续同步，页面刷新只读取后台缓存，不再触发数据库读取。页面显示实际同步时间，无变化的检查不会更新时间。模型目录、完整绑定表和源版本一起保存在 `settings.json` 的 `cc_snapshot` 中，客户端目录文件由该快照生成。同步整体替换当前 CC Switch 目录，删除项和旧绑定一起移除。OpenAI 原生接入保留官方模型；从第三方直连接入时只发布第三方模型。读取或校验失败时保留上一份快照并重试，不发布部分结果。删除全部受支持的厂商记录后，外部模型列表清空。
 
 修改厂商名称、模型显示名称或 CC Switch 默认模型不会改变已有条目的模型身份；地址和凭据仍在每次请求时重新读取。删除模型或厂商记录后，旧选择会报错，不会自动改用其他模型。含凭据的原始配置不会写入绑定表。
 
@@ -179,7 +189,7 @@ Key 不回显；开启私密链接后链接带本机访问令牌，不要公开�
 
 `prepare` 读取目标 Codex 目录的 `config.toml` 和 `models_cache.json`，在所选数据目录生成：
 
-- `models.json`：保留官方模型，并追加启用的第三方模型。
+- `models.json`：OpenAI 原生接入保留官方模型并追加启用的第三方模型；第三方直连接入只包含第三方模型。
 - `original-config.toml`：原配置备份。
 - `desktop-config.toml`：准备写入 Codex 的完整候选配置。
 - `settings.json`、`state.json`：网关设置、目标配置路径与防覆盖校验。
@@ -206,6 +216,8 @@ http_headers = { "X-Connected-Token" = "从生成的候选配置复制实际本�
 ```
 
 以上重试次数和 SSE 空闲超时与 Codex 文档默认值一致。HTTP 重试及流中断恢复由 Codex 处理，网关不自动重放失败的上游 POST。官方上游的 socket 超时为 300 秒，不是整轮对话的总时限；第三方厂商继续使用其 `timeout_seconds` 配置。
+
+上面的 `requires_openai_auth = true` 适用于 OpenAI 原生配置。若从第三方直连开启，以生成的候选配置为准；其中该字段为 `false`，不会触发 OpenAI 登录。
 
 
 `model_provider` 选中网关；`base_url` 指向网关监听地址；`model_catalog_json` 指向生成的绝对路径；`X-Connected-Token` 必须与 `settings.json` 的 `local_token` 一致，不能使用供应商 Key。自定义端口时按候选配置填写。Windows 路径建议直接复制候选配置中的 TOML 转义形式。
@@ -262,4 +274,4 @@ agent 消息适配也处理宿主将可读任务文本放在 `encrypted_content`
 
 管理页的模型详情可单独开关兼容模式。Hybrid 将覆盖值和已添加名单保存到私有 `settings.json` 的 `model_preferences`，不回写 CC Switch。YAML 的每个模型也可设置 `responses_compatibility`；优先级为 Hybrid 模型覆盖 → YAML 模型设置 → 厂商设置 → Responses 默认 portable。Chat 不显示此开关。
 
-已添加名单同时限制客户端目录与实时调用。升级首次发布保留已有模型；之后新发现模型需手动添加。不同 CC Switch 数据库的名单独立，切回原来源恢复其选择。通过独立管理保存新模型视为明确添加；仅在来源文件中出现的新模型不会自动加入。
+已添加名单同时限制客户端目录与实时调用。升级首次发布保留已有模型；当前 Codex 第三方记录第一次被识别时自动加入该记录的全部模型，这是唯一的自动发现加项。此后新发现模型需手动添加，用户删除的自动加入模型也不会被静默恢复。不同 CC Switch 数据库的名单独立，切回原来源恢复其选择。通过独立管理保存新模型视为明确添加；仅在来源文件中出现的新模型不会自动加入。

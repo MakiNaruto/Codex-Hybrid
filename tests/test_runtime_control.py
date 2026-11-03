@@ -113,6 +113,13 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(self.runtime.stop_if_safe(self.manager))
         self.assertEqual(self.runtime.snapshot()['status'], 'running')
 
+    def test_third_party_direct_route_is_safe_to_stop_after_client_restart(self):
+        self.runtime.start()
+        with patch.object(self.manager, 'routing_state', return_value='external'), \
+                patch.object(self.manager, 'process_state', return_value={'status': 'not_detected'}):
+            self.assertTrue(self.runtime.stop_if_safe(self.manager))
+        self.assertEqual(self.runtime.snapshot()['status'], 'stopped')
+
     def test_port_conflict_keeps_management_and_config_usable(self):
         original = (self.home/'config.toml').read_bytes()
         with socket.socket() as blocker:

@@ -16,6 +16,48 @@ def configuration_digest(raw, meta):
     return hashlib.sha256(json.dumps([raw, meta]).encode()).hexdigest()
 
 
+def _normalized_provider(provider):
+    if not isinstance(provider, dict):
+        return None
+    base_url = provider.get('base_url')
+    if not isinstance(base_url, str) or not base_url:
+        return None
+    wire_api = provider.get('wire_api', 'responses')
+    if wire_api not in {'responses', 'chat'}:
+        return None
+    # Codex and CC Switch intentionally differ on credential delivery fields:
+    # CC Switch may leave requires_openai_auth in the record while writing an
+    # experimental bearer token and disabling that flag in the live config.
+    return {
+        'base_url': base_url.rstrip('/'),
+        'wire_api': wire_api,
+        'responses_compatibility': provider.get(
+            'responses_compatibility', 'portable' if wire_api == 'responses' else 'native'),
+        'history_migration': provider.get('history_migration', False),
+    }
+
+
+def match_current_record(entries, config):
+    """Resolve one supported CC record from the authoritative Codex config."""
+    if not isinstance(config, dict) or config.get('profile'):
+        raise ConfigError('CLIENT_ROUTING_UNAVAILABLE')
+    provider_name = config.get('model_provider', 'openai')
+    providers = config.get('model_providers', {})
+    provider = providers.get(provider_name) if isinstance(providers, dict) else None
+    target = _normalized_provider(provider)
+    if target is None:
+        raise ConfigError('CC_ROUTING_PROVIDER_UNMATCHED')
+    matches = [
+        entry for entry in entries
+        if entry.get('supported') and _normalized_provider(entry.get('_provider_config')) == target
+    ]
+    if not matches:
+        raise ConfigError('CC_ROUTING_PROVIDER_UNMATCHED')
+    if len(matches) > 1:
+        raise ConfigError('CC_ROUTING_PROVIDER_AMBIGUOUS')
+    return matches[0]
+
+
 def connect(path):
     connection = sqlite3.connect(Path(path).expanduser().resolve().as_uri() + '?mode=ro', uri=True, timeout=3)
     connection.execute('PRAGMA query_only=ON')
@@ -69,7 +111,7 @@ def decode(app, raw, meta=None):
                     'openai_responses': 'openai_responses'}.get(api_format)
         if protocol is None:
             raise ConfigError('CC_PROTOCOL_NOT_SUPPORTED')
-    return {'protocol': protocol, 'base_url': provider.get('base_url'),
+    return {'protocol': protocol, 'base_url': provider.get('base_url'), 'provider_config': provider,
             'responses_compatibility': provider.get('responses_compatibility', 'portable' if protocol == 'openai_responses' else 'native'),
             'history_migration': provider.get('history_migration', False),
             'models': list(models.values()), 'key': key}
@@ -79,18 +121,25 @@ def inventory(path, *, strict=False):
     result = []
     try:
         with closing(connect(path)) as db:
-            rows = db.execute("SELECT id,app_type,name,settings_config,meta FROM providers WHERE app_type='codex' ORDER BY sort_index,created_at,id").fetchall()
+            columns = {row[1] for row in db.execute('PRAGMA table_info(providers)').fetchall()}
+            current = 'is_current' if 'is_current' in columns else '0'
+            rows = db.execute(
+                "SELECT id,app_type,name,settings_config,meta,"
+                f"{current} FROM providers WHERE app_type='codex' ORDER BY sort_index,created_at,id"
+            ).fetchall()
     except sqlite3.Error:
         raise ConfigError('CC_DATABASE_UNAVAILABLE') from None
-    for identifier, app, name, raw, meta in rows:
+    for identifier, app, name, raw, meta, is_current in rows:
         ref = app + '/' + identifier
         entry = {'ref': ref, 'provider_record_id': identifier, 'provider_key': identifier,
-                 'name': name, 'app_type': app, 'supported': False, 'reason': None}
+                 'name': name, 'app_type': app, 'is_current': bool(is_current),
+                 'supported': False, 'reason': None}
         try:
             parsed = decode(app, raw, meta)
             if not parsed['models']:
                 continue
             entry.update(protocol=parsed['protocol'], base_url=parsed['base_url'], models=parsed['models'])
+            entry['_provider_config'] = parsed['provider_config']
             entry.update({key: parsed[key] for key in ('responses_compatibility', 'history_migration')})
             # Reuse endpoint/model validation without exposing the credential.
             Catalog(Path(path).parent / 'cc-validation.yaml', data={'version': 1, 'providers': {

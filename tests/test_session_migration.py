@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -193,6 +194,34 @@ class SessionMigrationTests(unittest.TestCase):
                                       ('official', 'openai', 'gpt-6-astra'),
                                       ('third-party', 'openai', 'gpt-6.1-sol'), ('unset', 'openai', None)])
         self.assertEqual(migration['model_change_count'], 2)
+
+    def test_disable_restores_third_party_provider_and_keeps_session_model(self):
+        native = (
+            'model_provider = "custom"\nmodel = "deepseek-v4-flash"\n'
+            '[model_providers.custom]\n'
+            'base_url = "https://deepseek.invalid/v1"\nwire_api = "responses"\n'
+        )
+        manager = self.management(native)
+        self.session('one', model='deepseek-v4-flash')
+        candidate = (self.runtime/'desktop-config.toml').read_text()
+        (self.home/'config.toml').write_text(
+            candidate + '\n[notice]\ntext = "用户修改"\n', encoding='utf-8')
+        state_path = self.runtime/'state.json'
+        state = json.loads(state_path.read_text())
+        state['activated'] = True
+        state_path.write_text(json.dumps(state))
+
+        preview = manager.preview_routing('openai')
+        manager.set_routing('openai', preview['revision'])
+
+        self.assertEqual(self.rows(), [('one', 'custom', 'deepseek-v4-flash')])
+        self.assertEqual(tomllib.loads((self.home/'config.toml').read_text()), {
+            'model_provider': 'custom',
+            'model': 'deepseek-v4-flash',
+            'model_providers': {'custom': {
+                'base_url': 'https://deepseek.invalid/v1', 'wire_api': 'responses'}},
+            'notice': {'text': '用户修改'},
+        })
 
     def test_fallback_uses_official_catalog_order_and_ignores_old_presets(self):
         self.session('one')

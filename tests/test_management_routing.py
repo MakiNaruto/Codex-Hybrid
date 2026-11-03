@@ -1,4 +1,6 @@
+from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import sqlite3
 import threading
 import urllib.request
 import urllib.error
@@ -15,6 +17,7 @@ from unittest.mock import patch
 from codex_integration.service import PROVIDER, candidate_config, digest
 from management.service import Management
 from model_catalog.catalog import ConfigError
+from model_catalog.cc_switch import make_catalog
 
 
 class RoutingTests(unittest.TestCase):
@@ -32,9 +35,9 @@ class RoutingTests(unittest.TestCase):
                                   self.directory / 'settings.json', None, None)
         # Catalog publication has its own integration tests; this fixture models
         # routing transactions without a model source or a forwarding service.
-        publication = patch.object(self.manager, 'publish')
-        publication.start()
-        self.addCleanup(publication.stop)
+        self.publication = patch.object(self.manager, 'publish')
+        self.publish = self.publication.start()
+        self.addCleanup(self.publication.stop)
         self.initialize('model = "gpt-test"\r\n[features]\r\nexample = true\r\n')
 
     def initialize(self, native):
@@ -49,6 +52,38 @@ class RoutingTests(unittest.TestCase):
     def switch(self, mode):
         preview = self.manager.preview_routing(mode)
         return self.manager.set_routing(mode, preview['revision'])
+
+    def configure_cc(self, provider=None):
+        provider = provider or {
+            'base_url': 'https://deepseek.invalid/v1', 'wire_api': 'responses'}
+        database = self.directory / 'cc.db'
+        raw = json.dumps({
+            'auth': {'OPENAI_API_KEY': 'test-only-key'},
+            'config': {'model_provider': 'custom', 'model': 'deepseek-v4-flash',
+                       'model_providers': {'custom': provider}},
+            'modelCatalog': {'models': [
+                {'model': 'deepseek-v4-flash'}, {'model': 'deepseek-v4-pro'}]},
+        })
+        with closing(sqlite3.connect(database)) as db:
+            db.execute('CREATE TABLE providers '
+                       '(id, app_type, name, settings_config, meta, sort_index, created_at)')
+            db.execute('INSERT INTO providers VALUES (?,?,?,?,?,0,0)',
+                       ('deepseek', 'codex', 'DeepSeek', raw, '{}'))
+            db.commit()
+        self.settings['source'] = {'type': 'cc-switch', 'path': str(database)}
+        self.settings['official_models'] = []
+        self.manager.cc_catalog = make_catalog(database)
+        return provider, database
+
+    def external_config(self, provider=None):
+        provider = provider or {
+            'base_url': 'https://deepseek.invalid/v1', 'wire_api': 'responses'}
+        return (
+            'model_provider = "custom"\nmodel = "deepseek-v4-flash"\n'
+            '[model_providers.custom]\n'
+            f'base_url = {json.dumps(provider["base_url"])}\n'
+            'wire_api = "responses"\n'
+        )
 
     def test_preview_and_cancel_do_not_write(self):
         before = {p.name: p.read_bytes() for p in self.directory.iterdir()}
@@ -134,6 +169,67 @@ class RoutingTests(unittest.TestCase):
             self.path.write_text(text)
             with self.assertRaises(ConfigError):
                 self.manager.preview_routing('project')
+
+    def test_unique_cc_switch_baseline_is_external_and_can_activate(self):
+        self.configure_cc()
+        self.initialize(self.external_config())
+
+        self.assertEqual(self.manager.routing_state(), 'external')
+        self.switch('project')
+
+        active = tomllib.loads(self.path.read_text())
+        self.assertEqual(active['model_provider'], PROVIDER)
+        self.assertFalse(active['model_providers'][PROVIDER]['requires_openai_auth'])
+        self.assertEqual((self.directory/'original-config.toml').read_text(),
+                         self.external_config())
+
+    def test_unmatched_external_baseline_fails_before_publication(self):
+        self.configure_cc()
+        unknown = {'base_url': 'https://unknown.invalid/v1', 'wire_api': 'responses'}
+        self.initialize(self.external_config(unknown))
+        self.publish.reset_mock()
+
+        with self.assertRaisesRegex(ConfigError, '^CC_ROUTING_PROVIDER_UNMATCHED$'):
+            self.manager.preview_routing('project')
+
+        self.publish.assert_not_called()
+
+    def test_cc_switch_overwrite_is_reported_as_interrupted_without_reclaim(self):
+        self.configure_cc()
+        self.initialize(self.external_config())
+        self.switch('project')
+        overwritten = self.external_config()
+        self.path.write_text(overwritten, encoding='utf-8')
+
+        view = self.manager.view()
+
+        self.assertEqual(view['routing_mode'], 'external')
+        self.assertTrue(view['routing_interrupted'])
+        self.assertEqual(self.path.read_text(encoding='utf-8'), overwritten)
+        with self.assertRaisesRegex(ConfigError, '^CLIENT_ROUTING_UNAVAILABLE$'):
+            self.manager.preview_routing('openai')
+        self.assertEqual(self.path.read_text(encoding='utf-8'), overwritten)
+
+    def test_third_party_disable_restores_provider_and_preserves_unrelated_edits(self):
+        self.configure_cc()
+        native = self.external_config()
+        self.initialize(native)
+        self.switch('project')
+        active = self.path.read_text().replace(
+            'model = "deepseek-v4-flash"', 'model = "deepseek-v4-pro"')
+        self.path.write_text(
+            active + '\n[notice]\ntext = "用户修改"\n',
+            encoding='utf-8')
+
+        self.switch('openai')
+
+        self.assertEqual(tomllib.loads(self.path.read_text(encoding='utf-8')), {
+            'model_provider': 'custom',
+            'model': 'deepseek-v4-flash',
+            'model_providers': {'custom': {
+                'base_url': 'https://deepseek.invalid/v1', 'wire_api': 'responses'}},
+            'notice': {'text': '用户修改'},
+        })
 
 
     def test_authenticated_preview_and_commit(self):

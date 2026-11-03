@@ -135,6 +135,48 @@ class OfficialCatalogTests(unittest.TestCase):
         self.assertIsNone(authenticated_official_catalog(
             {'Authorization': 'Bearer subscription-token'}, {}, Opener()))
 
+    def test_third_party_catalog_returns_local_models_without_querying_openai(self):
+        with tempfile.TemporaryDirectory() as temp:
+            catalog_path = Path(temp) / 'models.json'
+            catalog_path.write_text(json.dumps({'models': [{'slug': 'vendor/model'}]}))
+            settings = {
+                'source': {'type': 'yaml', 'path': 'unused'},
+                'catalog': str(catalog_path),
+                'models': ['vendor/model'],
+                'official_models': [],
+                'official_models_enabled': False,
+                'local_token': 'local-test',
+                'max_concurrent_requests': 1,
+            }
+            gateway = Gateway(settings)
+
+            class Opener:
+                def open(self, *args, **kwargs):
+                    raise AssertionError('third-party routing must not query OpenAI models')
+
+            gateway.opener = Opener()
+            server = Server(('127.0.0.1', 0), gateway.handler())
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                for authorization in (None, 'Bearer stale-login-token'):
+                    headers = {'X-Connected-Token': 'local-test'}
+                    if authorization:
+                        headers['Authorization'] = authorization
+                    request = urllib.request.Request(
+                        f'http://127.0.0.1:{server.server_port}/models',
+                        headers=headers,
+                    )
+                    with urllib.request.build_opener(
+                            urllib.request.ProxyHandler({})).open(request) as response:
+                        self.assertEqual(json.load(response), {
+                            'models': [{'slug': 'vendor/model'}],
+                        })
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(2)
+
     def test_authenticated_account_models_merge_with_external_models(self):
         with tempfile.TemporaryDirectory() as temp:
             catalog_path = Path(temp) / 'models.json'

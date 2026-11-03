@@ -24,15 +24,40 @@ def source_key(source):
     return hashlib.sha256(identity.encode()).hexdigest()
 
 
+def import_current_cc_record(catalog, preferences, codex_config):
+    """Import one matched CC record exactly once into this source's membership."""
+    provider_name = codex_config.get('model_provider', 'openai')
+    if provider_name in {'openai', 'codex-hybrid'}:
+        return False
+    imported = preferences.setdefault('imported_records', [])
+    if (not isinstance(imported, list)
+            or any(not isinstance(value, str) for value in imported)):
+        raise ConfigError('INVALID_MODEL_PREFERENCES')
+    from model_catalog.cc_switch import match_current_record
+    entry = match_current_record(catalog.inventory, codex_config)
+    record_ref = entry['ref']
+    if record_ref in imported:
+        return False
+    added = preferences.setdefault('added', [])
+    if not isinstance(added, list) or any(not isinstance(value, str) for value in added):
+        raise ConfigError('INVALID_MODEL_PREFERENCES')
+    added.extend(entry['provider_key'] + '/' + model['model_id'] for model in entry['models'])
+    preferences['added'] = sorted(set(added))
+    imported.append(record_ref)
+    return True
+
+
 def apply_preferences(catalog, settings):
     preferences = settings.get('model_preferences', {}).get(source_key(settings['source']))
     if preferences is None:
         return catalog
-    if not isinstance(preferences, dict) or set(preferences) - {'added', 'compatibility', 'adaptations'}:
+    if not isinstance(preferences, dict) or set(preferences) - {
+            'added', 'compatibility', 'adaptations', 'imported_records'}:
         raise ConfigError('INVALID_MODEL_PREFERENCES')
     added = preferences.get('added', [])
     compatibility = preferences.get('compatibility', {})
     adaptations = preferences.get('adaptations', {})
+    imported = preferences.get('imported_records', [])
     from adapters.minimal_responses import validate_adaptations
     if not isinstance(adaptations, dict):
         raise ConfigError('INVALID_MODEL_PREFERENCES')
@@ -44,6 +69,8 @@ def apply_preferences(catalog, settings):
     except ValueError:
         raise ConfigError('INVALID_MODEL_PREFERENCES') from None
     if (not isinstance(added, list) or any(not isinstance(key, str) for key in added)
+            or not isinstance(imported, list)
+            or any(not isinstance(value, str) for value in imported)
             or not isinstance(compatibility, dict)
             or any(not isinstance(key, str) or value not in ('native', 'portable')
                    for key, value in compatibility.items())):
@@ -68,9 +95,9 @@ def update_cc_snapshot(settings, merged, external):
         settings.pop('cc_snapshot', None)
 
 
-def merged_catalog(official, external):
+def merged_catalog(official, external, *, include_official=True):
     """Official entries remain byte-for-byte equivalent; external entries sort last."""
-    merged = copy.deepcopy(official)
+    merged = copy.deepcopy(official) if include_official else []
     reserved = {m['slug'] for m in official}
     template = next((m for m in official if m['slug'] == 'gpt-6-astra'), official[0])
     priority = max((m.get('priority', 0) for m in official), default=0)
@@ -85,7 +112,12 @@ def merged_catalog(official, external):
             description='External API · ' + model['provider'], upgrade=None,
             tool_mode=None, shell_type='shell_command', default_reasoning_summary='none',
             context_window=model['context_window'], max_context_window=model['context_window'],
-            default_reasoning_level='low', supported_reasoning_levels=[{'effort': 'low', 'description': 'Provider-configured reasoning'}],
+            default_reasoning_level='low',
+            supported_reasoning_levels=[
+                {'effort': 'low', 'description': 'Fast responses with lighter reasoning'},
+                {'effort': 'medium', 'description': 'Balances speed and reasoning depth'},
+                {'effort': 'high', 'description': 'Greater reasoning depth for complex problems'},
+            ],
             include_skills_usage_instructions=False, include_plugin_usage_instructions=False,
             include_apps_usage_instructions=False,
             model_messages={'instructions_template':
