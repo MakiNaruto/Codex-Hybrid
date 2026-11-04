@@ -78,9 +78,9 @@ class OfficialCatalogTests(unittest.TestCase):
         external = SimpleNamespace(models={})
         try:
             for model, directory, expected in [
-                    ('gpt-6.1-sol', None, 'MODEL_NOT_ALLOWED'),
+                    ('gpt-6.1-sol', None, 'MODEL_NOT_IN_LIST'),
                     ('gpt-6.1-sol', [{'slug': 'gpt-6.1-sol'}], 'STREAM_REQUIRED'),
-                    ('unlisted-model', [{'slug': 'gpt-6.1-sol'}], 'MODEL_NOT_ALLOWED')]:
+                    ('unlisted-model', [{'slug': 'gpt-6.1-sol'}], 'MODEL_NOT_IN_LIST')]:
                 request = urllib.request.Request(
                     f'http://127.0.0.1:{server.server_port}/responses',
                     data=json.dumps({'model': model, 'stream': False, 'input': []}).encode(),
@@ -91,7 +91,10 @@ class OfficialCatalogTests(unittest.TestCase):
                     with self.assertRaises(urllib.error.HTTPError) as error:
                         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request)
                     with error.exception as response:
-                        self.assertEqual(json.load(response)['error']['message'], expected)
+                        payload = json.load(response)['error']
+                        self.assertEqual(payload['code'], expected)
+                        if expected == 'MODEL_NOT_IN_LIST':
+                            self.assertIn('not in the current model list', payload['message'])
                     refresh.assert_called_once()
             self.assertEqual(gateway.settings['official_models'], ['gpt-6.1-sol'])
         finally:

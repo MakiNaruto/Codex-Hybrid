@@ -50,6 +50,8 @@ Activation saves the actual pre-activation `config.toml` as the restoration base
 
 When Hybrid is activated from a third-party direct configuration, the generated local provider uses `requires_openai_auth = false`, so Codex does not request an OpenAI login first. Third-party requests still require the local `X-Connected-Token` and use the credentials of their matching provider. In this mode the generated catalog contains only enabled third-party models; it neither queries OpenAI `/models` nor includes GPT-series official models. Third-party entries advertise `low`, `medium`, and `high` reasoning levels for selection in Codex. The generated provider retains `requires_openai_auth = true`, together with official models, only when Hybrid is activated from a native OpenAI configuration.
 
+Third-party-only and mixed routing use the same rules for third-party models. The gateway accepts a published model key or a vendor raw model ID that uniquely matches a published entry. If an old session requests an unpublished official model and the ID has no unique third-party match, the gateway returns `MODEL_NOT_IN_LIST`.
+
 ### Native Responses and explicit compatibility
 
 The management page labels the choice as the provider API protocol and persistently explains the forwarding mode for both manual and CC Switch provider cards. Chat Completions retains Responses-to-Chat conversion through this gateway. Some tool types, standalone notifications and reasoning history may be downgraded or unsupported; a passing connection test does not establish full desktop compatibility. This configuration requires the gateway rather than a direct Codex connection to Chat Completions.

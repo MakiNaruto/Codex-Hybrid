@@ -24,7 +24,9 @@ from model_catalog.legacy_config import load_config
 from gateway.transport import FreshProxyOpener, records as sse_events
 from adapters.responses import ResponsesAdapter, UnregisteredToolError
 from adapters.coordination import plaintext_collaboration_schema, NativeCoordinationAdapter
-from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
+from model_catalog.sources import (
+    load_source, merged_catalog, update_cc_snapshot,
+)
 from model_catalog.catalog import ConfigError, resolve_api_key
 from adapters.chat import ChatAdapter
 from adapters.native_responses import NativeResponsesAdapter
@@ -235,6 +237,37 @@ def connection_diagnostic(error):
     return result
 
 
+def resolve_requested_model(model, settings):
+    """Map a legacy direct-provider ID to an unambiguous published key.
+
+    Codex stores the model from the session instead of re-reading the current
+    catalog. Sessions created under a direct CC Switch provider therefore carry
+    the vendor's raw model ID, while the Hybrid catalog uses record-qualified
+    keys. Resolve only an unambiguous enabled match; never pick between records.
+    """
+    if not isinstance(model, str) or not model:
+        return None, None
+    allowed = settings.get('models') or ()
+    if model in allowed:
+        return model, None
+    source = settings.get('source')
+    if not source:
+        return None, None
+    bindings = settings.get('cc_snapshot', {}).get('bindings')
+    if source.get('type') == 'cc-switch' and isinstance(bindings, dict):
+        candidates = [(key, entry.get('model_id')) for key, entry in bindings.items()
+                      if isinstance(entry, dict) and key in allowed]
+    else:
+        catalog = load_source(settings)
+        candidates = [(key, entry.get('model_id'))
+                      for key, entry in catalog.models.items()
+                      if entry.get('enabled') and key in allowed]
+    matches = [key for key, model_id in candidates if model_id == model]
+    if len(matches) == 1:
+        return matches[0], 'legacy_alias'
+    return None, None
+
+
 def external_route(body, settings):
     """Resolve a live external model and build its protocol-specific request."""
     model = body.get('model')
@@ -291,7 +324,12 @@ def route(body, headers, settings, deepseek=None):
     """Build each request with fresh, vendor-specific headers and adapter state."""
     model = body.get('model')
     if model not in settings['models']:
-        raise ConfigError('MODEL_NOT_ALLOWED')
+        resolved, _ = resolve_requested_model(model, settings)
+        if resolved is None:
+            raise ConfigError('MODEL_NOT_IN_LIST')
+        # Keep the caller's body immutable while routing the canonical key.
+        body = {**body, 'model': resolved}
+        model = resolved
     if body.get('stream') is not True:
         raise ValueError('STREAM_REQUIRED')
     if 'source' in settings and model not in settings['official_models']:
@@ -512,19 +550,24 @@ class Gateway:
                     # Reconcile an unknown ID against the authenticated account directory
                     # before applying the allowlist; never accept an arbitrary ID.
                     requested_model = body.get('model')
-                    if (isinstance(requested_model, str) and requested_model
-                            and requested_model not in settings['models']
+                    resolved_model, _ = resolve_requested_model(requested_model, settings)
+                    if (resolved_model is None and isinstance(requested_model, str)
+                            and requested_model
                             and settings.get('official_models_enabled') is not False
                             and self.headers.get('Authorization', '').startswith('Bearer ')):
                         observation['phase'] = 'refresh_official_catalog'
                         refresh_official_directory(owner, self.headers)
                         settings = owner.settings
+                        resolved_model, _ = resolve_requested_model(requested_model, settings)
+                    if resolved_model is not None and resolved_model != requested_model:
+                        body = {**body, 'model': resolved_model}
                     observation['stream'] = body.get('stream') is True
                     observation['route_type'] = ('official' if body.get('model') in
                                                  settings.get('official_models', []) else 'external')
                     if body.get('model') in settings['models']:
                         observation['model'] = body['model']
-                    elif isinstance(requested_model, str):
+                    if (isinstance(requested_model, str)
+                            and requested_model != body.get('model')):
                         observation['requested_model'] = requested_model[:256]
                     def tool_types(items):
                         result = []
@@ -704,7 +747,10 @@ class Gateway:
                                   f'unknown tool {error.tool_name!r}; no tool was executed; '
                                   f'request_id={observation["request_id"]}'}
                     if not started:
-                        self.reply(400, {'error': {'code': code, 'message': code, **(detail or {})}})
+                        message = ('The requested model is not in the current model list. '
+                                   'Select an available model and try again.'
+                                   if code == 'MODEL_NOT_IN_LIST' else code)
+                        self.reply(400, {'error': {'code': code, 'message': message, **(detail or {})}})
                     else:
                         self.stream_failure(code, detail, sequence=sequence)
                 except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:

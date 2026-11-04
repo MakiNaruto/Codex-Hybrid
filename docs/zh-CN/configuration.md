@@ -52,6 +52,8 @@
 
 从第三方直连开启时，生成的本地 Hybrid provider 使用 `requires_openai_auth = false`，Codex 不会先要求 OpenAI 登录；第三方模型请求仍由本地 `X-Connected-Token` 校验，并使用对应厂商自己的 Key。此时生成的模型目录只包含已添加的第三方模型，不会请求 OpenAI `/models`，也不会混入 GPT 系列官方模型。第三方模型目录声明 `low`、`medium`、`high` 三档推理强度，可在 Codex 中选择。只有在 OpenAI 原生配置上开启 Hybrid 时，生成的 provider 才保留 `requires_openai_auth = true` 并继续使用官方模型。
 
+仅第三方模式与混合路由使用相同的第三方模型解析规则。已发布的路由键直接命中，旧会话中的厂商原始模型 ID 必须唯一匹配。旧会话仍请求未发布的官方模型，且该 ID 无法唯一匹配第三方模型时，网关返回 `MODEL_NOT_IN_LIST`。
+
 ### Responses 原生与兼容模式
 
 管理页将协议标为“供应商接口协议”，并在手动配置和 CC Switch 厂商卡片中持续展示实际转发方式。选择 Chat Completions 时，本工具保留 Responses → Chat Completions 转换；部分工具类型、独立工具通知和推理历史可能降级或不受支持，连接测试通过不代表全部桌面功能兼容。该配置需要通过本工具接入，不能据此认定 Codex 可以直连 Chat Completions。

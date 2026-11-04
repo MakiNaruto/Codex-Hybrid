@@ -50,6 +50,52 @@ class NativeResponsesTests(unittest.TestCase):
         self.assertEqual(payload['model'], 'upstream')
         self.assertEqual(headers['Authorization'], 'Bearer test-only')
 
+    def test_direct_provider_model_id_resolves_to_the_qualified_catalog_key(self):
+        settings = {'source': {'type': 'yaml'}, 'models': ['vendor/model'],
+                    'official_models': []}
+        body = dict(self.body, model='upstream')
+        with patch('gateway.server.load_source', return_value=self.catalog()):
+            url, payload, headers, _ = route(body, {}, settings)
+
+        self.assertEqual(url, 'https://vendor.invalid/v1/responses')
+        self.assertEqual(payload['model'], 'upstream')
+        self.assertEqual(headers['Authorization'], 'Bearer test-only')
+        self.assertEqual(body['model'], 'upstream')
+
+    def test_ambiguous_direct_provider_model_id_is_not_guessed(self):
+        catalog = Catalog('unused.yaml', data={'version': 1, 'providers': {
+            'one': {'protocol': 'openai_responses', 'base_url': 'https://one.invalid/v1',
+                    'credentials': {'api_key': 'one-key'},
+                    'models': {'model': {'model_id': 'shared'}}},
+            'two': {'protocol': 'openai_responses', 'base_url': 'https://two.invalid/v1',
+                    'credentials': {'api_key': 'two-key'},
+                    'models': {'model': {'model_id': 'shared'}}},
+        }})
+        settings = {'source': {'type': 'yaml'}, 'models': ['one/model', 'two/model'],
+                    'official_models': []}
+        settings.update(official_models_enabled=False, routing_fallback_model='one/model')
+        with patch('gateway.server.load_source', return_value=catalog):
+            with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_IN_LIST$'):
+                route(dict(self.body, model='shared'), {}, settings)
+
+    def test_third_party_only_mode_rejects_unpublished_official_model_even_with_saved_fallback(self):
+        settings = {'source': {'type': 'yaml'}, 'models': ['vendor/model'],
+                    'official_models': [], 'official_models_enabled': False,
+                    'official_catalog': [{'slug': 'gpt-6.1-sol'}],
+                    'routing_fallback_model': 'vendor/model'}
+        with patch('gateway.server.load_source', return_value=self.catalog()):
+            with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_IN_LIST$'):
+                route(dict(self.body, model='gpt-6.1-sol'), {}, settings)
+
+    def test_third_party_only_mode_does_not_fall_back_for_a_removed_external_model(self):
+        settings = {'source': {'type': 'yaml'}, 'models': ['vendor/model'],
+                    'official_models': [], 'official_models_enabled': False,
+                    'official_catalog': [{'slug': 'gpt-6.1-sol'}],
+                    'routing_fallback_model': 'vendor/model'}
+        with patch('gateway.server.load_source', return_value=self.catalog()):
+            with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_IN_LIST$'):
+                route(dict(self.body, model='removed-vendor-model'), {}, settings)
+
     def test_official_model_still_requires_openai_subscription_auth(self):
         settings = {
             'source': {'type': 'yaml'},

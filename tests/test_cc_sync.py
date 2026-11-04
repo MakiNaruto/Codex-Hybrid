@@ -73,9 +73,17 @@ class CCSyncTests(unittest.TestCase):
         directory = json.loads(Path(settings['catalog']).read_text(encoding='utf-8'))
         self.assertFalse(settings['official_models_enabled'])
         self.assertEqual(settings['official_models'], [])
+        self.assertEqual(settings['official_catalog'], [{'slug': 'official'}])
         self.assertNotIn('official', settings['models'])
         self.assertNotIn('official', [model['slug'] for model in directory['models']])
         self.assertEqual(self.manager.view()['official_model_count'], 0)
+        self.assertNotIn('routing_fallback_model', settings)
+        payload = route({'model': 'model-a', 'stream': True, 'input': []}, {}, settings)[1]
+        self.assertEqual(payload['model'], 'model-a')
+        with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_IN_LIST$'):
+            route({'model': 'official', 'stream': True, 'input': []}, {}, settings)
+        with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_IN_LIST$'):
+            route({'model': 'unknown-model', 'stream': True, 'input': []}, {}, settings)
 
     def test_prepare_persists_the_same_explicit_bindings_as_the_published_directory(self):
         home = self.fixture.root / 'codex'
@@ -113,7 +121,9 @@ class CCSyncTests(unittest.TestCase):
         directory = json.loads((runtime / 'models.json').read_text(encoding='utf-8'))
         self.assertFalse(settings['official_models_enabled'])
         self.assertEqual(settings['official_models'], [])
+        self.assertEqual(settings['official_catalog'], [{'slug': 'gpt-private-template'}])
         self.assertNotIn('gpt-private-template', [model['slug'] for model in directory['models']])
+        self.assertNotIn('routing_fallback_model', settings)
 
     def test_switching_to_independent_source_removes_cc_snapshot_and_stops_cc_updates(self):
         standalone = self.fixture.root / 'empty.yaml'

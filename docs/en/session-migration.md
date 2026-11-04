@@ -16,6 +16,8 @@ Official models are identified by the instance's `official_models` list, rather 
 
 Enabling routing preserves the original model even if it is no longer in the hybrid catalog. Third-party models replaced when disabling routing are not automatically restored when routing is enabled again.
 
+After activation from a direct third-party provider, a vendor raw model ID stored in an old session (for example `deepseek-v4-flash`) resolves to its qualified `provider-record-id/model-id` key when exactly one published entry matches. The gateway returns `MODEL_NOT_IN_LIST` if the request matches neither a published key nor a unique raw model ID. You can select a published third-party model to continue the old session.
+
 Migration does not modify `.jsonl` or `.jsonl.zst` history files, headers, historical turn models, reference offsets, or pagination caches. Routing configuration is updated without selecting, inserting, or overwriting its `model` field. CLI switching from an older configuration snapshot also preserves the current root-level model setting or its absence. `--default-model` is no longer supported, and old `session_default_models` presets are no longer used for migration; similarly named defaults in model connection configuration are unaffected.
 
 ## Switching routing

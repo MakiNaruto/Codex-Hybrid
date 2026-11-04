@@ -34,7 +34,7 @@ SAFE_VALUES = {
     'error_kind': {'connection_error', 'incomplete_read', 'http_protocol_error', 'timeout',
                    'dns_error', 'tls_certificate_error', 'tls_error', 'connection_refused',
                    'connection_reset', 'broken_pipe'},
-    'error_code': {'MODEL_NOT_ALLOWED', 'SUBSCRIPTION_AUTH_REQUIRED', 'STREAM_REQUIRED',
+    'error_code': {'MODEL_NOT_IN_LIST', 'MODEL_NOT_ALLOWED', 'SUBSCRIPTION_AUTH_REQUIRED', 'STREAM_REQUIRED',
                    'INVALID_REQUEST_OBJECT', 'INVALID_BODY_SIZE', 'GATEWAY_UNREGISTERED_TOOL',
                    'GATEWAY_STREAM_ADAPTATION_FAILED', 'UPSTREAM_STREAM_ENDED_EARLY',
                    'UPSTREAM_PROTOCOL_MISMATCH', 'INVALID_STREAM_PAYLOAD', 'UNSUPPORTED_REASONING_HISTORY',

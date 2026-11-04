@@ -13,7 +13,9 @@ import time
 import tomllib
 import urllib.request
 
-from model_catalog.sources import load_source, merged_catalog, update_cc_snapshot
+from model_catalog.sources import (
+    load_source, merged_catalog, update_cc_snapshot,
+)
 from codex_integration.configuration import (
     PROVIDER, digest, candidate_config, is_bridge_provider, uses_openai_auth,
     remove_bridge_provider_table, retain_config_model,
@@ -59,11 +61,13 @@ def _prepare_locked(port, codex_home, source=None, *, directory=None, management
     config_path = codex_home / 'config.toml'
     original = config_path.read_bytes()
     models = official_cache(codex_home)
-    official_models_enabled = uses_openai_auth(tomllib.loads(original.decode('utf-8')))
+    original_config = tomllib.loads(original.decode('utf-8'))
+    official_models_enabled = uses_openai_auth(original_config)
     published_official = models if official_models_enabled else []
     source = source or {'type': 'yaml', 'path': str(default_models_path())}
     settings = {'port': port, 'source': source,
                 'official_models': [m['slug'] for m in published_official],
+                'official_catalog': models,
                 'official_models_enabled': official_models_enabled,
                 'local_token': secrets.token_urlsafe(32),
                 'catalog': str(runtime / 'models.json'), 'max_concurrent_requests': 4,
@@ -437,6 +441,7 @@ def run_action(args):
         keys = [key for key, model in external.models.items() if model['enabled']]
         if keys:
             settings['deepseek_model'] = keys[0]
+        settings.pop('routing_fallback_model', None)
         private_write(Path(settings['catalog']), json.dumps(merged, ensure_ascii=False))
         private_write(RUNTIME / 'settings.json', json.dumps(settings))
         print('Preserved official catalog and refreshed external entries; restart service and desktop to reload.')

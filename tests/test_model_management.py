@@ -38,7 +38,7 @@ class ModelManagementTests(unittest.TestCase):
                                              {'key':'record-a/model-b','responses_compatibility':'native'}])
         settings = self.gateway.settings
         self.assertNotIn('record-a/model-a', settings['models'])
-        with self.assertRaisesRegex(ConfigError, 'MODEL_NOT_ALLOWED'):
+        with self.assertRaisesRegex(ConfigError, 'MODEL_NOT_IN_LIST'):
             route({'model':'record-a/model-a','stream':True}, {'Authorization':'Bearer fixture-auth-only'}, settings)
         self.assertEqual(load_source(settings).select('record-a/model-b')[1]['responses_compatibility'],'native')
         self.assertEqual(self.fixture.database.read_bytes(), before)

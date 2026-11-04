@@ -77,7 +77,7 @@ class DynamicProtocolTests(unittest.TestCase):
                 self.assertEqual(settings, original_settings)
                 self.assertEqual(catalog_path.read_bytes(), original_catalog)
                 self.assertEqual(db_path.read_bytes(), database_before_test)
-                with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_ALLOWED$'):
+                with self.assertRaisesRegex(ConfigError, '^MODEL_NOT_IN_LIST$'):
                     route({'model': key, 'stream': True, 'input': []},
                           {'Authorization': 'Bearer test-only-token'}, settings)
             base = 'https://open.bigmodel.cn/api/coding/paas/v4'

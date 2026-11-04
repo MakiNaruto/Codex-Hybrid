@@ -14,8 +14,9 @@ import urllib.request
 import yaml
 
 from model_catalog.sources import (
-    Catalog, ConfigError, apply_preferences, import_current_cc_record, load_source,
-    merged_catalog, source_key, update_cc_snapshot,
+    Catalog, ConfigError, apply_preferences,
+    import_current_cc_record, load_source, merged_catalog, source_key,
+    update_cc_snapshot,
 )
 from model_catalog.catalog import identifier, read_yaml, string
 from codex_integration.configuration import uses_openai_auth
@@ -452,16 +453,18 @@ class Management:
                         codex_config,
                     )
             external = apply_preferences(external, settings)
+            external_keys = [key for key, value in external.models.items() if value['enabled']]
+            settings.pop('routing_fallback_model', None)
             official_source = self.official()
+            settings['official_catalog'] = official_source
             official = official_source if official_models_enabled else []
             merged = merged_catalog(
                 official_source, external, include_official=official_models_enabled)
             settings['official_models'] = [model['slug'] for model in official]
             settings['models'] = [m['slug'] for m in merged['models']]
             update_cc_snapshot(settings, merged, external)
-            keys = [key for key, value in external.models.items() if value['enabled']]
-            if keys:
-                settings['deepseek_model'] = keys[0]  # Historical smoke alias only.
+            if external_keys:
+                settings['deepseek_model'] = external_keys[0]  # Historical smoke alias only.
             else:
                 settings.pop('deepseek_model', None)
             catalog_path = Path(settings['catalog'])
