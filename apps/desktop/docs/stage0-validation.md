@@ -170,7 +170,7 @@ stdio 可作为 Rust 与 Python 的私有控制通道。探针只验证逐行 JS
 - 未确认有效重启票据、未操作真实 Codex、未发推理请求。托盘菜单点选受 AX 自动化限制，持续隐藏、真正 Dock 点击、真实 Codex 启停、正式 bundle 与其他平台仍待验收。详见交接文档。
 # 2026-11-01 首次加载与 Cmd+Q 修复验证
 
-- macOS Intel 完整 `rebuild.sh`（`STAGE0_OPEN_APP=0`）通过，包含冻结隔离校验、真实 worker 生命周期及包内 `desktop-snapshot` 运行校验。
+- macOS Intel 完整 `scripts/build_desktop.sh`（`STAGE0_OPEN_APP=0`）通过，包含冻结隔离校验、真实 worker 生命周期及包内 `desktop-snapshot` 运行校验。
 - Python 全量 416 项通过（2 项跳过）；Node 63 项通过；Rust 3 项通过；`git diff --check` 通过。
 - 本机原生预览复用已运行网页服务后，接入与运行页面显示已连接、实际接入状态和自动进程/活动检测；模型页面显示现有启用模型；诊断页面显示运行时长与现有日志摘要。未修改真实接入配置、未执行厂商推理测试、未重启或退出 Codex。
 - Cmd+Q 成功退出正常预览窗口及其控制进程，原网页服务继续运行。
@@ -200,3 +200,10 @@ stdio 可作为 Rust 与 Python 的私有控制通道。探针只验证逐行 JS
 - 托盘路由与重启弹窗删去常规索引统计和重复说明，保留操作含义、重启影响及按钮；仅在活动请求、未知状态或历史缺失时追加提醒。结果提示保留手动处理说明与实际迁移警告。
 - 显示前布局并将原生弹窗设为 key window，请求 AppKit 激活并调用 `orderFrontRegardless`；不显示或聚焦管理窗口。macOS 14 以下保留兼容激活入口。
 - Node 全量 63 项、Rust 3 项通过。Intel 隔离应用实际显示精简确认框，AX 聚焦元素为确认框；取消返回 `Ok(0)`，结束后管理窗口仍为 `main_visible=false`。未操作真实 Codex 或路由配置。后台属性在模态循环中的刷新存在限制，未以该属性断言跨应用抢焦点已完成全部实机验收。
+
+
+## 桌面构建入口迁移（2026-11-05）
+
+原根目录脚本迁至 `scripts/build_desktop.sh`。本机 Intel macOS 通过新入口完成 Python 冻结、20 项隔离验证、Tauri 编译、预览 `.app` 组装和包内 `desktop-snapshot` 检查，设置 `STAGE0_OPEN_APP=0`。初次运行在沙箱回环端口绑定处受限，使用本机执行权限重跑后完整通过。
+
+新增 `scripts/build_desktop.ps1` 输出 Windows x64 双 EXE 便携目录。4 项临时打包回归检查覆盖 Windows hidden import、两平台打包模式和架构映射，并模拟两平台 PyInstaller 参数及产物整理。当前环境没有 PowerShell 和 Windows 工具链，尚未执行 PowerShell 脚本或 Windows 编译与运行，不能作为 Windows 实机验收依据。

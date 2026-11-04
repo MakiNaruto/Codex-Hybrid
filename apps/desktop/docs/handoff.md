@@ -1,4 +1,6 @@
-> 2026-11-04 构建清理：本机 `build/`、`dist/`、Tauri `target/`、`gen/` 与 Python 缓存已清理，历史本机日志和手工测试包随之移除。源码、图标、锁文件和开发文档保留。根目录 `bash rebuild.sh` 已补齐首次创建 Preview.app 和缺失构建依赖的准备步骤，可从空产物目录生成 Intel macOS 开发预览包。下文更早的“已有测试包”及“不能重建手工 Preview.app”描述属于历史状态。隔离回归覆盖首次/重复组装、plist、图标及旧运行库清理，现有真实冻结 sidecar 在新建应用目录和临时 HOME 下启动通过；本轮未执行清理后的完整下载和全量编译。
+> 2026-11-05 构建入口调整：原根目录脚本迁至 `scripts/build_desktop.sh`，工作目录定位同步调整，保留 Intel macOS 构建行为。新增 `scripts/build_desktop.ps1`，在 Windows x64 本机冻结后端、验证并编译 Tauri release 窗口，输出双 EXE 便携目录。Python 冻结显式收集 Windows 本机集成模块。准备步骤见 [Windows 构建流程](build-windows.md)，Windows 构建与运行仍待实机验收。
+
+> 2026-11-04 构建清理：本机 `build/`、`dist/`、Tauri `target/`、`gen/` 与 Python 缓存已清理，历史本机日志和手工测试包随之移除。源码、图标、锁文件和开发文档保留。根目录 `bash scripts/build_desktop.sh` 已补齐首次创建 Preview.app 和缺失构建依赖的准备步骤，可从空产物目录生成 Intel macOS 开发预览包。下文更早的“已有测试包”及“不能重建手工 Preview.app”描述属于历史状态。隔离回归覆盖首次/重复组装、plist、图标及旧运行库清理，现有真实冻结 sidecar 在新建应用目录和临时 HOME 下启动通过；本轮未执行清理后的完整下载和全量编译。
 
 > 2026-11-01 更新：当前 Tauri 窗口已切换为直接加载 `src/management/web/`。`transport.js` 将桌面请求交给私有 `web_api` 白名单，`desktop.js` 负责初始化和生命周期；旧 `apps/desktop/stage0/web/` 历史探针页面已于 2026-11-04 清理。详见 [页面对齐](web-desktop-alignment.md#共用管理页面2026-11-01) 和 [私有协议](private-management.md#共用网页适配)。以下较早的预览页面描述按历史进度阅读。
 

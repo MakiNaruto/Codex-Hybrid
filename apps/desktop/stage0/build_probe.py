@@ -32,8 +32,9 @@ def install_macos_runtime(app, libraries):
 
 def hidden_imports(system):
     # codex_integration.client uses import_module; static dependency analysis cannot see it.
-    # Windows packaging remains deferred and unchanged in this Intel Mac slice.
-    return ['codex_integration.macos_client'] if system == 'Darwin' else []
+    modules = {'Darwin': 'codex_integration.macos_client',
+               'Windows': 'codex_integration.windows_client'}
+    return [modules[system]] if system in modules else []
 
 
 def bundle_mode(system):

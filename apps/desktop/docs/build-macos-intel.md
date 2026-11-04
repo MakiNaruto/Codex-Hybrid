@@ -1,6 +1,6 @@
 # macOS Intel 构建流程
 
-当前目标：macOS x86_64。采用 Tauri 2 + 冻结 Python；Xcode 用于原生编译、SDK 和链接，不编写 Swift 桌面层。Apple Silicon 和 Windows 后续分别实施。
+当前目标：macOS x86_64。采用 Tauri 2 + 冻结 Python；Xcode 用于原生编译、SDK 和链接，不编写 Swift 桌面层。Apple Silicon 后续实施，Windows 使用独立的 [Windows 构建流程](build-windows.md)。
 
 ## 准备环境
 
@@ -27,9 +27,9 @@ CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo fetch --locked --ma
 完成上述 Python 环境准备并安装 Rust、Xcode 后，在仓库根目录执行：
 
 ```sh
-bash rebuild.sh
+bash scripts/build_desktop.sh
 # 仅构建，完成后不打开窗口
-STAGE0_OPEN_APP=0 bash rebuild.sh
+STAGE0_OPEN_APP=0 bash scripts/build_desktop.sh
 ```
 
 脚本支持从空 `build/`、`dist/`、`target/` 目录重建，缺少 PyInstaller 工具时自动安装，Cargo 本地缺少锁定依赖时联网获取。随后执行隔离原型构建，创建应用目录、`Info.plist`、图标及 Python 运行库，并用临时 HOME 检查打包的 sidecar。
@@ -97,7 +97,7 @@ CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo run --offline --loc
 
 macOS 后台程序改用 PyInstaller `--onedir`，避免每次打开应用时解压单文件运行库。Windows 仍使用 `--onefile`。Intel 构建仍输出带 target 后缀的 sidecar，但它必须与 `apps/desktop/dist/stage0/_internal/` 一起使用；不能单独分发该可执行文件。
 
-`build_macos_intel.sh` 在编译后把运行库复制到 `tauri/target/debug/_internal/`，支持直接运行未打包的壳。根目录 `rebuild.sh` 同时更新手工预览应用的 `Contents/MacOS/_internal/`。隔离验证脚本也会复制相邻运行库。当前仍使用手工预览 `.app`，`bundle.active=false`，这不是已完成的 Tauri 安装包打包流程。
+`build_macos_intel.sh` 在编译后把运行库复制到 `tauri/target/debug/_internal/`，支持直接运行未打包的壳。`scripts/build_desktop.sh` 同时更新手工预览应用的 `Contents/MacOS/_internal/`。隔离验证脚本也会复制相邻运行库。当前仍使用手工预览 `.app`，`bundle.active=false`，这不是已完成的 Tauri 安装包打包流程。
 
 桌面控制器创建管理对象时会调用与网页服务相同的 `start_sync()`：首次状态读取前填充 CC Switch 模型缓存并发布目录，随后持续同步来源变化。它只更新管理配置与模型目录，不会开启接入、启动网关或操作 Codex。未初始化时仍需显式初始化。
 

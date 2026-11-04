@@ -96,7 +96,7 @@ Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览
 
 后续阻塞边界修复：首次基线及事务 SQLite 备份均使用 5 秒截止时间，超时返回 `SESSION_BACKUP_TIMEOUT` 并停止配置/索引提交；首次准备目录可在重试时清理，事务临时记录按回滚路径清理。日志文件处理器采用独立 I/O 锁，后台关闭文件，`RuntimeLog.close()` 合计等待最多 0.2 秒，避免 Python 自动日志清理重新等待卡住的写入。覆盖长时间独占、短暂占用后成功、WAL 已提交数据备份、事件/stderr 写入卡住时进程退出及正常末尾片段保留。
 
-2026-11-01 窗口与图标调整：共享管理页移除“重启 Codex”“退出应用”按钮及其页面绑定，macOS 保留状态栏重启/退出、应用菜单退出与现有确认保护。状态栏由 CH 文本替换为单色模板图标。应用 PNG / ICNS / ICO 和状态栏 PNG 位于 `apps/desktop/stage0/tauri/icons/`，替换方法见该目录 README；根目录 `rebuild.sh` 同步预览应用的 ICNS。Windows 仅提供图标资源并移除共享页面按钮，关闭流程保持原实现；未做 Windows 实机验收。
+2026-11-01 窗口与图标调整：共享管理页移除“重启 Codex”“退出应用”按钮及其页面绑定，macOS 保留状态栏重启/退出、应用菜单退出与现有确认保护。状态栏由 CH 文本替换为单色模板图标。应用 PNG / ICNS / ICO 和状态栏 PNG 位于 `apps/desktop/stage0/tauri/icons/`，替换方法见该目录 README；`scripts/build_desktop.sh` 同步预览应用的 ICNS。Windows 仅提供图标资源并移除共享页面按钮，关闭流程保持原实现；未做 Windows 实机验收。
 
 2026-11-01 首次加载修复：桌面控制器补齐 `Management.start_sync()`，首次状态即可显示保存的 CC Switch 来源模型，后台同步随控制器退出而关闭。macOS 后台打包改为 onedir，重建和隔离验证同时复制相邻 `_internal` 运行库，减少 onefile 每次启动的解压等待；Windows 保留 onefile。接入仍不自动开启，残留 project 状态仍需显式恢复。验证使用临时目录，不代表 Windows/Apple Silicon 实机验收。
 

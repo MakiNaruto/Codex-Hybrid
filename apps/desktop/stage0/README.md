@@ -4,7 +4,7 @@
 
 `desktop-snapshot` 和 `desktop-manage` 是独立的桌面管理入口，默认读取固定用户目录；后者仅在用户主动操作时初始化、保存配置或测试连接。实际使用连接测试会访问供应商并可能计费，不能把隔离测试的无网络边界套用到产品操作。
 
-当前优先 Intel Mac，完整准备和脚本入口见 [Intel 构建流程](../docs/build-macos-intel.md)。以下 Windows / Apple Silicon 命令保留供后续平台使用，不代表已验收。
+Intel Mac 的准备和脚本入口见 [Intel 构建流程](../docs/build-macos-intel.md)。Windows x64 已增加 `scripts/build_desktop.ps1`，环境准备和便携目录见 [Windows 构建流程](../docs/build-windows.md)，仍待 Windows 实机编译验收。以下 Windows / Apple Silicon 分步命令不代表已验收。
 
 当前 Tauri 窗口直接打包 `src/management/web/` 的共用管理页，通过私有 `web_api` 白名单连接常驻控制进程。旧 `web/` 历史探针页面已清理，前端开发入口为 `src/management/web/`。首次打开需显式初始化，初始化不会开启接入。
 

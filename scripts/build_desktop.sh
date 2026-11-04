@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 if [[ "$(uname -s)" != Darwin || "$(uname -m)" != x86_64 ]]; then
   echo 'This entry point requires an Intel Mac.' >&2
