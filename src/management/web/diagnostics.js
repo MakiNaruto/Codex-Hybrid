@@ -6,6 +6,64 @@
     client_disconnected:'客户端连接中断',failed:'响应失败',incomplete:'响应未完成',
     stream_ended_without_completion:'流结束时缺少完成信号',
     forwarding_exited:'网关进程意外退出',forwarding_start_failed:'网关进程启动失败'};
+  const errorTitles={UPSTREAM_REASONING_EFFORT_UNSUPPORTED:'模型不支持所选思考强度',
+    UPSTREAM_AUTHENTICATION_FAILED:'上游身份验证失败',UPSTREAM_PERMISSION_DENIED:'上游拒绝访问',
+    UPSTREAM_QUOTA_EXCEEDED:'上游额度不足',UPSTREAM_RATE_LIMITED:'上游请求限流',
+    UPSTREAM_MODEL_NOT_FOUND:'上游模型不存在',UPSTREAM_CONTEXT_LIMIT_EXCEEDED:'超出模型上下文限制',
+    UPSTREAM_INVALID_REQUEST:'上游请求参数无效',UPSTREAM_UNAVAILABLE:'上游服务暂时不可用'};
+  const validationCodes=new Set(['UPSTREAM_REASONING_EFFORT_UNSUPPORTED','UPSTREAM_INVALID_REQUEST',
+    'UPSTREAM_MODEL_NOT_FOUND','UPSTREAM_CONTEXT_LIMIT_EXCEEDED']);
+  function errorCode(entry){
+    if(entry.error_code)return entry.error_code;
+    if(entry.http_status)return 'UPSTREAM_HTTP_'+entry.http_status;
+    if(entry.error_kind)return 'NETWORK_'+entry.error_kind.toUpperCase();
+    return {rejected:'REQUEST_REJECTED',incompatible_request_or_stream:'GATEWAY_STREAM_ADAPTATION_FAILED',
+      upstream_connection_failed:'UPSTREAM_CONNECTION_FAILED',upstream_http_error:'UPSTREAM_HTTP_ERROR',
+      client_disconnected:'CLIENT_DISCONNECTED',failed:'UPSTREAM_STREAM_ERROR',incomplete:'UPSTREAM_INCOMPLETE',
+      stream_ended_without_completion:'UPSTREAM_STREAM_ENDED_EARLY',forwarding_exited:'FORWARDING_EXITED',
+      forwarding_start_failed:'FORWARDING_START_FAILED'}[entry.status]||(entry.exception_type?'RUNTIME_EXCEPTION':'RUNTIME_ERROR');
+  }
+  function errorTitle(entry){return errorTitles[errorCode(entry)]||entry.exception_type||diagnosticStatuses[entry.status]||'其他异常';}
+  let detailRequest=0,detailText='';
+  const detailDialog=$('diagnostic-detail-dialog');
+  detailDialog.onclose=()=>{detailRequest++;};
+  $('close-diagnostic-detail').onclick=()=>detailDialog.close();
+  $('copy-diagnostic-detail').onclick=()=>action(()=>copyText(detailText));
+  async function showDetail(entry){
+    const request=++detailRequest;
+    $('diagnostic-detail-title').textContent=errorTitle(entry);
+    $('diagnostic-detail-code').textContent=errorCode(entry);
+    $('diagnostic-detail-context').replaceChildren();
+    $('diagnostic-detail-log').textContent='';
+    $('diagnostic-detail-state').className='hint';
+    $('diagnostic-detail-state').textContent='正在读取完整记录…';
+    $('diagnostic-detail-state').hidden=false;
+    $('copy-diagnostic-detail').disabled=true;
+    if(!detailDialog.open)detailDialog.showModal();
+    try{
+      const detail=await api('diagnostics/errors/'+entry.detail_id);
+      if(request!==detailRequest)return;
+      const record=detail.record;
+      const facts=[['发生时间',entry.time===undefined?'未知':diagnosticTime(entry.time)+(entry.time_source==='file_modified'?'（文件参考时间）':'')],
+        ['日志来源',detail.source+' · 第 '+detail.line+' 行'],['请求 ID',record.request_id],
+        ['模型',record.model],['处理阶段',record.phase],['上游地址',record.upstream_host]];
+      for(const [name,value] of facts){if(value===undefined)continue;
+        $('diagnostic-detail-context').append(el('dt',name),el('dd',String(value)));
+      }
+      detailText=JSON.stringify(detail,null,2);
+      $('diagnostic-detail-log').textContent=typeof record==='string'?record:JSON.stringify(record,null,2);
+      const providerMessage=record.upstream_error?.message;
+      $('diagnostic-detail-state').textContent=providerMessage||'该记录包含当时已保存的诊断字段。';
+      $('diagnostic-detail-state').className=providerMessage?'diagnostic-provider-message':'hint';
+      if(detail.truncated||record.upstream_error?.message_truncated)$('diagnostic-detail-state').textContent+='（超长内容已截断）';
+      $('copy-diagnostic-detail').disabled=false;
+    }catch(error){
+      if(request!==detailRequest)return;
+      $('diagnostic-detail-state').className='hint';
+      $('diagnostic-detail-state').textContent=error.message==='DIAGNOSTIC_RECORD_NOT_FOUND'?
+        '这条日志已清理或轮转移除，请刷新错误列表。':'读取失败，请关闭后重试。';
+    }
+  }
   function diagnosticTime(seconds){
     const date=new Date(seconds*1000);
     const pad=value=>String(value).padStart(2,'0');
@@ -22,6 +80,7 @@
     updated.title=diagnosticTime(report.generated_at);$('diagnostic-updated').replaceChildren(updated);
     const list=$('diagnostic-errors');list.replaceChildren();
     const groups=[
+      ['上游请求参数错误',null,'模型服务拒绝了请求参数，包括思考强度、模型 ID 或上下文长度。'],
       ['请求校验与格式错误',new Set(['rejected','incompatible_request_or_stream']),'请求未通过校验，或请求、响应流的格式无法被网关处理。'],
       ['上游服务错误',new Set(['upstream_connection_failed','upstream_http_error']),'网关无法连接模型服务，或模型服务返回错误状态。'],
       ['客户端连接中断',new Set(['client_disconnected']),'Codex 等客户端在请求处理期间断开了与网关的连接。'],
@@ -30,7 +89,11 @@
     ];
     const known=new Set(groups.flatMap(([,statuses])=>statuses?[...statuses]:[]));
     for(const [name,statuses,description] of groups){
-      const entries=report.log.errors.filter(entry=>statuses?statuses.has(entry.status):!known.has(entry.status));
+      const entries=report.log.errors.filter(entry=>{
+        if(validationCodes.has(errorCode(entry)))return name==='上游请求参数错误';
+        if(name==='上游请求参数错误')return false;
+        return statuses?statuses.has(entry.status):!known.has(entry.status);
+      });
       if(!entries.length)continue;
       const group=el('li',undefined,'diagnostic-group');
       const heading=el('div',undefined,'diagnostic-group-heading');
@@ -49,7 +112,13 @@
         time.setAttribute('aria-expanded','false');
         primary.append(time);
         if(reference)primary.append(el('span','参考','diagnostic-reference'));
-        primary.append(el('span',entry.exception_type||diagnosticStatuses[entry.status]||'其他异常','diagnostic-record-title'));
+        primary.append(el('span',errorTitle(entry),'diagnostic-record-title'));
+        if(entry.detail_id){
+          const trigger=el('button','详情','diagnostic-detail-trigger');trigger.type='button';
+          trigger.setAttribute('aria-label','查看'+errorTitle(entry)+'的完整日志');
+          trigger.setAttribute('aria-haspopup','dialog');
+          trigger.onclick=()=>showDetail(entry);primary.append(trigger);
+        }
         row.append(primary);
         const meta=[];
         if(entry.count>1)meta.push(entry.count+' 条记录');
@@ -57,8 +126,9 @@
         if(entry.errno!==undefined)meta.push('errno '+entry.errno);
         if(entry.http_status!==undefined)meta.push('HTTP '+entry.http_status);
         if(entry.elapsed_ms!==undefined)meta.push(entry.elapsed_ms+' ms');
-        if(entry.error_code)meta.push(entry.error_code);
-        if(entry.error_kind)meta.push(entry.error_kind);
+        meta.push(errorCode(entry));
+        if(entry.upstream_error_code&&entry.upstream_error_code!==entry.error_code)meta.push('上游 '+entry.upstream_error_code);
+        if(entry.error_reason)meta.push(entry.error_reason);
         if(entry.request_ref)meta.push('请求 '+entry.request_ref);
         if(entry.source){
           const source=entry.source.startsWith('service.startup.stderr')?'启动日志':entry.source.startsWith('service.stderr')?'服务日志':'请求日志';

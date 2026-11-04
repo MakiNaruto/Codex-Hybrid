@@ -5,6 +5,8 @@ import re
 import time
 import uuid
 
+from gateway.upstream_errors import diagnostic, ERROR_MESSAGES
+
 
 def native_plaintext_marker(value):
     """Codex stores foreign reasoning spans under UUID-index placeholders."""
@@ -224,14 +226,16 @@ def stream_error_event(event):
     if kind in {'response.failed', 'response.incomplete'}:
         response = copy.deepcopy(event.get('response', {}))
         if isinstance(response.get('error'), dict):
+            code = diagnostic(response['error'])['error_code']
             response['error'] = upstream_error(response['error'], 502)
-            response['error']['message'] = 'UPSTREAM_STREAM_ERROR'
+            response['error']['message'] = code + ': ' + ERROR_MESSAGES[code]
         return dict(event, response=response)
     if kind != 'error' and not event.get('error') and not (
             not kind and 'code' in event and 'message' in event):
         return None
     safe = upstream_error(event.get('error', event), 502)
-    safe['message'] = 'UPSTREAM_STREAM_ERROR'
+    code = diagnostic(event.get('error', event))['error_code']
+    safe['message'] = code + ': ' + ERROR_MESSAGES[code]
     return {'type': 'response.failed', 'response': {
         'id': 'resp_gateway_' + uuid.uuid4().hex, 'object': 'response',
         'created_at': int(time.time()), 'status': 'failed', 'output': [], 'usage': None, 'error': safe}}

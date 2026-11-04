@@ -5,8 +5,11 @@ import platform
 from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
 import json
+import math
 import re
 import time
+
+from gateway.upstream_errors import ERROR_MESSAGES, redact_text
 
 
 STATUSES = {'rejected', 'incompatible_request_or_stream', 'upstream_connection_failed',
@@ -47,6 +50,76 @@ SAFE_VALUES = {
     'upstream_error_code': {'invalid_api_key', 'insufficient_quota', 'rate_limit_exceeded',
                            'model_not_found', 'context_length_exceeded', 'invalid_request_error'},
 }
+SAFE_VALUES['error_code'].update(ERROR_MESSAGES)
+SAFE_VALUES['upstream_error_code'].add('invalid_request')
+
+
+def detail_id(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def redact_record(value, depth=0):
+    if depth > 12:
+        return '[嵌套内容已省略]'
+    if isinstance(value, dict):
+        sensitive = {'headers', 'authorization', 'api_key', 'apikey', 'token', 'password',
+                     'secret', 'credentials', 'settings', 'config', 'input', 'messages',
+                     'instructions', 'prompt', 'output', 'arguments', 'encrypted_content'}
+        return {key: '[已隐藏]' if key.lower() in sensitive or key.lower().endswith(('_token', '_key', '_secret'))
+                else redact_record(item, depth + 1) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_record(item, depth + 1) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return redact_text(value) if isinstance(value, str) else value
+
+
+def error_detail(directory, identifier):
+    """Locate one retained record by content, with no caller-selected filesystem paths."""
+    if not isinstance(identifier, str) or not re.fullmatch(r'[0-9a-f]{64}', identifier):
+        return None
+    for base in ('service.jsonl', 'service.stderr', 'service.startup.stderr'):
+        for suffix in ('', '.1', '.2', '.3'):
+            source = base + suffix
+            try:
+                lines = read_records(directory / source)
+            except OSError:
+                continue
+            for index, raw in enumerate(lines):
+                if detail_id(raw) != identifier:
+                    continue
+                if base == 'service.jsonl':
+                    try:
+                        record = json.loads(raw)
+                    except (ValueError, UnicodeError, RecursionError):
+                        return None
+                    if not isinstance(record, dict) or record.get('status') not in STATUSES:
+                        return None
+                    return {'source': source, 'line': index + 1, 'record': redact_record(record)}
+                # Include the traceback leading up to this exception, stopping at
+                # the previous terminal exception. Timestamped stderr is unwrapped.
+                block = []
+                size = 0
+                truncated = False
+                for line in reversed(lines[:index + 1]):
+                    text = line.decode('utf-8', errors='replace')
+                    try:
+                        wrapped = json.loads(text)
+                        if isinstance(wrapped, dict) and isinstance(wrapped.get('message'), str):
+                            text = wrapped['message']
+                    except (ValueError, RecursionError):
+                        pass
+                    match = re.match(r'^([A-Za-z][A-Za-z0-9_]*):(?: |$)', text)
+                    if block and match and match[1] in EXCEPTION_TYPES:
+                        break
+                    size += len(line)
+                    if size > 65536:
+                        truncated = True
+                        break
+                    block.append(redact_text(text))
+                return {'source': source, 'line': index + 1,
+                        'record': '\n'.join(reversed(block)), 'truncated': truncated}
+    return None
 
 
 def safe_details(entry):
@@ -124,7 +197,7 @@ def read_records(path):
     return lines
 
 
-def stderr_errors(lines, source, fallback_time=None):
+def stderr_errors(lines, source, fallback_time=None, include_details=False):
     # Export only known exception names and numeric system codes, never messages,
     # source lines, paths, credentials or traceback contents.
     errors = []
@@ -146,6 +219,8 @@ def stderr_errors(lines, source, fallback_time=None):
         match = re.match(r'^([A-Za-z][A-Za-z0-9_]*):(?: |$)', line)
         if match and match[1] in EXCEPTION_TYPES:
             clean = {'status': 'other', 'source': source, 'exception_type': match[1]}
+            if include_details:
+                clean['detail_id'] = detail_id(raw)
             if entry_time is not None:
                 clean['time'] = entry_time
             code = re.search(r'\[(WinError|Errno) ([0-9]{1,6})\]', line)
@@ -155,6 +230,8 @@ def stderr_errors(lines, source, fallback_time=None):
             pending = False
     if pending:
         clean = {'status': 'other', 'source': source}
+        if include_details:
+            clean['detail_id'] = detail_id(raw)
         if entry_time is not None:
             clean['time'] = entry_time
         errors.append(clean)
@@ -164,7 +241,7 @@ def stderr_errors(lines, source, fallback_time=None):
     return errors
 
 
-def recent_errors(directory, days=None, now=None):
+def recent_errors(directory, days=None, now=None, include_details=False):
     if days not in (None, 1, 7, 30):
         raise ValueError("Unsupported diagnostic period")
     now = time.time() if now is None else now
@@ -186,7 +263,7 @@ def recent_errors(directory, days=None, now=None):
                 unavailable = True
                 continue
             if base != 'service.jsonl':
-                errors.extend(stderr_errors(lines, source, modified))
+                errors.extend(stderr_errors(lines, source, modified, include_details))
                 continue
             for line in lines:
                 try:
@@ -198,6 +275,8 @@ def recent_errors(directory, days=None, now=None):
                     continue
                 clean = {'status': entry['status']}
                 clean.update(safe_details(entry))
+                if include_details:
+                    clean['detail_id'] = detail_id(line)
                 if isinstance(entry.get('phase'), str) and entry['phase'] in PHASES:
                     clean['phase'] = entry['phase']
                 for field, maximum in [('time', 1e11), ('elapsed_ms', 1e12), ('http_status', 599)]:
@@ -232,7 +311,7 @@ def recent_errors(directory, days=None, now=None):
     return result
 
 
-def report(manager, days=1):
+def report(manager, days=1, include_details=False):
     activity = manager.activity_state()
     started = getattr(manager.gateway, 'started_at', None)
     now = time.time()
@@ -241,4 +320,4 @@ def report(manager, days=1):
             'service': {'status': 'running', 'uptime_seconds':
                         max(0, int(time.monotonic() - started)) if started is not None else None},
             'routing_mode': manager.routing_state(), 'activity': activity,
-            'log': recent_errors(manager.directory, days=days, now=now)}
+            'log': recent_errors(manager.directory, days=days, now=now, include_details=include_details)}

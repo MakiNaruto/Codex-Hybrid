@@ -22,6 +22,7 @@ import uuid
 
 from model_catalog.legacy_config import load_config
 from gateway.transport import FreshProxyOpener, records as sse_events
+from gateway.upstream_errors import diagnostic as upstream_diagnostic, ERROR_MESSAGES
 from adapters.responses import ResponsesAdapter, UnregisteredToolError
 from adapters.coordination import plaintext_collaboration_schema, NativeCoordinationAdapter
 from model_catalog.sources import (
@@ -651,6 +652,15 @@ class Gateway:
                                         event = upstream_event
                                         observation['phase'] = 'adapt_event'
                                         observation['last_upstream_event'] = event.get('type')
+                                        response_body = event.get('response')
+                                        detail = response_body.get('error') if isinstance(response_body, dict) else None
+                                        detail = detail or event.get('error')
+                                        if not detail and (event.get('type') == 'error' or
+                                                ('code' in event and 'message' in event)):
+                                            detail = event
+                                        if detail:
+                                            observation.update(upstream_diagnostic(detail, secrets=(
+                                                headers.get('Authorization', '').removeprefix('Bearer '),)))
                                     terminal = False
                                     for _, adapted in adapted_stream(response, adapt, observe_event):
                                         terminal = adapted.get('type') in {
@@ -692,17 +702,17 @@ class Gateway:
                         observation['status'] = 'stream_ended_without_completion'
                         self.stream_failure('UPSTREAM_STREAM_ENDED_EARLY', sequence=sequence)
                 except urllib.error.HTTPError as error:
-                    # Do not log upstream bodies: they may echo input or credentials.
+                    # Retain bounded, credential-redacted error fields for local details.
                     observation.update(status='upstream_http_error', http_status=error.code)
                     diagnostic = upstream_error({}, error.code)
                     try:
                         detail = json.loads(error.read()).get('error', {})
+                        authorization = current_request.get_header('Authorization', '') if current_request else ''
+                        observation.update(upstream_diagnostic(detail, error.code, secrets=(
+                            authorization.removeprefix('Bearer '),)))
                         diagnostic = upstream_error(detail, error.code)
-                        for key in ['type', 'code', 'param']:
-                            value = detail.get(key)
-                            if isinstance(value, str) and len(value) <= 180 and all(
-                                    c.isalnum() or c in '_.[] -' for c in value):
-                                observation['upstream_error_' + key] = value
+                        code = observation['error_code']
+                        diagnostic['message'] = code + ': ' + ERROR_MESSAGES[code]
                         message = str(detail.get('message', '')).lower()
                         observation['validation_terms'] = [term for term in [
                             'reasoning', 'function', 'tool', 'arguments', 'call_id', 'encrypted',
@@ -776,7 +786,7 @@ class Gateway:
                         observation['proxy_configured'] = current_request.connected_proxy_configured
                     observation['elapsed_ms'] = round((time.monotonic() - began) * 1000)
                     owner.slots.release()
-                    # Only metadata; no prompts, messages, tool inputs, headers or tokens.
+                    # Request metadata and bounded upstream errors, without request bodies or headers.
                     owner.record(observation)
 
         return Handler

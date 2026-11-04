@@ -67,7 +67,16 @@ def handle(handler, gateway, method):
             if len(periods) != 1 or periods[0] not in {'1', '7', '30', 'all'}:
                 reply(400, {'code': 'INVALID_DIAGNOSTIC_PERIOD'}); return True
             days = None if periods[0] == 'all' else int(periods[0])
-            reply(200, report(manager, days=days)); return True
+            reply(200, report(manager, days=days, include_details=True)); return True
+        if method == 'GET' and urlsplit(handler.path).path.startswith('/manage/api/diagnostics/errors/'):
+            from management.diagnostics import error_detail
+            identifier = urlsplit(handler.path).path.removeprefix('/manage/api/diagnostics/errors/')
+            detail = error_detail(manager.directory, identifier)
+            if detail is None:
+                reply(404, {'code': 'DIAGNOSTIC_RECORD_NOT_FOUND'})
+            else:
+                reply(200, detail)
+            return True
         if method == 'GET' and urlsplit(handler.path).path == '/manage/api/usage':
             from management.usage import report
             query = parse_qs(urlsplit(handler.path).query, keep_blank_values=True)

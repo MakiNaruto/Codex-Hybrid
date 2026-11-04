@@ -1,5 +1,6 @@
 """Allowlisted private adapter for the shared management page; never opens HTTP."""
 import sys
+import re
 
 from model_catalog.catalog import ConfigError
 
@@ -28,7 +29,7 @@ def validate(request):
     path, method, body = request['path'], request['method'], request['body']
     if not isinstance(path, str) or not isinstance(method, str):
         raise ConfigError('INVALID_REQUEST')
-    if method == 'GET' and path in READS and body is None:
+    if method == 'GET' and body is None and (path in READS or re.fullmatch(r'diagnostics/errors/[0-9a-f]{64}', path)):
         return
     if method == 'POST' and path in WRITES and isinstance(body, dict):
         required, optional = WRITES[path]
@@ -70,7 +71,13 @@ def handle(controller, request):
     if path.startswith('diagnostics?days='):
         from management.diagnostics import report
         days = path.split('=', 1)[1]
-        return report(manager, days=None if days == 'all' else int(days))
+        return report(manager, days=None if days == 'all' else int(days), include_details=True)
+    if path.startswith('diagnostics/errors/'):
+        from management.diagnostics import error_detail
+        detail = error_detail(manager.directory, path.removeprefix('diagnostics/errors/'))
+        if detail is None:
+            raise ConfigError('DIAGNOSTIC_RECORD_NOT_FOUND')
+        return detail
     actions = {'routing/preview': 'preview_routing', 'routing': 'set_routing',
                'desktop/preferences': 'save_desktop_preferences', 'runtime/recover': 'recover_forwarding'}
     if path in actions:
@@ -96,6 +103,7 @@ def handle(controller, request):
 
 # Fixed business error codes only; no exception messages cross the IPC boundary.
 ERRORS = frozenset({
+    'DIAGNOSTIC_RECORD_NOT_FOUND',
     'CC_CONFIG_CHANGED_RELOAD', 'CC_CONFIG_INVALID', 'CC_CUSTOM_HEADERS_NOT_SUPPORTED',
     'CC_DATABASE_UNAVAILABLE', 'CC_MODE_IS_READ_ONLY', 'CC_OFFICIAL_LOGIN_NOT_SUPPORTED',
     'CC_PROTOCOL_NOT_SUPPORTED', 'CC_STATIC_API_KEY_REQUIRED', 'CLIENT_BASELINE_UNAVAILABLE',

@@ -130,6 +130,17 @@
   </section>
   </div>
 </main>
+<dialog id="diagnostic-detail-dialog" class="diagnostic-detail-dialog" aria-labelledby="diagnostic-detail-title" aria-describedby="diagnostic-detail-state">
+  <div class="diagnostic-detail-heading"><div><p class="eyebrow">运行与诊断 / 错误详情</p><h2 id="diagnostic-detail-title">错误详情</h2></div><button id="close-diagnostic-detail" class="icon-button secondary" type="button" aria-label="关闭错误详情" autofocus>×</button></div>
+  <div class="diagnostic-detail-content">
+    <code id="diagnostic-detail-code" class="diagnostic-detail-code"></code>
+    <p id="diagnostic-detail-state" class="hint" role="status"></p>
+    <dl id="diagnostic-detail-context" class="diagnostic-detail-context"></dl>
+    <div class="diagnostic-log-heading"><h3>完整日志记录</h3><span class="hint">敏感字段已隐藏</span></div>
+    <pre class="diagnostic-detail-pre" tabindex="0" aria-label="完整错误日志"><code id="diagnostic-detail-log"></code></pre>
+  </div>
+  <div class="diagnostic-detail-footer"><p class="hint">仅展示本机已保留的记录</p><button id="copy-diagnostic-detail" class="secondary" type="button" disabled>复制记录</button></div>
+</dialog>
 <dialog id="connections-dialog" class="connections-dialog" aria-labelledby="connections-title">
   <div class="model-dialog-heading"><div><p class="eyebrow">工作空间 / 连接</p><h2 id="connections-title">管理连接</h2></div><button id="close-connections" class="icon-button secondary" type="button" aria-label="关闭连接管理">×</button></div>
     <section class="source" aria-labelledby="source-heading">

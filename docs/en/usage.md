@@ -6,6 +6,14 @@
 
 ## Browser Codex connection switch (minimal version)
 
+### Error diagnostics
+
+The diagnostics page shows a code for every error, including older records classified from their HTTP status, connection reason, or failure state. Upstream request validation has a separate group. Both HTTP errors and failures inside a response stream use shared classifications for authentication, permission, quota, rate limits, context limits, and unsupported reasoning effort. GLM reasoning-level rejection appears as `UPSTREAM_REASONING_EFFORT_UNSUPPORTED`.
+
+Select Details on a record to inspect its retained log, request ID, model, processing phase, source file, and line number. The dialog supports copying and both themes. Credentials, configuration, input, and tool-argument fields are redacted. New upstream messages retain up to 4096 characters and exception traces up to 64 KiB, with truncation indicated. Historical records show the fields saved at the time. Downloaded diagnostics contain allowlisted summaries and record references. Restart Hybrid and refresh the page after upgrading. Browser and desktop pages share this behavior.
+
+### Connection settings
+
 Use the connection switch on the existing local management page. Review the change and confirm to save routing and catalog settings; cancel leaves configuration untouched. Disabling restores the fields from before this connection, including absent fields, while retaining unrelated edits. Changes after preview, conflicting edits to managed fields, or an invalid backup stop the switch.
 
 The switch is also available when Codex currently uses a supported third-party CC Switch provider directly. Hybrid resolves `config.toml` to exactly one CC Switch record. The first recognition imports every model in that record; other providers remain pending. Activation continues from the third-party configuration without adding an OpenAI login requirement, querying OpenAI's model list, or showing GPT-series official models. Third-party models offer `low`, `medium`, and `high` reasoning levels. Models added to that record later require manual selection, and individually removed imported models are not restored. No match or multiple matches reject the switch with a specific error.
