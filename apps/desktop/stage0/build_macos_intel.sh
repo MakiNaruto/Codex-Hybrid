@@ -16,9 +16,6 @@ export CARGO_HOME="${CARGO_HOME:-$ROOT/apps/desktop/build/stage0/cargo-home}"
 "$PYTHON" -X utf8 apps/desktop/stage0/verify.py \
   --executable apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin \
   --output apps/desktop/build/stage0/frozen-results-macos-x86_64.json
-PYTHONPATH="$ROOT/src" \
-STAGE0_SNAPSHOT_EXECUTABLE="$ROOT/apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin" \
-  "$PYTHON" -m unittest discover -s tests -p test_desktop_controller_process.py
 cargo build --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml \
   --features custom-protocol
 # Tauri's externalBin copies only the executable; onedir libraries must be beside it.

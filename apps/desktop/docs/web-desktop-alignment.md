@@ -6,7 +6,7 @@
 
 ## 共用管理页面（2026-11-01）
 
-Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览器共用 HTML、样式、模型管理、接入确认及诊断页面。`apps/desktop/stage0/web/` 保留为历史探针和原有回归测试资源，不再作为当前窗口的前端入口。
+Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览器共用 HTML、样式、模型管理、接入确认及诊断页面。旧 `apps/desktop/stage0/web/` 历史探针页面已清理，后续界面开发统一使用共用管理页。
 
 浏览器保留原有鉴权 HTTP 接口；桌面经 `transport.js` → `desktop_manage` → 常驻控制进程的 `web_api` 白名单，复用 Management 业务，不启动管理 HTTP 监听。私有接口覆盖状态、活动、进程、诊断周期、来源、模型、厂商、发布、测试、接入及桌面偏好。接入仍绑定同会话预览；首次启动要求用户明确初始化，不自动开启接入或恢复转发。Key 不回显，不通过命令行传递；断连不重试写入。
 
@@ -24,20 +24,20 @@ Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览
 
 | 主题 | 当前实现及后续复用规则 | 证据（仓库根目录相对路径） |
 | --- | --- | --- |
-| 首次使用 | 可跳过模型配置，进入空管理页；凭据可读取不代表连接成功，不自动发送测试 | `src/cli/setup_wizard.py`、`src/management/web/app.js`；`tests/test_web_workflow.py` |
-| 厂商与模型 | 搜索、启用筛选、模型 key 复制、超时编辑、连接测试耗时；测试使用保存后的配置；Key/API 下一轮请求生效，模型目录更新需重启客户端 | `src/management/service.py`、`src/management/web/app.js`；`tests/test_web_workflow.py` |
-| 草稿与来源 | 草稿只存在页面内存，刷新、离开、切换来源前提醒；保存其他厂商保留草稿。独立管理与 CC Switch 只读同步保留各自数据，不回写 CC Switch 数据库 | `src/management/web/app.js`、`src/model_catalog/sources.py`；`tests/test_web_source.cjs`、`tests/test_web_workflow.py` |
-| 切换确认 | 开关每次预览并确认；进程运行或检测未知为提示，确认后可继续；预览版本绑定配置与索引，提交时复核；取消不写配置或补索引 | `src/management/service.py`、`src/management/web/app.js`；`tests/test_management_routing.py` |
-| 配置恢复 | 开启保存可信基线；关闭只恢复所管理的路由字段，保留字段原先不存在的状态、无关修改及根级 model。不支持 profile 或其他 provider；缺少可信基线或托管字段冲突停止写入 | `src/management/routing.py`；`tests/test_management_routing.py` |
-| 桌面操作偏好 | 开启、关闭分别存入 `desktop-actions.json`，默认 ask，询问默认不勾选，可设 auto 或 never；自动选项仍需本次切换确认 | `src/management/service.py`、`src/management/web/app.js`；`tests/test_desktop_client.py` |
-| 操作顺序与失败 | 选择重启时先尝试正常退出，再重新规划索引并复核配置；退出失败仍尝试切换；配置失败不启动。配置成功后仅启动一次，开启可启动未运行的应用，关闭不启动未运行的应用 | `src/management/service.py`；`tests/test_desktop_client.py` |
-| Windows | 识别 Store 桌面安装；通过 Restart Manager 按 PID 与创建时间验证目标及影响范围，后台正常退出；不模拟按键，不强杀。退出请求成功后最多再等待 12 秒；启动最多等待 20 秒确认窗口 | `src/codex_integration/windows_client.py`、`src/codex_integration/windows_restart_manager.py`；`tests/test_windows_client.py`、`tests/test_windows_restart_manager.py` |
-| macOS | 标准目录及 Spotlight 查找并验证 Codex.app，Apple events 请求正常退出，Launch Services 启动；权限拒绝或超时提示手动处理。启动只确认主进程出现 | `src/codex_integration/macos_client.py`；`tests/test_macos_client.py` |
+| 首次使用 | 可跳过模型配置，进入空管理页；凭据可读取不代表连接成功，不自动发送测试 | `src/cli/setup_wizard.py`、`src/management/web/app.js` |
+| 厂商与模型 | 搜索、启用筛选、模型 key 复制、超时编辑、连接测试耗时；测试使用保存后的配置；Key/API 下一轮请求生效，模型目录更新需重启客户端 | `src/management/service.py`、`src/management/web/app.js` |
+| 草稿与来源 | 草稿只存在页面内存，刷新、离开、切换来源前提醒；保存其他厂商保留草稿。独立管理与 CC Switch 只读同步保留各自数据，不回写 CC Switch 数据库 | `src/management/web/app.js`、`src/model_catalog/sources.py` |
+| 切换确认 | 开关每次预览并确认；进程运行或检测未知为提示，确认后可继续；预览版本绑定配置与索引，提交时复核；取消不写配置或补索引 | `src/management/service.py`、`src/management/web/app.js` |
+| 配置恢复 | 开启保存可信基线；关闭只恢复所管理的路由字段，保留字段原先不存在的状态、无关修改及根级 model。不支持 profile 或其他 provider；缺少可信基线或托管字段冲突停止写入 | `src/management/routing.py` |
+| 桌面操作偏好 | 开启、关闭分别存入 `desktop-actions.json`，默认 ask，询问默认不勾选，可设 auto 或 never；自动选项仍需本次切换确认 | `src/management/service.py`、`src/management/web/app.js` |
+| 操作顺序与失败 | 选择重启时先尝试正常退出，再重新规划索引并复核配置；退出失败仍尝试切换；配置失败不启动。配置成功后仅启动一次，开启可启动未运行的应用，关闭不启动未运行的应用 | `src/management/service.py` |
+| Windows | 识别 Store 桌面安装；通过 Restart Manager 按 PID 与创建时间验证目标及影响范围，后台正常退出；不模拟按键，不强杀。退出请求成功后最多再等待 12 秒；启动最多等待 20 秒确认窗口 | `src/codex_integration/windows_client.py`、`src/codex_integration/windows_restart_manager.py` |
+| macOS | 标准目录及 Spotlight 查找并验证 Codex.app，Apple events 请求正常退出，Launch Services 启动；权限拒绝或超时提示手动处理。启动只确认主进程出现 | `src/codex_integration/macos_client.py` |
 | 自动操作范围 | 仅本机可识别且状态可读的默认 Codex 数据目录对应桌面应用；自定义 CODEX_HOME、未知状态或未识别安装走手动处理。CLI/VS Code 自行重启；不计划提供应用路径选择界面 | `src/codex_integration/client.py`、两个平台后端、`src/management/web/app.js` |
 | 状态反馈 | 接入开关表示磁盘配置；分别报告桌面操作结果，不验证客户端加载、不维护待重启或手动确认加载状态 | `src/management/web/app.js`、`src/management/service.py` |
-| 活动观测 | 每秒读取官方和第三方网关未结束请求及流，不含管理页连接测试；仅内存保存。按桌面/CLI/VS Code 展示进程，权限不足显示未知；仅检测客户端进程是否运行，不探测任务状态，零请求不代表空闲 | `src/gateway/activity.py`、`src/codex_integration/process_state.py`；`tests/test_gateway_activity.py`、`tests/test_process_state.py` |
-| 日志诊断 | 分类显示最近 24 小时、7 天、30 天或全部保留日志；扫描运行、错误、启动日志及保留的轮转文件，替代旧的末尾 128 KiB / 20 条规则；旧日志时间采用修改时间并标注，页面用本地时区显示 | `src/management/diagnostics.py`、`src/management/web/app.js`；`tests/test_management_diagnostics.py` |
-| 隐私与保留 | 运行及错误日志各 2 MiB、3 份旧文件；启动错误文件每次启动重建。JSON 诊断按白名单生成，不导出原始消息、配置或日志，不自动上传；轮转清理后的历史无法恢复 | `src/gateway/runtime_log.py`、`src/management/diagnostics.py`；`tests/test_runtime_log.py`、`tests/test_management_diagnostics.py` |
+| 活动观测 | 每秒读取官方和第三方网关未结束请求及流，不含管理页连接测试；仅内存保存。按桌面/CLI/VS Code 展示进程，权限不足显示未知；仅检测客户端进程是否运行，不探测任务状态，零请求不代表空闲 | `src/gateway/activity.py`、`src/codex_integration/process_state.py` |
+| 日志诊断 | 分类显示最近 24 小时、7 天、30 天或全部保留日志；扫描运行、错误、启动日志及保留的轮转文件，替代旧的末尾 128 KiB / 20 条规则；旧日志时间采用修改时间并标注，页面用本地时区显示 | `src/management/diagnostics.py`、`src/management/web/app.js` |
+| 隐私与保留 | 运行及错误日志各 2 MiB、3 份旧文件；启动错误文件每次启动重建。JSON 诊断按白名单生成，不导出原始消息、配置或日志，不自动上传；轮转清理后的历史无法恢复 | `src/gateway/runtime_log.py`、`src/management/diagnostics.py` |
 
 ## 会话索引属于切换业务的一部分
 
@@ -51,7 +51,7 @@ Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览
 - 配置、恢复元数据和索引构成可恢复事务；`session-migrations/<ID>/` 为单次迁移临时记录，成功、完整回滚或恢复完成后清理，清理失败在启动和下次切换时重试。中断或回滚未完成的记录保留并阻止后续切换；首次固定基线另存于 `session-baselines/`，不覆盖、不自动清理。恢复仍须退出 Codex，通过现有 CLI 操作，不计划提供网页迁移恢复向导。
 - 索引补齐可能先更新 Codex 元数据库；后续失败不删除已经补齐的索引。迁移警告显示在预览和结果，并在确认应用时尝试写入轮转警告日志；取消不写日志。
 
-证据：`src/codex_integration/session_migration.py`、`src/codex_integration/codex_index.py`、`tests/test_session_migration.py`、`tests/test_codex_index.py`。完整操作和恢复边界见[会话迁移](../../../docs/zh-CN/session-migration.md)。
+证据：`src/codex_integration/session_migration.py`、`src/codex_integration/codex_index.py`。完整操作和恢复边界见[会话迁移](../../../docs/zh-CN/session-migration.md)。
 
 ## 与桌面目标的边界
 

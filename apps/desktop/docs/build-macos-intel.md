@@ -22,13 +22,27 @@ python3 -m venv .venv
 CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo fetch --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml
 ```
 
-## 一条命令重建隔离原型
+## 一条命令生成开发预览应用
+
+完成上述 Python 环境准备并安装 Rust、Xcode 后，在仓库根目录执行：
+
+```sh
+bash rebuild.sh
+# 仅构建，完成后不打开窗口
+STAGE0_OPEN_APP=0 bash rebuild.sh
+```
+
+脚本支持从空 `build/`、`dist/`、`target/` 目录重建，缺少 PyInstaller 工具时自动安装，Cargo 本地缺少锁定依赖时联网获取。随后执行隔离原型构建，创建应用目录、`Info.plist`、图标及 Python 运行库，并用临时 HOME 检查打包的 sidecar。
+
+产物为 `apps/desktop/build/stage0/Codex Hybrid Tray Preview.app`。更新前先正常退出正在运行的预览应用。清理后的首次构建需要重新下载依赖和完整编译。此入口目前仅支持 Intel macOS，开发预览包尚待签名、公证与干净机器验收。
+
+## 单独重建隔离原型
 
 ```sh
 bash apps/desktop/stage0/build_macos_intel.sh
 ```
 
-脚本遇到错误立即停止，依次冻结 Python、运行 20 项隔离验证、验证冻结常驻控制程序的实际网关启停与 EOF 清理、使用 Cargo.lock 离线编译 Tauri 窗口。不关闭真实 Codex，不修改真实配置，不发送付费请求。验证使用临时本地端口；执行环境必须允许监听回环端口。可通过 `STAGE0_PYTHON` 指定已安装业务依赖的 Intel Python，通过 `CARGO_HOME` 指定已下载的 Rust 缓存。
+脚本遇到错误立即停止，依次冻结 Python、运行 20 项隔离验证、使用 Cargo.lock 离线编译 Tauri 窗口。不关闭真实 Codex，不修改真实配置，不发送付费请求。验证使用临时本地端口；执行环境必须允许监听回环端口。可通过 `STAGE0_PYTHON` 指定已安装业务依赖的 Intel Python，通过 `CARGO_HOME` 指定已下载的 Rust 缓存。
 
 输出：
 
@@ -58,29 +72,11 @@ CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo run --offline --loc
 
 只读快照不启动网关或管理 HTTP 监听、不发送连接测试、不切换接入，也不修改 Codex。模型表中的“已加入目录”只是现有配置状态，不代表远端连接或客户端加载成功。目前支持初始化独立管理配置、编辑厂商和模型及主动连接测试；接入操作随后已接入，macOS 托盘基础入口已加入，详见文末常驻控制说明。
 
-只读功能回归命令（源码模式；冻结模式需本机运行权限）：
-
-```sh
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p test_desktop_snapshot.py
-PYTHONPATH=src STAGE0_SNAPSHOT_EXECUTABLE="$PWD/apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin" .venv/bin/python -m unittest discover -s tests -p test_desktop_snapshot.py
-```
-
 
 编辑与测试使用固定 `desktop_manage` 命令：请求经 stdin 传入，不把 Key 放入命令行。单次管理入口限定初始化、保存、测试；常驻入口另提供下文接入与退出操作。请求上限 64 KiB，不接受路径。初始化要求官方 Codex 已生成配置与模型缓存；缺少时给出提示。首次初始化保留恢复基线，启用管理鉴权要求，Codex 配置保持不变。
 
 保存复用现有业务方法和私有文件写入，Key 留空保留，未编辑的高级参数保留；配置版本不一致或已有服务实例时拒绝。CC Switch 保持只读。模型来源启用状态与是否加入目录分别展示；目前尚未提供独立调整目录成员的控件。连接测试使用已保存的配置，用户点击才发送，可能消耗额度；验证测试使用模拟上游，不发送付费请求。草稿打开时刷新及其他厂商编辑会被阻止，失败保留草稿，显式取消才丢弃。macOS 关闭窗口已调用隐藏以保留草稿，跨隐藏的实机验收仍待完成。
 
-源码管理回归：
-
-```sh
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_desktop_*.py'
-```
-
-冻结私有操作回归（全部使用临时 HOME）：
-
-```sh
-PYTHONPATH=src STAGE0_SNAPSHOT_EXECUTABLE="$PWD/apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin" .venv/bin/python -m unittest discover -s tests -p test_desktop_private_command.py
-```
 
 协议与边界见 [私有管理接口](private-management.md)。当前仍为开发预览，尚未生成正式安装包。
 
@@ -91,14 +87,8 @@ PYTHONPATH=src STAGE0_SNAPSHOT_EXECUTABLE="$PWD/apps/desktop/dist/stage0/hybrid-
 
 当前退出方式：先关闭接入，再点击“退出应用”。如仍有活动、相关 Codex 进程或状态未知，网关会保留且退出被拒绝。macOS 关闭窗口隐藏到 CH 托盘，保留草稿和服务；Cmd+Q 与托盘退出走同一安全检查。异常断连会清理网关进程并保留配置，下一次要求恢复选择；异常清理不保证请求不中断。
 
-真实网关控制回归（随机本地端口、临时 HOME，不发送推理）：
 
-```sh
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p test_desktop_controller_process.py
-PYTHONPATH=src STAGE0_SNAPSHOT_EXECUTABLE="$PWD/apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin" .venv/bin/python -m unittest discover -s tests -p test_desktop_controller_process.py
-```
-
-运行环境需允许临时回环监听，冻结程序还需 PyInstaller 本地进程/信号量权限。打包入口包含 `multiprocessing.freeze_support()`，冻结多进程必须通过本项实测，不能只凭编译成功判断可用。
+运行环境需允许临时回环监听，冻结程序还需 PyInstaller 本地进程/信号量权限。打包入口包含 `multiprocessing.freeze_support()`，冻结多进程需要实机验收网关启停与退出清理，不能只凭编译成功判断可用。
 
 
 当前完成项与后续顺序见[开发交接](handoff.md)；手工测试包的终端启动方式也记录于该文档。

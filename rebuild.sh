@@ -2,8 +2,27 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+if [[ "$(uname -s)" != Darwin || "$(uname -m)" != x86_64 ]]; then
+  echo 'This entry point requires an Intel Mac.' >&2
+  exit 1
+fi
+PYTHON="${STAGE0_PYTHON:-$PWD/.venv/bin/python}"
+if [[ ! -x "$PYTHON" ]]; then
+  echo 'Prepare the Python environment using apps/desktop/docs/build-macos-intel.md first.' >&2
+  exit 1
+fi
+export CARGO_HOME="${CARGO_HOME:-$PWD/apps/desktop/build/stage0/cargo-home}"
+if [[ ! -d apps/desktop/build/stage0/tools/PyInstaller ]]; then
+  "$PYTHON" -m pip install --target apps/desktop/build/stage0/tools \
+    -r apps/desktop/stage0/requirements.txt
+fi
+cargo fetch --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml || \
+  cargo fetch --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml
+
 # 先正常退出测试应用
 bash apps/desktop/stage0/build_macos_intel.sh
+
+mkdir -p "apps/desktop/build/stage0/Codex Hybrid Tray Preview.app/Contents/MacOS"
 
 cp apps/desktop/stage0/tauri/target/debug/hybrid-stage0-shell \
   "apps/desktop/build/stage0/Codex Hybrid Tray Preview.app/Contents/MacOS/hybrid-stage0-shell"
@@ -13,7 +32,7 @@ cp apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin \
 
 # A PyInstaller executable inside Contents/MacOS looks in Contents/Frameworks.
 # Verify the installed executable, not only the standalone dist copy.
-.venv/bin/python - <<'RUNTIME'
+"$PYTHON" - <<'RUNTIME'
 import importlib.util
 import json
 import os
@@ -35,7 +54,7 @@ print('Packaged macOS Python runtime verified.')
 RUNTIME
 
 # Keep the Finder/Dock icon aligned with the replaceable icon assets.
-python3 - <<'ICONS'
+"$PYTHON" - <<'ICONS'
 from pathlib import Path
 import plistlib
 import shutil
@@ -45,9 +64,15 @@ resources = contents / "Resources"
 resources.mkdir(exist_ok=True)
 shutil.copyfile("apps/desktop/stage0/tauri/icons/icon.icns", resources / "icon.icns")
 plist_path = contents / "Info.plist"
-with plist_path.open("rb") as stream:
-    info = plistlib.load(stream)
-info["CFBundleIconFile"] = "icon.icns"
+info = {
+    "CFBundleExecutable": "hybrid-stage0-shell",
+    "CFBundleIconFile": "icon.icns",
+    "CFBundleIdentifier": "local.codex-hybrid.tray-preview",
+    "CFBundleName": "Codex Hybrid Tray Preview",
+    "CFBundlePackageType": "APPL",
+    "CFBundleVersion": "0",
+    "NSHighResolutionCapable": True,
+}
 with plist_path.open("wb") as stream:
     plistlib.dump(info, stream)
 ICONS

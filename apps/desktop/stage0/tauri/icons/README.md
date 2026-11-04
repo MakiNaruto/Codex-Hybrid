@@ -24,7 +24,7 @@ python3 apps/desktop/stage0/tauri/icons/export_icons.py
 
 只改状态栏图标时，直接替换 `tray.png` 即可。图标在编译时嵌入，替换后需重新编译并重新打开应用。
 
-Intel Mac 现有预览应用使用根目录的 `bash rebuild.sh`：先正常退出测试应用再运行。脚本会编译，并把 `icon.icns` 复制到预览 `.app/Contents/Resources/`、设置 `CFBundleIconFile`。此脚本需要现有预览应用目录及构建环境，不是安装程序。后续 Tauri bundle 通过 `tauri.conf.json` 的 `bundle.icon` 使用这些文件。
+Intel Mac 现有预览应用使用根目录的 `bash rebuild.sh`：先正常退出测试应用再运行。脚本会编译，并把 `icon.icns` 复制到预览 `.app/Contents/Resources/`、设置 `CFBundleIconFile`。此脚本可从空产物目录创建预览应用，需先准备 Python 环境、Rust 和 Xcode；缺少构建依赖时会联网下载。后续 Tauri bundle 通过 `tauri.conf.json` 的 `bundle.icon` 使用这些文件。
 
 脚本更新图标后会刷新应用包修改时间，并仅强制更新该应用的 Launch Services 注册，避免 Finder / Dock 保留原地重建前的图标记录；不重置系统的全局缓存。
 

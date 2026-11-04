@@ -8,7 +8,7 @@
 
 Tauri 加载 `src/management/web/`。浏览器继续使用 `/manage/api/`；桌面将相同路径、GET/POST 和 JSON 请求体发送为 `{action: "web_api", path, method, body}`。控制进程先检查路径、方法和字段白名单，再调用已有 Management 业务；不支持任意 URL、方法、后台函数或 `forwarding/ensure`。接入提交仍复用同会话预览校验；来源、厂商和模型保存使旧预览失效。新增页面使用固定业务错误码与安全网络错误分类，不回传异常原文。请求仍受现有 64 KiB 限制，stdio 串行处理，不自动重放操作。
 
-首次 `state` 返回 `configured: false`，界面提供显式初始化按钮；初始化前不请求诊断。桌面页面不使用网页访问 token。初始化、托盘切换、重启确认和安全退出控件只在桌面显示。旧 `apps/desktop/stage0/web/` 是保留的探针，不再是 Tauri 前端入口。
+首次 `state` 返回 `configured: false`，界面提供显式初始化按钮；初始化前不请求诊断。桌面页面不使用网页访问 token。初始化、托盘切换、重启确认和安全退出控件只在桌面显示。旧 `apps/desktop/stage0/web/` 探针页面已清理，Tauri 前端入口为 `src/management/web/`。
 
 ## 固定操作
 

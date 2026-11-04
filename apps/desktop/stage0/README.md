@@ -6,7 +6,7 @@
 
 当前优先 Intel Mac，完整准备和脚本入口见 [Intel 构建流程](../docs/build-macos-intel.md)。以下 Windows / Apple Silicon 命令保留供后续平台使用，不代表已验收。
 
-当前 Tauri 窗口直接打包 `src/management/web/` 的共用管理页，通过私有 `web_api` 白名单连接常驻控制进程。`web/` 目录保留为历史探针与回归测试资源，不再作为窗口入口。首次打开需显式初始化，初始化不会开启接入。
+当前 Tauri 窗口直接打包 `src/management/web/` 的共用管理页，通过私有 `web_api` 白名单连接常驻控制进程。旧 `web/` 历史探针页面已清理，前端开发入口为 `src/management/web/`。首次打开需显式初始化，初始化不会开启接入。
 
 ## Python 验证
 
@@ -67,6 +67,6 @@ cargo run --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml --featur
 
 ## 常驻接入预览
 
-桌面窗口现使用 `desktop-controller` 模式：私有 stdio 会话复用配置管理和网关监督，不开放管理 HTTP 端口。它支持预览/确认接入、明确恢复残留状态及退出检查，详见 [私有控制协议](../docs/private-management.md)。初次加载允许建立管理对象和稳定锁文件，但不启动网关；未配置时不创建数据目录。macOS 已接入 CH 托盘：接入/网关状态、打开窗口、开启/关闭接入预览、重启 Codex 确认、退出；状态由原生层轮询，窗口隐藏不依赖页面计时器。关闭窗口隐藏并保留草稿及服务，Cmd+Q 和托盘退出共用安全检查。Windows 关闭行为保持原状。界面事件回归：`node --test apps/desktop/stage0/test_web_lifecycle.cjs`。独立重启票据单次使用、两分钟过期，取消不操作应用；未运行或状态未知时不能重启，退出失败不启动。托盘完整点选和跨隐藏状态保留仍待实机验收。
+桌面窗口现使用 `desktop-controller` 模式：私有 stdio 会话复用配置管理和网关监督，不开放管理 HTTP 端口。它支持预览/确认接入、明确恢复残留状态及退出检查，详见 [私有控制协议](../docs/private-management.md)。初次加载允许建立管理对象和稳定锁文件，但不启动网关；未配置时不创建数据目录。macOS 已接入 CH 托盘：接入/网关状态、打开窗口、开启/关闭接入预览、重启 Codex 确认、退出；状态由原生层轮询，窗口隐藏不依赖页面计时器。关闭窗口隐藏并保留草稿及服务，Cmd+Q 和托盘退出共用安全检查。Windows 关闭行为保持原状。独立重启票据单次使用、两分钟过期，取消不操作应用；未运行或状态未知时不能重启，退出失败不启动。托盘完整点选和跨隐藏状态保留仍待实机验收。
 
-macOS 打包显式包含动态加载的 `codex_integration.macos_client`；打包入口调用 `multiprocessing.freeze_support()`。仅编译或 report 通过不足以证明后台网关能启动，必须运行 `test_desktop_controller_process.py` 的源码及冻结模式验证。Windows 打包清单未在本轮同步改动。
+macOS 打包显式包含动态加载的 `codex_integration.macos_client`；打包入口调用 `multiprocessing.freeze_support()`。仅编译或 report 通过不足以证明后台网关能启动，需要分别在源码和冻结模式下验收后台网关启停及退出清理。Windows 打包清单未在本轮同步改动。

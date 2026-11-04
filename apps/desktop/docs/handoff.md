@@ -1,4 +1,6 @@
-> 2026-11-01 更新：当前 Tauri 窗口已切换为直接加载 `src/management/web/`。`transport.js` 将桌面请求交给私有 `web_api` 白名单，`desktop.js` 负责初始化和生命周期；旧 `apps/desktop/stage0/web/` 不再是窗口入口。详见 [页面对齐](web-desktop-alignment.md#共用管理页面2026-11-01) 和 [私有协议](private-management.md#共用网页适配)。以下较早的预览页面描述按历史进度阅读。
+> 2026-11-04 构建清理：本机 `build/`、`dist/`、Tauri `target/`、`gen/` 与 Python 缓存已清理，历史本机日志和手工测试包随之移除。源码、图标、锁文件和开发文档保留。根目录 `bash rebuild.sh` 已补齐首次创建 Preview.app 和缺失构建依赖的准备步骤，可从空产物目录生成 Intel macOS 开发预览包。下文更早的“已有测试包”及“不能重建手工 Preview.app”描述属于历史状态。隔离回归覆盖首次/重复组装、plist、图标及旧运行库清理，现有真实冻结 sidecar 在新建应用目录和临时 HOME 下启动通过；本轮未执行清理后的完整下载和全量编译。
+
+> 2026-11-01 更新：当前 Tauri 窗口已切换为直接加载 `src/management/web/`。`transport.js` 将桌面请求交给私有 `web_api` 白名单，`desktop.js` 负责初始化和生命周期；旧 `apps/desktop/stage0/web/` 历史探针页面已于 2026-11-04 清理。详见 [页面对齐](web-desktop-alignment.md#共用管理页面2026-11-01) 和 [私有协议](private-management.md#共用网页适配)。以下较早的预览页面描述按历史进度阅读。
 
 > 2026-11-01 目录整理：Tauri 外壳、构建和验证工具统一位于 `apps/desktop/`；原 Python `desktop` 包更名为 `codex_integration`，位于 `src/codex_integration/`。网页 HTTP 入口与共用页面仍位于 `src/management/`。下面命令已更新路径；旧构建产物需重新生成。
 >
@@ -44,17 +46,14 @@
 | `src/codex_integration/management.py` | 初始化、保存、主动连接测试 |
 | `src/codex_integration/restart.py` | macOS 独立重启的单次预览票据、过期与进程身份复核 |
 | `apps/desktop/stage0/tauri/src/macos_tray.rs` | macOS 专用托盘菜单、状态显示及原生轮询 |
-| `apps/desktop/stage0/web/restart.js` | 窗口/托盘共用的重启确认区 |
+| `src/management/web/desktop.js` | 共用页面的桌面初始化、重启确认及生命周期 |
 | `src/codex_integration/controller.py` | 常驻私有协议、实例所有权、预览/确认、网关与安全退出 |
 | `src/codex_integration/service.py` | 共享准备逻辑；新增可选参数默认保留原 CLI 行为 |
 | `apps/desktop/stage0/probe.py` | 冻结入口及 freeze_support；snapshot/manage/controller 模式 |
 | `apps/desktop/stage0/build_probe.py` | 架构映射、冻结及 macOS 动态模块 hidden import |
 | `apps/desktop/stage0/build_macos_intel.sh` | Intel 预检、冻结、隔离验证、Cargo 构建 |
 | `apps/desktop/stage0/tauri/src/main.rs` | sidecar 会话、固定命令白名单、macOS 托盘及退出保护 |
-| `apps/desktop/stage0/web/` | 静态管理界面与接入预览 |
-| `apps/desktop/stage0/test_web_lifecycle.cjs` | 托盘事件、安全退出及草稿保护测试 |
-| `tests/test_desktop_*.py` | 快照、管理、私有命令、控制器及真实 worker 测试 |
-| `tests/test_stage0_build.py` | 架构及 hidden import 回归 |
+| `src/management/web/` | 桌面与浏览器共用管理界面与接入预览 |
 
 ## 接手后按此顺序推进
 
@@ -68,7 +67,7 @@
 8. 继续产品功能缺口：真正可跳过官方缓存/模型配置的首次使用、来源切换、独立目录成员管理、日志/设置/脱敏诊断、单实例用户体验等；以计划逐项核对，不把原型界面视为完整产品。
 9. 后续在 Apple Silicon 设备原生构建与实际验收，分别输出 arm64 安装包；Windows 按专用模块实施和验收，不因代码去重改变其代理、进程或安装行为。
 
-## 构建与回归命令
+## 构建命令
 
 从仓库根目录执行。本机已验证 macOS 15.6 x86_64、Xcode 16、Python 3.14.7、Rust 1.98；当前不能执行 arm64 程序。工具/cache/build/dist 为本机产物，Git 忽略，换机器须按构建流程安装依赖。
 
@@ -78,22 +77,12 @@ bash apps/desktop/stage0/build_macos_intel.sh
 CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo build --offline --locked \
   --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol
 
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_desktop_*.py'
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p test_stage0_build.py
-node --test apps/desktop/stage0/test_web_lifecycle.cjs
-node --check apps/desktop/stage0/web/app.js
+node --check src/management/web/app.js
+node --check src/management/web/desktop.js
 git diff --check
 ```
 
-冻结实际 worker 回归：
-
-```sh
-PYTHONPATH=src \
-STAGE0_SNAPSHOT_EXECUTABLE="$PWD/apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin" \
-.venv/bin/python -m unittest discover -s tests -p test_desktop_controller_process.py
-```
-
-Python 集成测试需允许回环监听；PyInstaller 需本地进程/信号量权限。沙箱内受限失败先区分权限与代码故障，不以删测试或弱化断言解决。Node 用于新增界面事件测试，当前静态前端构建本身不要求 Node。
+冻结隔离验证需允许回环监听；PyInstaller 需本地进程/信号量权限。沙箱内受限失败先区分权限与代码故障。当前静态前端构建本身不要求 Node。
 
 历史通过结果：desktop Python 26 项、构建 4 项、共享 routing 12 项、web workflow 16 项、gateway transport 10 项、runtime control 35 项、冻结隔离 20 项及冻结 controller 生命周期；托盘增量后单独通过 controller 9 项和界面事件 3 项。日志位于 `apps/desktop/build/stage0/`；这些是历史证据，后续改动需重跑相应检查。
 

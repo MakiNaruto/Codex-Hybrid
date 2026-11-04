@@ -24,3 +24,11 @@ apps/desktop/
 ### 共用网页管理界面
 
 当前 Tauri 窗口直接打包 `src/management/web/`，与网页端共用模型、接入及诊断页面；不再加载单独的 stage0 预览界面。浏览器使用原有 HTTP API，桌面使用私有 IPC 白名单。首次打开需点击初始化，接入开关仍需预览并确认；macOS 托盘、正常重启和安全退出沿用平台约定。请重新运行 Intel 构建脚本，使窗口资源和 sidecar 同时更新。详情见 [页面对齐](docs/web-desktop-alignment.md)。
+
+## 新电脑继续开发
+
+Git 中保留 Tauri 源码、平台配置、`Cargo.lock`、图标、Python 构建与验证工具，以及 `docs/` 下的计划、协议、交接和验证记录。桌面页面源码位于仓库根目录的 `src/management/web/`，旧 `stage0/web/` 探针页面已清理。
+
+先阅读 [开发交接](docs/handoff.md)，再按 [Intel 构建流程](docs/build-macos-intel.md) 准备 Python、Xcode 和 Rust，安装 Python 依赖并执行 `cargo fetch --locked`，最后运行构建脚本。Windows 与 Apple Silicon 的后续步骤和验收边界保留在 [工具说明](stage0/README.md) 中。
+
+`build/`、`dist/`、`.venv-stage0/`、`stage0/tauri/target/`、`stage0/tauri/gen/` 和 Python 缓存由 Git 忽略，在新电脑按需生成。本机构建产物已清理。Intel Mac 准备好 Python 环境、Rust 和 Xcode 后，在仓库根目录运行 `bash rebuild.sh`，会按需下载 PyInstaller 和锁定的 Cargo 依赖，编译并生成 `build/stage0/Codex Hybrid Tray Preview.app`，随后打开应用。设 `STAGE0_OPEN_APP=0` 可仅构建。历史验证结论保留在文档中，日志和测试包随构建重新生成。
