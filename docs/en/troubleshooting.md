@@ -2,8 +2,7 @@
 
 When disabling routing, migration removes external storage IDs from the verified
 plain-text assistant message shape and backs up the original history. Tools,
-reasoning and compressed history are not covered yet. See the
-[compatibility decision record (Chinese)](../decisions/001-history-compatibility.md).
+reasoning and compressed history are not covered yet.
 
 **English** · [简体中文](../zh-CN/troubleshooting.md)
 

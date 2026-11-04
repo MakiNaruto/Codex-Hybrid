@@ -244,7 +244,7 @@ agent 消息适配也处理宿主将可读任务文本放在 `encrypted_content`
 | DeepSeek V4.1 Flash | agent_messages、custom_tools、discovered_tools |
 | Qwen3.8 Max、Qwen3.8 2.4T A95B | 四项全部开启 |
 
-以上为 2026-10-30 当前端点的 Windows 短任务和真实嵌套子 agent 样本；Qwen 的 discovered_tools 未做单项必要性对照，长任务、并发、旧历史和 macOS 尚未验收。问题现象、请求 ID、转换代价与复测依据见[决策与排查记录](../decisions/002-native-feature-adaptations.md)。
+以上为 2026-10-30 当前端点的 Windows 短任务和真实嵌套子 agent 样本；Qwen 的 discovered_tools 未做单项必要性对照，长任务、并发、旧历史和 macOS 尚未验收。
 
 新安装不会自动勾选局部适配，Responses 默认使用 Portable（来源或已保存的设置可覆盖模式）。参考上表推荐组合，关闭完整兼容模式后勾选并保存；不会自动应用推荐。模型名称相同不保证供应商端点行为相同。
 

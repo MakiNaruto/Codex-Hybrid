@@ -311,7 +311,7 @@ def apply(migration, directory, extra_files, *, allow_running=False):
 
 
 def _official_history_repairs(migration):
-    """Rule greeting-message-id-v1; see docs/decisions/001-history-compatibility.md."""
+    """Rule greeting-message-id-v1; see local dev-docs/decisions/001-history-compatibility.md."""
     originals, changes, repairs = {}, {}, []
     if migration['provider'] != 'openai' or migration.get('skip_sessions'):
         return originals, changes, repairs

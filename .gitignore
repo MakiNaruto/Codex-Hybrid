@@ -20,3 +20,6 @@ dist/
 /docs/zh-CN/codex-protocol-audit.md
 /docs/zh-CN/refactoring-review.md
 /tasks/
+
+# Local development decisions, intent, and specifications
+/dev-docs/

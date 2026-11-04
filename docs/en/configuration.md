@@ -235,7 +235,7 @@ The four adaptations (`agent_messages`, `standalone_outputs`, `custom_tools`, an
 | DeepSeek V4.1 Flash | agent_messages, custom_tools, discovered_tools |
 | Qwen3.8 Max, Qwen3.8 2.4T A95B | All four |
 
-These profiles reflect current endpoints and short real nested-agent tests on Windows on 2026-10-30. The necessity of discovered_tools for Qwen was not isolated. Long tasks, concurrency, old histories, and macOS remain unverified. See the [decision and troubleshooting record](../decisions/002-native-feature-adaptations.md) for evidence, request IDs, and conversion tradeoffs.
+These profiles reflect current endpoints and short real nested-agent tests on Windows on 2026-10-30. The necessity of discovered_tools for Qwen was not isolated. Long tasks, concurrency, old histories, and macOS remain unverified.
 
 Fresh installs do not select local adaptations automatically. Responses defaults to Portable unless source or saved settings override the mode. Use the recommendations above: turn off full compatibility, select the options, and save. Recommendations are not applied automatically. Different endpoints serving the same model name may behave differently.
 

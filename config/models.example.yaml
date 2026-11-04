@@ -1,0 +1,18 @@
+# Copy to <data-directory>/models.yaml and edit for your provider.
+# Enable both the provider and model after setting the API key and model ID.
+version: 1
+# Uncomment after enabling deepseek/flash to make it the default selection.
+# default_model: deepseek/flash
+providers:
+  deepseek:
+    enabled: false
+    protocol: openai_chat_completions
+    base_url: https://api.deepseek.com
+    credentials:
+      api_key_env: DEEPSEEK_API_KEY
+      env_file: ./deepseek.env
+    models:
+      flash:
+        enabled: false
+        model_id: deepseek-v4-flash
+        display_name: DeepSeek Flash
