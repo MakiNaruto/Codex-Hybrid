@@ -16,6 +16,7 @@ dist/
 
 # Local design artifacts, test evidence, and working notes
 /test-results/
+/tests/
 /design/
 /docs/zh-CN/codex-protocol-audit.md
 /docs/zh-CN/refactoring-review.md
