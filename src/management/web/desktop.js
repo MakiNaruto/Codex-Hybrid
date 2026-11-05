@@ -21,7 +21,7 @@
   async function exitApp(){
     await guarded(async()=>{
       let result=await native.core.invoke('desktop_exit');
-      if(result.ok)return;
+      if(result.ok||result.cancelled)return;
       if(result.error==='EXIT_BLOCKED'&&result.restore_preview){
         await refresh();
         if(state?.routing_mode==='project'){
@@ -55,7 +55,7 @@
     if(result.warnings?.length)text+='\n'+result.warnings.map(warning=>warning.message).join('\n');
     return text;
   }
-  async function nativeRouting(){
+  async function nativeRouting(quietSuccess){
     await nativeAction(async()=>{
       await refresh();
       if(!state){await alert('尚未初始化','请先在管理窗口初始化配置。');return;}
@@ -78,12 +78,15 @@
           if(choice!==1&&!(choice===2&&possible))return;
           committed=true;
           const result=await desktop.api('routing',{mode,revision:preview.revision,confirm_activity:true,desktop_action:choice===2,desktop_was_running:!!client?.running,desktop_ticket:preview.desktop_ticket});
-          await alert('混合路由已'+verb,nativeRoutingResult(result));
+          const title='混合路由已'+verb,summary=nativeRoutingResult(result);
+          const completed=choice===1||['started','already_running'].includes(result.desktop_result);
+          if(quietSuccess&&completed&&!result.warnings?.length)message(title+'。'+summary);
+          else await alert(title,summary);
         }finally{if(!committed)await desktop.request({action:'cancel_preview'});}
       }finally{routingSaving=false;await refresh();renderRouting();}
     });
   }
-  async function nativeRestart(){
+  async function nativeRestart(quietSuccess){
     await nativeAction(async()=>{
       message('正在检查 Codex 状态…');
       const preview=await desktop.request({action:'preview_restart'});
@@ -98,7 +101,9 @@
         committed=true;
         const result=await desktop.request({action:'restart_codex',ticket:preview.ticket,confirm_activity:true});
         const outcomes={started:'已请求重新打开 Codex。',close_failed:'Codex 未能退出，请手动重启。',launch_unconfirmed:'未能确认 Codex 启动，请手动打开。'};
-        await alert('重启 Codex',outcomes[result.desktop_result]||'请检查 Codex 是否已重新打开。');
+        const summary=outcomes[result.desktop_result]||'请检查 Codex 是否已重新打开。';
+        if(quietSuccess&&result.desktop_result==='started')message(summary);
+        else await alert('重启 Codex',summary);
       }finally{if(!committed)await desktop.request({action:'cancel_restart'});}
     });
   }
@@ -147,8 +152,8 @@
   for(const [name,handler] of [['desktop-exit-requested',exitApp],['desktop-routing-requested',toggleRouting],['desktop-restart-requested',previewRestart]]){
     native.event.listen(name,event=>{
       if(event?.payload?.native_confirmation){
-        if(name==='desktop-routing-requested')return nativeRouting();
-        if(name==='desktop-restart-requested')return nativeRestart();
+        if(name==='desktop-routing-requested')return nativeRouting(event.payload.quiet_routing_success);
+        if(name==='desktop-restart-requested')return nativeRestart(event.payload.quiet_restart_success);
       }
       return handler();
     }).catch(()=>message('桌面菜单连接失败，请重新打开应用后重试。',true));

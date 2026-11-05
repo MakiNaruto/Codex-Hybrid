@@ -16,6 +16,50 @@ function Invoke-Checked {
     }
 }
 
+function Initialize-MsvcEnvironment {
+    # A regular PowerShell session does not inherit the VS developer environment.
+    $VsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+    if (Test-Path -LiteralPath $VsWhere -PathType Leaf) {
+        $Installation = & $VsWhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Could not locate Visual Studio C++ tools using vswhere.exe.'
+        }
+        if ($Installation) {
+            $DevCommand = Join-Path $Installation 'Common7/Tools/VsDevCmd.bat'
+            if (-not (Test-Path -LiteralPath $DevCommand -PathType Leaf)) {
+                throw "Visual Studio developer environment is missing: $DevCommand. Repair the C++ build tools installation."
+            }
+            # cmd.exe runs only the VS environment setup; import its environment
+            # into this process so cargo and its build scripts inherit PATH/LIB/INCLUDE.
+            $CommandLine = 'call "' + $DevCommand + '" -no_logo -arch=x64 -host_arch=x64 && set'
+            $EnvironmentLines = & $env:ComSpec /d /c $CommandLine
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Could not initialize the Visual Studio x64 developer environment.'
+            }
+            foreach ($Line in $EnvironmentLines) {
+                if ($Line -match '^([^=]+)=(.*)$') {
+                    [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+                }
+            }
+        }
+    }
+
+    $Compiler = Get-Command cl.exe -CommandType Application -ErrorAction SilentlyContinue
+    $Linker = Get-Command link.exe -CommandType Application -ErrorAction SilentlyContinue
+    $ResourceCompiler = Get-Command rc.exe -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $Compiler -or -not $Linker -or -not $ResourceCompiler -or -not $env:LIB -or
+        $env:VSCMD_ARG_TGT_ARCH -ne 'x64' -or
+        (Split-Path -Parent $Compiler.Source) -ne (Split-Path -Parent $Linker.Source)) {
+        throw @'
+Windows x64 MSVC build tools are unavailable or incomplete (cl.exe, link.exe, Windows SDK, or x64 environment).
+Install Visual Studio 2022 Build Tools with "Desktop development with C++", including MSVC x64/x86 tools and a Windows 10/11 SDK.
+If already installed, repair/add these components in Visual Studio Installer, or run this script from Developer PowerShell for VS with an x64 target.
+Installing Rust or VS Code alone does not provide the MSVC linker. See apps/desktop/docs/build-windows.md.
+'@
+    }
+    Write-Host "Using MSVC linker: $($Linker.Source)"
+}
+
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'This entry point requires Windows x64.'
 }
@@ -23,6 +67,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 $Repository = Split-Path -Parent $PSScriptRoot
 Push-Location $Repository
 try {
+    Initialize-MsvcEnvironment
     $Python = $env:STAGE0_PYTHON
     if (-not $Python) {
         $Python = Join-Path $Repository '.venv/Scripts/python.exe'

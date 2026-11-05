@@ -1,6 +1,6 @@
 # 桌面应用与构建
 
-本目录保存 Codex Hybrid 的 Tauri 桌面外壳、构建工具、计划与验证记录。CLI、网页端和桌面端共用的 Python 逻辑位于 `src/codex_integration/` 和 `src/management/`；共用界面位于 `src/management/web/`。当前优先 macOS Intel x86_64，Windows x64 已提供构建入口并待实机验收，Apple Silicon 延后。Intel 开发预览已支持配置管理与接入控制，已接入 macOS 托盘状态、接入预览、重启确认与关闭隐藏逻辑，仍待完整托盘实机验收、正式打包和干净环境验收。
+本目录保存 Codex Hybrid 的 Tauri 桌面外壳、构建工具、计划与验证记录。CLI、网页端和桌面端共用的 Python 逻辑位于 `src/codex_integration/` 和 `src/management/`；共用界面位于 `src/management/web/`。当前优先 macOS Intel x86_64，Windows x64 已提供构建入口、托盘菜单与关闭隐藏功能，完整交互待实机验收，Apple Silicon 延后。Intel 开发预览已支持配置管理与接入控制，已接入 macOS 托盘状态、接入预览、重启确认与关闭隐藏逻辑，仍待完整托盘实机验收、正式打包和干净环境验收。
 
 - [开发交接与待办](docs/handoff.md)：新会话/agent 先读；当前实现、验证边界、下一步、命令和安全注意事项。
 - [Intel Mac 构建流程](docs/build-macos-intel.md)：环境准备、一条命令构建及产物边界。
@@ -24,7 +24,7 @@ apps/desktop/
 
 ### 共用网页管理界面
 
-当前 Tauri 窗口直接打包 `src/management/web/`，与网页端共用模型、接入及诊断页面；不再加载单独的 stage0 预览界面。浏览器使用原有 HTTP API，桌面使用私有 IPC 白名单。首次打开需点击初始化，接入开关仍需预览并确认；macOS 托盘、正常重启和安全退出沿用平台约定。请重新运行 Intel 构建脚本，使窗口资源和 sidecar 同时更新。详情见 [页面对齐](docs/web-desktop-alignment.md)。
+当前 Tauri 窗口直接打包 `src/management/web/`，与网页端共用模型、接入及诊断页面；不再加载单独的 stage0 预览界面。浏览器使用原有 HTTP API，桌面使用私有 IPC 白名单。首次打开需点击初始化，接入开关仍需预览并确认；Windows 与 macOS 均支持托盘菜单、关闭隐藏、正常重启和安全退出；进程控制仍使用各平台实现。请重新运行 Intel 构建脚本，使窗口资源和 sidecar 同时更新。详情见 [页面对齐](docs/web-desktop-alignment.md)。
 
 ## 新电脑继续开发
 

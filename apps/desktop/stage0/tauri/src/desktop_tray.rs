@@ -1,4 +1,4 @@
-//! macOS-only native tray. API: https://v2.tauri.app/learn/system-tray/
+//! Desktop tray with platform-specific icons and pointer interactions. API: https://v2.tauri.app/learn/system-tray/
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
@@ -73,9 +73,27 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         routing,
         enabled: AtomicBool::new(false),
     });
-    TrayIconBuilder::with_id("hybrid")
+    let builder = TrayIconBuilder::with_id("hybrid");
+    #[cfg(target_os = "macos")]
+    let builder = builder
         .icon(tauri::include_image!("icons/tray.png"))
-        .icon_as_template(true)
+        .icon_as_template(true);
+    #[cfg(target_os = "windows")]
+    let builder = builder
+        .icon(tauri::include_image!("icons/icon.png"))
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                tauri::tray::TrayIconEvent::DoubleClick {
+                    button: tauri::tray::MouseButton::Left,
+                    ..
+                }
+            ) {
+                crate::show_main(tray.app_handle());
+            }
+        });
+    builder
         .tooltip("Codex Hybrid")
         .menu(&menu)
         .on_menu_event(|app, event| {
@@ -106,11 +124,18 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
                 _ => None,
             };
             if let Some(name) = name {
-                let _ = app.emit(name, serde_json::json!({"native_confirmation":true}));
+                let _ = app.emit(
+                    name,
+                    serde_json::json!({
+                        "native_confirmation": true,
+                        "quiet_routing_success": cfg!(target_os = "windows"),
+                        "quiet_restart_success": cfg!(target_os = "windows"),
+                    }),
+                );
             }
         })
         .build(app)?;
-    // Native polling continues while WKWebView is hidden. One sequential reader;
+    // Native polling continues while the management window is hidden. One sequential reader;
     // it never queues multiple polls behind a long request or starts a new session.
     let app = app.clone();
     std::thread::spawn(move || loop {

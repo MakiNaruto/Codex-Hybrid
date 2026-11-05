@@ -1,4 +1,4 @@
-"""Single-use restart previews. Called only by the macOS desktop controller."""
+"""Single-use restart previews. Used by the Windows and macOS desktop controllers via platform clients."""
 import secrets
 import time
 

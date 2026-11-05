@@ -47,7 +47,7 @@
 | `src/codex_integration/snapshot.py` | 脱敏快照、配置版本及读取竞争检测 |
 | `src/codex_integration/management.py` | 初始化、保存、主动连接测试 |
 | `src/codex_integration/restart.py` | macOS 独立重启的单次预览票据、过期与进程身份复核 |
-| `apps/desktop/stage0/tauri/src/macos_tray.rs` | macOS 专用托盘菜单、状态显示及原生轮询 |
+| `apps/desktop/stage0/tauri/src/desktop_tray.rs` | 双平台托盘菜单、状态显示及原生轮询（平台图标/鼠标行为分支） |
 | `src/management/web/desktop.js` | 共用页面的桌面初始化、重启确认及生命周期 |
 | `src/codex_integration/controller.py` | 常驻私有协议、实例所有权、预览/确认、网关与安全退出 |
 | `src/codex_integration/service.py` | 共享准备逻辑；新增可选参数默认保留原 CLI 行为 |
@@ -161,3 +161,12 @@ open "./apps/desktop/build/stage0/Codex Hybrid Tray Preview.app"
 - 验证记录见 `stage0-validation.md` 的“托盘原生确认”节；Windows / Apple Silicon 与实际 Codex 重启未验收。原托盘“点击无反应”在自动化下尚无法复现其完整菜单点选；本轮验证事件到弹窗及取消链路，不能把这一项写为完整托盘点选验收。
 
 - 本轮成功构建已原子替换手工 `Codex Hybrid Tray Preview.app` 的窗口程序，并校验 SHA-256 一致。仍运行的旧实例不自动退出；下次重新打开该测试包加载新菜单。未修改 sidecar 业务代码。
+
+
+## 2026-11-05 Windows 托盘对齐
+
+- Windows 启用 tray-icon，复用 `desktop_tray.rs` 的管理、混合路由、独立重启与退出菜单及原生状态轮询。macOS 的模板图标、AppKit 确认、应用菜单与 Dock 行为保留；Windows 使用应用 PNG 图标、右键菜单及双击恢复窗口。
+- Windows 原生确认位于 `windows_dialog.rs`，通过 TaskDialog 提供与 macOS 相同的取消/仅切换/切换并操作 Codex 选项。回车默认取消，Escape 和关闭框映射取消。隐藏时不显示管理窗口。
+- Windows 关闭改为隐藏并保留草稿和服务；退出被接入依赖阻止时进入共享恢复预览。独立重启开放给 Windows，通过 `client.py` 调用现有 Windows 安装识别、Restart Manager 与应用激活；macOS 业务语义不变。代理与 Windows 单实例规则不变。
+- 验证：Windows Rust 测试 4 项、新增 Python 生命周期检查 5 项、源码与冻结后端隔离检查各 20 项及 Windows x64 release 编译通过。macOS 分支只做模拟检查，本轮未进行 macOS 编译或实机验收。冻结产物验证结果见 `apps/desktop/build/stage0/windows-tray-packaged-results.json`。
+- 待实机：托盘菜单点选、双击/最小化恢复、原生确认框焦点、草稿和运行中网关跨隐藏保留，以及真实 Codex 的正常重启/拒绝退出。验证未修改真实 Codex 配置或启停真实 Codex。

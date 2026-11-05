@@ -28,7 +28,7 @@ def validate(request):
         management.validate(request)
         return
     fields = {'snapshot': set(), 'status': set(), 'cancel_preview': set(),
-              'shutdown': set(), 'recover_forwarding': set(),
+              'shutdown': set(), 'shutdown_confirmed': set(), 'recover_forwarding': set(),
               'preview_restart': set(), 'cancel_restart': set(), 'restart_codex': {'ticket', 'confirm_activity'},
               'preview_routing': {'mode'}, 'set_routing': {'mode', 'revision',
               'confirm_activity', 'desktop_action', 'desktop_was_running', 'desktop_ticket'},
@@ -112,7 +112,7 @@ class Controller:
         mode = self.manager.routing_state()
         forwarding = self.runtime.snapshot()
         return {'configured': True, 'routing': mode, 'forwarding': forwarding,
-                'restart_supported': sys.platform == 'darwin',
+                'restart_supported': sys.platform in ('darwin', 'win32'),
                 'activity': self.manager.activity_state(), 'codex_process': self.manager.process_state(),
                 'desktop_preferences': self.manager.desktop_preferences(),
                 'recovery_required': mode == 'project' and forwarding['status'] in ('stopped', 'fault')}
@@ -121,7 +121,7 @@ class Controller:
         action = request['action']
         if action == 'web_api':
             return web_api.handle(self, request)
-        if action in ('preview_restart', 'cancel_restart', 'restart_codex') and sys.platform != 'darwin':
+        if action in ('preview_restart', 'cancel_restart', 'restart_codex') and sys.platform not in ('darwin', 'win32'):
             raise ConfigError('INVALID_REQUEST')
         if action in ('initialize', 'save_provider', 'preview_routing', 'set_routing', 'recover_forwarding'):
             self.restart.cancel()
@@ -139,14 +139,28 @@ class Controller:
         if action == 'cancel_preview':
             self.pending = None
             return {'cancelled': True}
+        if action == 'shutdown_confirmed':
+            if sys.platform != 'win32':
+                raise ConfigError('INVALID_REQUEST')
+            # Close our controller and worker, keeping the saved routing choice.
+            self.close()
+            return {'stopped': True}
         if action == 'shutdown':
             # A failed attempt to claim another service must not trap this window.
             if self.runtime is not None:
                 self.ensure_manager()
-                if self.manager.routing_state() == 'project':
+                mode = self.manager.routing_state()
+                if mode == 'project':
                     raise ConfigError('EXIT_BLOCKED')
-                if self.runtime.snapshot()['status'] != 'stopped' and not self.runtime.stop_if_safe(self.manager):
-                    raise ConfigError('EXIT_BLOCKED')
+                if self.runtime.snapshot()['status'] != 'stopped':
+                    if sys.platform == 'win32':
+                        # An idle retained gateway does not require a prompt
+                        # just because Codex is open after routing was disabled.
+                        if (mode not in {'openai', 'external'}
+                                or self.manager.activity_state()['active_requests'] != 0):
+                            raise ConfigError('EXIT_BLOCKED')
+                    elif not self.runtime.stop_if_safe(self.manager):
+                        raise ConfigError('EXIT_BLOCKED')
             self.close()
             return {'stopped': True}
         if not self.ensure_manager():
@@ -179,90 +193,4 @@ class Controller:
         if action == 'save_provider':
             self.pending = None
             with self.manager.lock:
-                return management.save(self.manager, request)
-        if action == 'test_connection':
-            return self.manager.test_connection(request['key'])
-        if action == 'save_desktop_preferences':
-            return self.manager.save_desktop_preferences(request['mode'], request['value'])
-        if action == 'preview_routing':
-            preview = self.manager.preview_routing(request['mode'])
-            self.pending = preview
-            # Do not expose session filenames, config contents or arbitrary warning text.
-            return {key: preview[key] for key in ('mode', 'revision', 'desktop', 'desktop_ticket',
-                    'session_count', 'model_change_count', 'index_repair_count', 'missing_rollouts',
-                    'activity', 'codex_process')}
-        if action == 'recover_forwarding':
-            if self.manager.routing_state() != 'project':
-                raise ConfigError('FORWARDING_UNAVAILABLE')
-            self.runtime.start()
-            if self.manager.routing_state() != 'project':
-                self.runtime.stop_if_safe(self.manager)
-                raise ConfigError('CLIENT_CONFIG_CHANGED')
-            return self.runtime.snapshot()
-        if action == 'set_routing':
-            pending, self.pending = self.pending, None
-            if pending is None or any(request[key] != pending[key] for key in ('mode', 'revision', 'desktop_ticket')):
-                raise ConfigError('INVALID_PREVIEW')
-            try:
-                return self.manager.set_routing(request['mode'], request['revision'], request['confirm_activity'],
-                    request['desktop_action'], request['desktop_was_running'], request['desktop_ticket'])
-            except Exception:
-                # Failed activation may have started forwarding; stop only if proven safe.
-                try:
-                    self.runtime.stop_if_safe(self.manager)
-                except Exception:
-                    pass
-                raise
-        raise ConfigError('INVALID_REQUEST')
-
-    def request(self, request):
-        try:
-            validate(request)
-            if self.closed:
-                raise ConfigError('FORWARDING_UNAVAILABLE')
-            return {'ok': True, 'result': self.handle(request)}
-        except Exception as error:
-            if isinstance(request, dict) and request.get('action') == 'web_api' and not isinstance(error, ConfigError):
-                from gateway.transport import error_event
-                return {'ok': False, 'error': error_event(error, 'management')['code']}
-            code = error.code if isinstance(error, ConfigError) else None
-            return {'ok': False, 'error': code if code in ERRORS else 'OPERATION_FAILED'}
-
-    def close(self):
-        if self.closed:
-            return
-        self.closed = True
-        try:
-            if self.runtime is not None:
-                self.runtime.close()
-        finally:
-            try:
-                if self.manager is not None:
-                    self.manager.close()
-            finally:
-                self.locks.close()
-
-
-def main():
-    import sys
-    controller = Controller()
-    try:
-        while True:
-            line = sys.stdin.buffer.readline(65537)
-            if not line:
-                break
-            try:
-                if len(line) > 65536:
-                    # A framing violation ends the session, never parse the remainder as a command.
-                    print(json.dumps({'ok': False, 'error': 'INVALID_REQUEST'}), flush=True)
-                    break
-                result = controller.request(json.loads(line))
-            except Exception:
-                result = {'ok': False, 'error': 'INVALID_REQUEST'}
-            print(json.dumps(result, ensure_ascii=False), flush=True)
-            if controller.closed:
-                break
-    finally:
-        # Owner loss is crash cleanup, not a successful safe exit. Keep routing/baseline
-        # on disk for explicit recovery next launch; no worker may outlive its owner.
-        controller.close()
+                return management

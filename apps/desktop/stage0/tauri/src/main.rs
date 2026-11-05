@@ -5,10 +5,12 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod desktop_tray;
 #[cfg(target_os = "macos")]
 mod macos_dialog;
-#[cfg(target_os = "macos")]
-mod macos_tray;
+#[cfg(target_os = "windows")]
+mod windows_dialog;
 
 struct Session {
     child: CommandChild,
@@ -19,6 +21,7 @@ struct Session {
 struct Control {
     session: tauri::async_runtime::Mutex<Option<Session>>,
     protected: AtomicBool,
+    exit_pending: AtomicBool,
     shutting_down: AtomicBool,
 }
 
@@ -41,6 +44,7 @@ async fn request(
                 | "cancel_preview"
                 | "recover_forwarding"
                 | "shutdown"
+                | "shutdown_confirmed"
                 | "save_desktop_preferences"
                 | "preview_restart"
                 | "cancel_restart"
@@ -56,7 +60,12 @@ async fn request(
     }
     let control = app.state::<Control>();
     let mut guard = control.session.lock().await;
-    if control.shutting_down.load(Ordering::Acquire) && request["action"] != "shutdown" {
+    if control.shutting_down.load(Ordering::Acquire)
+        && !matches!(
+            request["action"].as_str(),
+            Some("shutdown" | "shutdown_confirmed")
+        )
+    {
         return Err("正在退出应用".into());
     }
     if guard.is_none() {
@@ -75,13 +84,13 @@ async fn request(
         *guard = None;
         return Err("控制程序已断开，请刷新检查恢复状态；操作未自动重试".into());
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let response = receive_bounded(session, request_timeout(&request)).await;
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let response = receive(session).await;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     if request["action"] == "status" {
-        macos_tray::update(app, response.as_ref());
+        desktop_tray::update(app, response.as_ref());
     }
     if let Some(response) = response {
         return Ok(response);
@@ -109,18 +118,18 @@ async fn receive(session: &mut Session) -> Option<serde_json::Value> {
     None
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn request_timeout(request: &serde_json::Value) -> u64 {
     if request["action"] == "web_api" && request["method"] == "POST" {
         return if request["path"] == "test" { 75 } else { 120 };
     }
     match request["action"].as_str() {
-        Some("status" | "snapshot" | "web_api" | "shutdown") => 20,
+        Some("status" | "snapshot" | "web_api" | "shutdown" | "shutdown_confirmed") => 20,
         _ => 120,
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn receive_bounded(session: &mut Session, seconds: u64) -> Option<serde_json::Value> {
     tokio::time::timeout(std::time::Duration::from_secs(seconds), receive(session))
         .await
@@ -128,7 +137,7 @@ async fn receive_bounded(session: &mut Session, seconds: u64) -> Option<serde_js
         .flatten()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn poll_status(app: &tauri::AppHandle) {
     let control = app.state::<Control>();
     let Ok(mut guard) = control.session.try_lock() else {
@@ -138,16 +147,16 @@ async fn poll_status(app: &tauri::AppHandle) {
         return;
     }
     let Some(session) = guard.as_mut() else {
-        macos_tray::update(app, None);
+        desktop_tray::update(app, None);
         return;
     };
     if session.child.write(b"{\"action\":\"status\"}\n").is_err() {
         *guard = None;
-        macos_tray::update(app, None);
+        desktop_tray::update(app, None);
         return;
     }
     let response = receive_bounded(session, 20).await;
-    macos_tray::update(app, response.as_ref());
+    desktop_tray::update(app, response.as_ref());
     if response.is_none() {
         *guard = None;
     }
@@ -159,7 +168,10 @@ async fn desktop_manage(
     request: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     // Only the safe-exit command may release the controller and terminate the app.
-    if request.get("action").and_then(|v| v.as_str()) == Some("shutdown") {
+    if matches!(
+        request["action"].as_str(),
+        Some("shutdown" | "shutdown_confirmed")
+    ) {
         return Err("请使用退出应用操作".into());
     }
     crate::request(&app, request).await
@@ -177,7 +189,7 @@ async fn desktop_snapshot(app: tauri::AppHandle) -> Result<serde_json::Value, St
 #[tauri::command]
 async fn desktop_exit(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let control = app.state::<Control>();
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     if control.session.lock().await.is_none() {
         // No owner exists: startup failed or no request has started. Never spawn
         // a new controller merely to quit a window that could not load.
@@ -185,17 +197,42 @@ async fn desktop_exit(app: tauri::AppHandle) -> Result<serde_json::Value, String
         app.exit(0);
         return Ok(serde_json::json!({"ok":true}));
     }
-    if control.shutting_down.swap(true, Ordering::AcqRel) {
+    if control.exit_pending.swap(true, Ordering::AcqRel) {
         return Err("正在退出应用".into());
     }
+    control.shutting_down.store(true, Ordering::Release);
     let response = request(&app, serde_json::json!({"action":"shutdown"})).await;
+    #[cfg(target_os = "windows")]
+    let response = if matches!(&response, Ok(value) if value["error"] == "EXIT_BLOCKED") {
+        // Shutdown was declined and the owner is still live. Keep management
+        // requests available while the user decides in the native dialog.
+        control.shutting_down.store(false, Ordering::Release);
+        match windows_dialog::show(
+            &app,
+            "退出 Codex Hybrid？".into(),
+            "混合路由仍开启，网关仍有请求，或无法确认相关状态。退出会停止本应用的网关，正在使用它的请求可能中断。".into(),
+            vec!["取消".into(), "仍然退出".into()],
+        )
+        .await
+        {
+            Ok(1) => {
+                control.shutting_down.store(true, Ordering::Release);
+                request(&app, serde_json::json!({"action":"shutdown_confirmed"})).await
+            }
+            Ok(_) => Ok(serde_json::json!({"ok":false,"cancelled":true})),
+            Err(error) => Err(error),
+        }
+    } else {
+        response
+    };
     if !matches!(&response, Ok(value) if value["ok"] == true) {
         control.shutting_down.store(false, Ordering::Release);
+        control.exit_pending.store(false, Ordering::Release);
     }
     let response = match response {
         Ok(response) => response,
         Err(error) => {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             if control.session.lock().await.is_none() {
                 control.protected.store(false, Ordering::Release);
                 app.exit(0);
@@ -237,6 +274,8 @@ async fn probe_report(app: tauri::AppHandle) -> Result<serde_json::Value, String
 
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "windows")]
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -270,7 +309,11 @@ async fn desktop_alert(
     {
         macos_dialog::show(&app, title, detail, buttons).await
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        windows_dialog::show(&app, title, detail, buttons).await
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app, title, detail, buttons);
         Err("此弹窗仅适用于 macOS".into())
@@ -305,8 +348,9 @@ fn main() {
                         request_native_exit(app);
                     }
                 });
-                macos_tray::setup(app.handle())?;
             }
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            desktop_tray::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -318,13 +362,13 @@ fn main() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
                 {
                     // The tray is created during setup; hiding preserves drafts and the worker.
                     api.prevent_close();
                     let _ = window.hide();
                 }
-                #[cfg(not(target_os = "macos"))]
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
                 if window.state::<Control>().protected.load(Ordering::Acquire) {
                     api.prevent_close();
                     notify_exit_blocked(window.app_handle());
@@ -350,7 +394,7 @@ fn main() {
         });
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, any(target_os = "macos", target_os = "windows")))]
 mod startup_tests {
     use super::*;
 
