@@ -281,9 +281,18 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn notify_exit_blocked(app: &tauri::AppHandle) {
     show_main(app);
     let _ = app.emit("desktop-exit-requested", ());
+}
+
+#[cfg(target_os = "windows")]
+fn request_windows_exit(app: &tauri::AppHandle) {
+    let _ = app.emit(
+        "desktop-exit-requested",
+        serde_json::json!({"native_confirmation": true}),
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -387,7 +396,9 @@ fn main() {
                     api.prevent_exit();
                     #[cfg(target_os = "macos")]
                     request_native_exit(app);
-                    #[cfg(not(target_os = "macos"))]
+                    #[cfg(target_os = "windows")]
+                    request_windows_exit(app);
+                    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
                     notify_exit_blocked(app);
                 }
             }

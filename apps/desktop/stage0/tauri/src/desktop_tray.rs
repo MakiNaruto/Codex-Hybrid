@@ -113,9 +113,17 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
                         .set_checked(items.enabled.load(Ordering::Acquire));
                 }
             }
-            // Routing and restart use standalone native dialogs, even when hidden.
-            if matches!(event.id.as_ref(), "open" | "safe-exit") {
+            if event.id.as_ref() == "open" {
                 crate::show_main(app);
+            }
+            #[cfg(target_os = "macos")]
+            if event.id.as_ref() == "safe-exit" {
+                crate::show_main(app);
+            }
+            #[cfg(target_os = "windows")]
+            if event.id.as_ref() == "safe-exit" {
+                crate::request_windows_exit(app);
+                return;
             }
             let name = match event.id.as_ref() {
                 "routing" => Some("desktop-routing-requested"),

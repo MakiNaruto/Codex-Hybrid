@@ -18,8 +18,9 @@
     try{await fn();}catch(error){message(errorMessage(error),true);}
     finally{busy=false;}
   }
-  async function exitApp(){
-    await guarded(async()=>{
+  async function exitApp(nativeFeedback=false){
+    const run=nativeFeedback?nativeAction:guarded;
+    await run(async()=>{
       let result=await native.core.invoke('desktop_exit');
       if(result.ok||result.cancelled)return;
       if(result.error==='EXIT_BLOCKED'&&result.restore_preview){
@@ -32,7 +33,9 @@
           if(result.ok)return;
         }
       }
-      message(result.error==='EXIT_BLOCKED'?'暂不能退出：接入仍开启，或客户端仍可能依赖网关。请关闭接入并检查客户端后重试。':'退出未完成，请检查状态后重试。',true);
+      const detail=result.error==='EXIT_BLOCKED'?'暂不能退出：接入仍开启，或客户端仍可能依赖网关。请关闭接入并检查客户端后重试。':'退出未完成，请检查状态后重试。';
+      message(detail,true);
+      if(nativeFeedback)await alert('退出未完成',detail);
     });
   }
   const alert=(title,detail,buttons=['好的'])=>native.core.invoke('desktop_alert',{title,detail,buttons});
@@ -152,6 +155,7 @@
   for(const [name,handler] of [['desktop-exit-requested',exitApp],['desktop-routing-requested',toggleRouting],['desktop-restart-requested',previewRestart]]){
     native.event.listen(name,event=>{
       if(event?.payload?.native_confirmation){
+        if(name==='desktop-exit-requested')return exitApp(true);
         if(name==='desktop-routing-requested')return nativeRouting(event.payload.quiet_routing_success);
         if(name==='desktop-restart-requested')return nativeRestart(event.payload.quiet_restart_success);
       }
