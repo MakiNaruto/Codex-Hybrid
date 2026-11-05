@@ -128,18 +128,15 @@ class Catalog:
         for provider_id, spec in providers.items():
             (string if source_identifiers else identifier)(provider_id)
             mapping(spec, {'protocol', 'base_url', 'credentials', 'models', 'enabled',
-                           'timeout_seconds', 'token_limit_field', 'parameters',
+                           'timeout_seconds', 'parameters',
                            'responses_compatibility', 'history_migration'},
                     {'protocol', 'base_url', 'credentials', 'models'})
-            if spec['protocol'] not in {'openai_chat_completions', 'openai_responses'}:
+            if spec['protocol'] != 'openai_responses':
                 fail('CONFIG_UNSUPPORTED_PROTOCOL')
-            compatibility = spec.get('responses_compatibility', 'portable' if spec['protocol'] == 'openai_responses' else 'native')
+            compatibility = spec.get('responses_compatibility', 'native')
             if compatibility not in ('native', 'portable'):
                 fail('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
             history_migration = enabled(spec.get('history_migration', False))
-            if spec['protocol'] != 'openai_responses' and (
-                    compatibility != 'native' or history_migration):
-                fail('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
             base = string(spec['base_url']).rstrip('/')
             try:
                 url = urlsplit(base)
@@ -149,7 +146,7 @@ class Catalog:
             if (url.scheme != 'https' or not url.hostname or url.username is not None
                     or url.password is not None or url.query or url.fragment
                     or any(c.isspace() for c in base) or port == 0
-                    or '\\' in base or base.endswith(('/chat/completions', '/responses'))):
+                    or '\\' in base or base.endswith('/responses')):
                 fail('CONFIG_INVALID_BASE_URL')
             credentials = mapping(spec['credentials'], {'api_key', 'api_key_env', 'env_file'})
             inline_key = None
@@ -167,16 +164,12 @@ class Catalog:
                     fail('CONFIG_INVALID_ENV_NAME')
                 if 'env_file' in credentials:
                     env_file = (self.path.parent / Path(string(credentials['env_file'])).expanduser()).resolve()
-            token_field = spec.get('token_limit_field', 'max_tokens')
-            if not isinstance(token_field, str) or token_field not in {'max_tokens', 'max_completion_tokens'}:
-                fail('CONFIG_INVALID_TOKEN_FIELD')
-            suffix = '/responses' if spec['protocol'] == 'openai_responses' else '/chat/completions'
-            provider = {'protocol': spec['protocol'], 'endpoint': base + suffix,
+            provider = {'protocol': spec['protocol'], 'endpoint': base + '/responses',
                 'responses_compatibility': compatibility, 'history_migration': history_migration,
                 'api_key': inline_key, 'api_key_env': key_env, 'env_file': env_file,
                 'enabled': enabled(spec.get('enabled', True)),
                 'timeout_seconds': positive(spec.get('timeout_seconds', 180), 3600),
-                'token_limit_field': token_field, 'parameters': parameters(spec.get('parameters', {}))}
+                'parameters': parameters(spec.get('parameters', {}))}
             self.providers[provider_id] = provider
             if not isinstance(spec['models'], dict) or not spec['models']:
                 fail('CONFIG_MODELS_REQUIRED')
@@ -191,8 +184,6 @@ class Catalog:
                 model_compatibility = model.get('responses_compatibility', compatibility)
                 if model_compatibility not in ('native', 'portable'):
                     fail('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
-                if provider['protocol'] != 'openai_responses' and model_compatibility != 'native':
-                    fail('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
                 output_limit = optional_positive(model.get('max_output_tokens'), MAX_OUTPUT_TOKENS)
                 self.models[key] = {'key': key, 'provider': provider_id,
                     'protocol': provider['protocol'], 'model_id': string(model['model_id']),

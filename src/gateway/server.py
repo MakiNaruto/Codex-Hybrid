@@ -29,7 +29,6 @@ from model_catalog.sources import (
     load_source, merged_catalog, update_cc_snapshot,
 )
 from model_catalog.catalog import ConfigError, resolve_api_key
-from adapters.chat import ChatAdapter
 from adapters.native_responses import NativeResponsesAdapter
 from adapters.minimal_responses import MinimalResponsesAdapter
 from adapters.request_compat import normalize_history, external_context, upstream_error
@@ -280,32 +279,24 @@ def external_route(body, settings):
     selected, provider = catalog.select(model)
     coordination = NativeCoordinationAdapter(
         set(settings['models']) - set(settings['official_models']))
-    native = (provider['protocol'] == 'openai_responses'
-              and provider.get('responses_compatibility', 'native') == 'native')
+    native = provider.get('responses_compatibility', 'native') == 'native'
     if native:
         adaptations = provider.get('responses_adaptations', [])
         adapter = (MinimalResponsesAdapter(adaptations, history_migration=provider.get('history_migration', False))
                    if adaptations else NativeResponsesAdapter(history_migration=provider.get('history_migration', False)))
     else:
-        adapter = ChatAdapter(model) if provider['protocol'] == 'openai_chat_completions' else ResponsesAdapter()
+        adapter = ResponsesAdapter()
     adapter.timeout_seconds = provider['timeout_seconds']
     advertised = expose_spawn_catalog(body, settings)
     converted = adapter.request(advertised if native else external_context(advertised, selected))
-    if provider['protocol'] == 'openai_chat_completions':
-        payload = converted
-        limit_field = provider['token_limit_field']
-        adapt = coordinated(adapter.event, coordination)
-    else:
-        payload = converted if native else {key: value for key, value in converted.items()
-                   if key in {'model', 'input', 'instructions', 'tools', 'stream'}}
-        limit_field = 'max_output_tokens'
-        adapt = adapter.stream_events if native else coordinated(adapter.stream_events, coordination)
+    payload = converted if native else {key: value for key, value in converted.items()
+               if key in {'model', 'input', 'instructions', 'tools', 'stream'}}
+    adapt = adapter.stream_events if native else coordinated(adapter.stream_events, coordination)
     # Provider settings may extend a request but never replace routing
     # instructions or the bridge's no-storage policy.
     payload.update({key: value for key, value in selected['parameters'].items()
                     if key not in {'store', 'instructions'}})
-    if provider['protocol'] == 'openai_responses':
-        payload['store'] = False
+    payload['store'] = False
     payload['model'] = selected['model_id']
     configured_limit = selected.get(
         'output_limit_configured', selected.get('max_output_tokens') is not None)
@@ -315,7 +306,7 @@ def external_route(body, settings):
     if 'max_output_tokens' in body or configured_limit:
         if type(budget) is not int or budget <= 0:
             raise ValueError('INVALID_OUTPUT_BUDGET')
-        payload[limit_field] = min(budget, selected['max_output_tokens']) if configured_limit else budget
+        payload['max_output_tokens'] = min(budget, selected['max_output_tokens']) if configured_limit else budget
     return provider['endpoint'], payload, {
         'Authorization': 'Bearer ' + resolve_api_key(provider),
         'Content-Type': 'application/json', 'Accept': 'text/event-stream'}, adapt
@@ -597,13 +588,11 @@ class Gateway:
                     protocol_adapter = getattr(converter, '__self__', adapter_owner)
                     native_adapter = getattr(protocol_adapter, 'native', protocol_adapter)
                     timeout = getattr(protocol_adapter, 'timeout_seconds', OFFICIAL_UPSTREAM_TIMEOUT_SECONDS)
-                    observation['protocol'] = ('openai_chat_completions' if
-                        isinstance(protocol_adapter, ChatAdapter) else 'openai_responses')
+                    observation['protocol'] = 'openai_responses'
                     observation.update(upstream_host=target.hostname, upstream_port=target.port,
                                        upstream_scheme=target.scheme, timeout_seconds=timeout,
                                        phase='connect_upstream')
-                    # Chat and official traffic retain immediate streaming. Only
-                    # Responses generations can be discarded and regenerated.
+                    # Portable Responses generations can be discarded and regenerated.
                     retry_unknown_tools = isinstance(protocol_adapter, ResponsesAdapter)
                     coordination = getattr(adapter_owner, 'coordination', None)
                     initial_calls = dict(getattr(native_adapter, 'call_bindings', {}))

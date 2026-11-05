@@ -1,18 +1,16 @@
-# Copy to <data-directory>/models.yaml and edit for your provider.
-# Enable both the provider and model after setting the API key and model ID.
+# Use a provider that supports the Responses API.
+# Replace the placeholder base URL, key and model ID before enabling.
 version: 1
-# Uncomment after enabling deepseek/flash to make it the default selection.
-# default_model: deepseek/flash
+# default_model: custom/default
 providers:
-  deepseek:
+  custom:
     enabled: false
-    protocol: openai_chat_completions
-    base_url: https://api.deepseek.com
+    protocol: openai_responses
+    base_url: https://api.example.com/v1
     credentials:
-      api_key_env: DEEPSEEK_API_KEY
-      env_file: ./deepseek.env
+      api_key_env: CONNECTED_API_KEY
     models:
-      flash:
+      default:
         enabled: false
-        model_id: deepseek-v4-flash
-        display_name: DeepSeek Flash
+        model_id: your-model-id
+        display_name: Responses Model

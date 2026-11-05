@@ -115,7 +115,7 @@ async function api(path,body){
 function setConnection(connected){
   const indicator=$('connection-indicator');indicator.textContent=connected?'本地服务已连接':'本地服务连接中断';indicator.classList.toggle('offline',!connected);
 }
-function errorMessage(error){const common={CODEX_NOT_READY:'请先安装并登录 Codex，确认本地官方配置与模型缓存可读取，再重试初始化。',NOT_CONFIGURED:'请先初始化管理配置。',INVALID_PREVIEW:'预览已失效，请重新预览并确认。',OPERATION_FAILED:'操作未完成，请刷新状态并检查配置后重试。',MODEL_SOURCE_CHANGED:'配置来源已变化，请关闭弹窗，刷新后重新选择模型。',MODEL_DISABLED_AT_SOURCE:'此模型在来源中已停用，请先在管理连接或 CC Switch 中启用。',INVALID_MODEL_PREFERENCES:'模型设置格式无效，请刷新后重试。',INSTANCE_BUSY:'其他进程正在操作此数据目录，请等待完成后刷新重试。',SERVICE_ALREADY_RUNNING:'此数据目录已有服务运行，未重复启动。',FORWARDING_START_FAILED:'模型转发未能启动，请查看转发状态中的故障原因；管理页面仍可使用。',FORWARDING_UNAVAILABLE:'当前无法恢复模型转发，请检查接入配置。',OPERATION_TIMEOUT:'操作等待超时，结果尚未确认。请刷新状态后检查，不要连续重复提交。',SERVICE_UNREACHABLE:'无法连接本地服务，请确认服务已启动后重试。',INVALID_SERVICE_RESPONSE:'服务返回了无法读取的响应，请刷新页面或检查服务日志。',CONCURRENCY_LIMIT:'当前请求数已达上限，请等待现有请求结束后重试。',CREDENTIALS_NOT_FOUND:'未找到 API Key，请填写并保存，或检查凭据环境变量。',CONFIG_INVALID_IDENTIFIER:'厂商标识和模型别名仅支持字母、数字、点、下划线和连字符，且须以字母或数字开头。',CONFIG_INVALID_BASE_URL:'API 地址需要有效的 HTTPS 基础地址，不要填写 /chat/completions 或 /responses。',CONFIG_INVALID_LIMIT:'上下文、输出上限或超时时间须为支持范围内的正整数。',CONFIG_RESERVED_PARAMETER:'高级参数包含模型、消息、认证或输出预算等保留字段，请使用对应表单设置。',CONFIG_INVALID_PARAMETERS:'高级参数必须是 JSON 对象。',CONFIG_MISSING_FIELD:'配置缺少必要字段，请检查厂商与模型信息。',UPSTREAM_STREAM_ENDED_EARLY:'上游连接已结束，但没有收到完成信号。请检查协议及模型是否匹配。',UPSTREAM_OUTPUT_BUDGET_EXHAUSTED:'连接测试达到输出预算，尚未完整完成，请检查模型输出设置。',UPSTREAM_INCOMPLETE:'上游返回未完成响应，请检查服务状态。'};if(common[error.message])return common[error.message];if(error instanceof SyntaxError)return '高级参数 JSON 格式有误，请检查逗号、引号和括号。';const routingErrors={SESSION_BACKUP_TIMEOUT:'会话索引备份等待超时，接入配置尚未切换。请关闭占用数据库的程序后重新预览并重试。',SESSION_MIGRATION_PROCESS_CHECK_FAILED:'无法读取 Codex 进程状态。开启或关闭接入时可重新预览并确认影响后继续；恢复备份前请检查系统权限。',SESSION_MIGRATION_CODEX_RUNNING:'检测到相关 Codex 进程。开启或关闭接入时可重新预览并确认影响后继续；CLI 迁移前请先退出 Codex。',SESSION_MIGRATION_CHANGED:'会话在预览后发生变化，请重新预览并重试。',SESSION_INDEX_CODEX_UNAVAILABLE:'未找到可用的 Codex 程序，无法补齐会话索引。请安装 Codex，或在实例设置中指定 codex_executable。',SESSION_INDEX_REPAIR_FAILED:'Codex 无法补齐会话索引，接入配置尚未切换。请检查 Codex 版本和本地数据后重试。',SESSION_INDEX_REPAIR_INCOMPLETE:'Codex 尚未补齐全部会话索引，接入配置尚未切换。请检查会话是否能在 Codex 中读取。',SESSION_MODEL_LIST_EMPTY:'缺少可用的官方模型列表，无法替换第三方会话模型。请先更新模型列表。',SESSION_BASELINE_UNAVAILABLE:'首次基线缺失或损坏，已停止切换。请退出相关 Codex 客户端，检查备份；确认采用当前状态后，运行 codex-hybrid reset-session-baseline（自定义目录需传 --codex-home 和 --data-dir）重建。',SESSION_MIGRATION_RECOVERY_REQUIRED:'发现中断的会话迁移，请按使用文档恢复备份后重试。',CLIENT_CONFIG_CHANGED:'Codex 配置在预览后发生变化，或接入字段已被外部修改。未应用切换，请刷新并检查配置后重试。',CLIENT_BASELINE_UNAVAILABLE:'缺少可信的接入前配置备份，已停止自动恢复。请检查本地备份后修复。',CLIENT_CONFIG_REWRITE_UNSAFE:'无法安全修改 Codex 配置，已停止切换。请检查配置格式。',CLIENT_ROUTING_UNAVAILABLE:'当前 Codex 配置无法切换，请检查配置文件、厂商和 profile。',CLIENT_ROUTING_ALREADY_SET:'配置已处于目标状态，请刷新查看。'};if(routingErrors[error.message])return routingErrors[error.message];if(error.message==='LOCAL_AUTH_REQUIRED')return '已开启私密链接访问，请运行 codex-hybrid manage-url 获取管理链接。';if(error.message==='UPSTREAM_HTTP_401'){const source=state?.mode==='cc_switch'?'CC Switch':'独立管理';const next=state?.mode==='cc_switch'?'请在 CC Switch 更新该厂商的 API Key，然后重试。':'请在厂商配置中更新 API Key 并保存，然后重试。';return '厂商认证失败（401）。当前凭据来源：'+source+'。'+next+'无需重启网关，不会回退到其他 Key。';}return '操作未完成：'+error.message;}
+function errorMessage(error){const common={CODEX_NOT_READY:'请先安装并登录 Codex，确认本地官方配置与模型缓存可读取，再重试初始化。',NOT_CONFIGURED:'请先初始化管理配置。',INVALID_PREVIEW:'预览已失效，请重新预览并确认。',OPERATION_FAILED:'操作未完成，请刷新状态并检查配置后重试。',MODEL_SOURCE_CHANGED:'配置来源已变化，请关闭弹窗，刷新后重新选择模型。',MODEL_DISABLED_AT_SOURCE:'此模型在来源中已停用，请先在管理连接或 CC Switch 中启用。',INVALID_MODEL_PREFERENCES:'模型设置格式无效，请刷新后重试。',INSTANCE_BUSY:'其他进程正在操作此数据目录，请等待完成后刷新重试。',SERVICE_ALREADY_RUNNING:'此数据目录已有服务运行，未重复启动。',FORWARDING_START_FAILED:'模型转发未能启动，请查看转发状态中的故障原因；管理页面仍可使用。',FORWARDING_UNAVAILABLE:'当前无法恢复模型转发，请检查接入配置。',OPERATION_TIMEOUT:'操作等待超时，结果尚未确认。请刷新状态后检查，不要连续重复提交。',SERVICE_UNREACHABLE:'无法连接本地服务，请确认服务已启动后重试。',INVALID_SERVICE_RESPONSE:'服务返回了无法读取的响应，请刷新页面或检查服务日志。',CONCURRENCY_LIMIT:'当前请求数已达上限，请等待现有请求结束后重试。',CREDENTIALS_NOT_FOUND:'未找到 API Key，请填写并保存，或检查凭据环境变量。',CONFIG_INVALID_IDENTIFIER:'厂商标识和模型别名仅支持字母、数字、点、下划线和连字符，且须以字母或数字开头。',CONFIG_INVALID_BASE_URL:'API 地址需要有效的 HTTPS 基础地址，不要包含具体接口路径（如 /responses）。',CONFIG_INVALID_LIMIT:'上下文、输出上限或超时时间须为支持范围内的正整数。',CONFIG_RESERVED_PARAMETER:'高级参数包含模型、消息、认证或输出预算等保留字段，请使用对应表单设置。',CONFIG_INVALID_PARAMETERS:'高级参数必须是 JSON 对象。',CONFIG_UNSUPPORTED_PROTOCOL:'仅支持 Responses API，请将厂商配置改为 openai_responses 并确认供应商支持 /responses。',CONFIG_MISSING_FIELD:'配置缺少必要字段，请检查厂商与模型信息。',UPSTREAM_STREAM_ENDED_EARLY:'上游连接已结束，但没有收到完成信号。请检查协议及模型是否匹配。',UPSTREAM_OUTPUT_BUDGET_EXHAUSTED:'连接测试达到输出预算，尚未完整完成，请检查模型输出设置。',UPSTREAM_INCOMPLETE:'上游返回未完成响应，请检查服务状态。'};if(common[error.message])return common[error.message];if(error instanceof SyntaxError)return '高级参数 JSON 格式有误，请检查逗号、引号和括号。';const routingErrors={SESSION_BACKUP_TIMEOUT:'会话索引备份等待超时，接入配置尚未切换。请关闭占用数据库的程序后重新预览并重试。',SESSION_MIGRATION_PROCESS_CHECK_FAILED:'无法读取 Codex 进程状态。开启或关闭接入时可重新预览并确认影响后继续；恢复备份前请检查系统权限。',SESSION_MIGRATION_CODEX_RUNNING:'检测到相关 Codex 进程。开启或关闭接入时可重新预览并确认影响后继续；CLI 迁移前请先退出 Codex。',SESSION_MIGRATION_CHANGED:'会话在预览后发生变化，请重新预览并重试。',SESSION_INDEX_CODEX_UNAVAILABLE:'未找到可用的 Codex 程序，无法补齐会话索引。请安装 Codex，或在实例设置中指定 codex_executable。',SESSION_INDEX_REPAIR_FAILED:'Codex 无法补齐会话索引，接入配置尚未切换。请检查 Codex 版本和本地数据后重试。',SESSION_INDEX_REPAIR_INCOMPLETE:'Codex 尚未补齐全部会话索引，接入配置尚未切换。请检查会话是否能在 Codex 中读取。',SESSION_MODEL_LIST_EMPTY:'缺少可用的官方模型列表，无法替换第三方会话模型。请先更新模型列表。',SESSION_BASELINE_UNAVAILABLE:'首次基线缺失或损坏，已停止切换。请退出相关 Codex 客户端，检查备份；确认采用当前状态后，运行 codex-hybrid reset-session-baseline（自定义目录需传 --codex-home 和 --data-dir）重建。',SESSION_MIGRATION_RECOVERY_REQUIRED:'发现中断的会话迁移，请按使用文档恢复备份后重试。',CLIENT_CONFIG_CHANGED:'Codex 配置在预览后发生变化，或接入字段已被外部修改。未应用切换，请刷新并检查配置后重试。',CLIENT_BASELINE_UNAVAILABLE:'缺少可信的接入前配置备份，已停止自动恢复。请检查本地备份后修复。',CLIENT_CONFIG_REWRITE_UNSAFE:'无法安全修改 Codex 配置，已停止切换。请检查配置格式。',CLIENT_ROUTING_UNAVAILABLE:'当前 Codex 配置无法切换，请检查配置文件、厂商和 profile。',CLIENT_ROUTING_ALREADY_SET:'配置已处于目标状态，请刷新查看。'};if(routingErrors[error.message])return routingErrors[error.message];if(error.message==='LOCAL_AUTH_REQUIRED')return '已开启私密链接访问，请运行 codex-hybrid manage-url 获取管理链接。';if(error.message==='UPSTREAM_HTTP_401'){const source=state?.mode==='cc_switch'?'CC Switch':'独立管理';const next=state?.mode==='cc_switch'?'请在 CC Switch 更新该厂商的 API Key，然后重试。':'请在厂商配置中更新 API Key 并保存，然后重试。';return '厂商认证失败（401）。当前凭据来源：'+source+'。'+next+'无需重启网关，不会回退到其他 Key。';}return '操作未完成：'+error.message;}
 async function action(fn){try{await fn();}catch(error){message(errorMessage(error),true);}}
 function button(text,fn,cls='secondary'){const b=el('button',text,cls);b.type='button';b.onclick=()=>action(async()=>{b.disabled=true;try{await fn();}finally{b.disabled=false;}});return b;}
 let fieldId=0;
@@ -180,7 +180,6 @@ function modelEditor(alias,model={},cc=false,savedModel){
   row.value=()=>{
     const output=limit.input.value.trim();
     const m={...model,model_id:id.input.value.trim()||null,display_name:name.input.value.trim()||a.input.value.trim(),max_output_tokens:output===''?null:Number(output),context_window:windowSize.input.value.trim()===''?131072:Number(windowSize.input.value),enabled:enabled.input.checked};
-    if(row.closest('.provider-layout')?.querySelector('select')?.value==='openai_chat_completions')delete m.responses_compatibility;
     if(!cc&&!m.model_id)throw Error('请填写模型 ID');
     if(!Number.isInteger(m.context_window)||m.context_window<1||m.context_window>16777216)throw Error('上下文窗口应为 1–16777216 的整数');
     if(m.max_output_tokens!==null&&(!Number.isInteger(m.max_output_tokens)||m.max_output_tokens<1||m.max_output_tokens>1048576))throw Error('输出上限应为 1–1048576 的整数');
@@ -208,38 +207,34 @@ function providerCard(id,original={}){
   card.addEventListener('input',()=>markDirty(card));card.addEventListener('change',()=>markDirty(card));
   const fields=el('div',undefined,'fields');
   const pid=field('厂商标识',id,'text','厂商的唯一标识，保存后不可修改。'),
-    base=field('API 地址',original.base_url||'','text','填写厂商的 API 基础地址，通常以 /v1 结尾；无需填写具体的聊天请求路径。'),
+    base=field('API 地址',original.base_url||'','text','填写支持 Responses 的 API 基础地址，通常以 /v1 结尾；不要包含 /responses。'),
     key=field('API Key','','password','留空保留现有凭据。已有 Key 不会回显；新填入的 Key 在保存后生效。'),
     active=field('启用厂商',original.enabled!==false,'checkbox');
   pid.input.readOnly=!!id;key.input.autocomplete='new-password';
   if(id)sidebar.append(el('p',state.credential_status?.[id]==='available'?'已找到本地凭据 · 不代表连接已验证':'未找到可读取的凭据，请检查 Key 或环境变量','hint'));
   key.input.placeholder=original.credentials?'已配置 · 留空保留':'输入 API Key';
-  const plabel=el('div',undefined,'form-field'),caption=el('div',undefined,'field-caption'),label=el('label','供应商接口协议'),protocol=el('select');
-  protocol.id='field-'+(++fieldId);label.htmlFor=protocol.id;
-  caption.append(label,help('Codex 使用 Responses 接入本工具；此选项决定本工具如何请求供应商。按供应商支持的接口选择，不自动切换协议。','接口协议说明'));
-  for(const [value,name]of[['openai_chat_completions','Chat Completions'],['openai_responses','Responses']]){const option=el('option',name);option.value=value;protocol.append(option);}
-  protocol.value=original.protocol||'openai_chat_completions';plabel.append(caption,protocol);
+  const plabel=el('div',undefined,'form-field'),caption=el('div',undefined,'field-caption');
+  caption.append(el('span','接口协议'),help('仅支持 Responses API，供应商须提供 /responses 接口。','接口协议说明'));
+  plabel.append(caption,el('span','Responses','badge'));
   for(const f of [pid,base])fields.append(f.label);fields.append(plabel,key.label,active.label);sidebar.append(fields);
   for(const [alias,m]of Object.entries(original.models||{default:{model_id:'',enabled:true}}))rows.append(modelEditor(alias,m,false,state.models.find(model=>model.key===id+'/'+alias)));
   tools.append(button('＋ 添加模型',()=>{let index=1;while([...rows.children].some(row=>row.alias()==='model'+index))index++;const row=modelEditor('model'+index);rows.append(row);markDirty(card);row.querySelector('input:not([type=checkbox])').focus();}));
   const advanced=el('details');advanced.append(el('summary','高级参数'));
   const params=el('textarea');params.value=JSON.stringify(original.parameters||{},null,2);params.setAttribute('aria-label','厂商参数 JSON');
-  const tokenField=el('select');tokenField.setAttribute('aria-label','输出预算字段');
-  for(const t of ['max_tokens','max_completion_tokens']){const o=el('option',t);o.value=t;tokenField.append(o);}tokenField.value=original.token_limit_field||'max_tokens';
   const timeout=field('请求超时（秒）',original.timeout_seconds??180,'number','范围为 1–3600 秒，影响第三方模型请求；连接测试固定使用 60 秒。');
   timeout.input.min='1';timeout.input.max='3600';timeout.input.step='1';
-  const compatibility=el('select');compatibility.setAttribute('aria-label','Responses 兼容模式');
-  for(const [value,name]of[['portable','兼容模式（推荐）'],['native','原生模式']]){const o=el('option',name);o.value=value;compatibility.append(o);}compatibility.value=original.responses_compatibility||'portable';
-  const migration=field('Responses 历史项 ID 重放',original.history_migration===true,'checkbox','跨服务迁移时移除有完整内容的历史项 ID；不解密推理，不还原纯 ID 引用。');
+  const compatibility=el('select');compatibility.setAttribute('aria-label','Responses 内容适配方式');
+  for(const [value,name]of[['native','原生模式'],['portable','Responses · 内容兼容转换']]){const o=el('option',name);o.value=value;compatibility.append(o);}compatibility.value=original.responses_compatibility||'native';
+  const migration=field('移除历史项 ID，按内容重放',original.history_migration===true,'checkbox','跨服务迁移时移除有完整内容的历史项 ID；不解密推理，不还原纯 ID 引用。');
   const protocolHint=el('div',undefined,'protocol-hint');plabel.append(protocolHint);
-  const syncResponses=()=>{const chat=protocol.value!=='openai_responses';compatibility.disabled=chat;migration.input.disabled=chat;protocolHint.replaceChildren(protocolIndicator(protocol.value,compatibility.value));};protocol.addEventListener('change',syncResponses);compatibility.addEventListener('change',syncResponses);syncResponses();
-  advanced.append(el('p','Responses 兼容模式'),compatibility,migration.label,el('p','原生模式保留协议结构；不支持时返回错误，不自动改用 Chat。Portable 会改变部分消息类别。','hint'));
-  advanced.append(timeout.label,el('p','厂商参数（JSON）'),params,el('p','Chat Completions 输出预算字段'),tokenField,el('p','Responses 使用 max_output_tokens。','hint'));sidebar.append(advanced);
+  const syncResponses=()=>{protocolHint.replaceChildren(protocolIndicator(compatibility.value));};compatibility.addEventListener('change',syncResponses);syncResponses();
+  advanced.append(el('p','Responses 内容适配方式'),compatibility,migration.label,el('p','内容兼容转换将扩展消息、工具和历史改写为更基础的 Responses 结构，仍请求 /responses。原生模式保留协议结构；不支持时返回错误。','hint'));
+  advanced.append(timeout.label,el('p','厂商参数（JSON）'),params,el('p','Responses 使用 max_output_tokens。','hint'));sidebar.append(advanced);
   const actions=el('div',undefined,'actions');
   actions.append(button('保存厂商',async()=>{
     if(!id&&Object.hasOwn(state.config.providers,pid.input.value.trim()))throw Error('厂商标识已存在，请使用其他标识，或直接编辑已有厂商。');
-    const spec={...original,base_url:base.input.value.trim(),protocol:protocol.value,enabled:active.input.checked,models:collect(rows),parameters:JSON.parse(params.value),token_limit_field:tokenField.value,timeout_seconds:Number(timeout.input.value)};
-    spec.responses_compatibility=protocol.value==='openai_responses'?compatibility.value:'native';spec.history_migration=protocol.value==='openai_responses'&&migration.input.checked;
+    const spec={...original,base_url:base.input.value.trim(),protocol:'openai_responses',enabled:active.input.checked,models:collect(rows),parameters:JSON.parse(params.value),timeout_seconds:Number(timeout.input.value)};
+    spec.responses_compatibility=compatibility.value;spec.history_migration=migration.input.checked;
     card.inert=true;
     try{await api('provider',{id:pid.input.value.trim(),spec,api_key:key.input.value||undefined});key.input.value='';clearDirty(card);connectionResults.clear();await refresh();message('厂商与模型已保存。Key、API 地址和兼容设置下一轮生效；模型列表变动后请重启 Codex，新列表才会在 Codex 中生效。');}
     finally{card.inert=false;}
@@ -248,29 +243,28 @@ function providerCard(id,original={}){
   const foot=el('div',undefined,'provider-footer');foot.append(el('span','修改后保存此厂商及其全部模型','hint'),actions);content.append(foot);
   return card;
 }
-function protocolNotice(protocol,compatibility='native'){
-  if(protocol==='openai_chat_completions')return '转换接入：本工具将 Codex 的 Responses 请求转换为 Chat Completions。部分工具类型、独立工具通知和推理历史可能降级或不受支持；连接测试通过不代表所有桌面功能兼容。此配置需通过本工具接入。';
-  if(compatibility==='portable')return 'Responses 兼容转换：本工具会改写工具结构和部分历史消息，可能改变消息类别。连接测试通过不代表所有桌面功能兼容。';
-  return 'Responses 原生转发：保留 Codex 协议结构，供应商仍需支持实际使用的工具和历史特性。不支持时返回错误，不自动改用 Chat Completions。';
+function protocolNotice(compatibility='native'){
+  if(compatibility==='portable')return 'Responses · 内容兼容转换：将扩展消息、工具和历史改写为更基础的 Responses 结构，仍请求上游 /responses 接口。连接测试通过不代表所有桌面功能兼容。';
+  return 'Responses 原生转发：保留 Codex 协议结构，供应商仍需支持实际使用的工具和历史特性。不支持时返回错误。';
 }
-function protocolIndicator(protocol,compatibility='native'){
-  const warning=protocol==='openai_chat_completions'||compatibility==='portable';
-  const label=warning?'兼容转换':'原生转发';
+function protocolIndicator(compatibility='native'){
+  const warning=compatibility==='portable';
+  const label=warning?'Responses · 内容兼容转换':'原生转发';
   const indicator=el('span',undefined,'protocol-indicator'+(warning?' is-warning':''));
-  const trigger=help(protocolNotice(protocol,compatibility),label+'说明');
+  const trigger=help(protocolNotice(compatibility),label+'说明');
   trigger.textContent=warning?'!':'i';trigger.classList.add('protocol-info');
   trigger.dataset.helpTone=warning?'warning':'neutral';
-  trigger.dataset.helpTitle=warning?'通过协议转换接入':'使用 Responses 原生转发';
+  trigger.dataset.helpTitle=warning?'Responses · 内容兼容转换':'使用 Responses 原生转发';
   indicator.append(trigger,el('span',label));return indicator;
 }
 function ccCard(entry){
   const {card,sidebar,content,rows}=providerLayout(entry.name,'同步自 CC Switch · '+entry.models.length+' 个模型',true);
   card.classList.add('cc-provider');
   card.dataset.providerId=entry.provider_key;
-  const badges=el('div',undefined,'provider-badges');badges.append(el('span',entry.protocol==='openai_responses'?'Responses':'Chat Completions','badge'),el('span','只读','badge'));sidebar.append(badges);
-  badges.append(protocolIndicator(entry.protocol,entry.responses_compatibility));
+  const badges=el('div',undefined,'provider-badges');badges.append(el('span','Responses','badge'),el('span','只读','badge'));sidebar.append(badges);
+  badges.append(protocolIndicator(entry.responses_compatibility));
   const address=el('div',undefined,'provider-address');address.append(el('p',entry.base_url));sidebar.append(address);
-  const note=el('div',undefined,'readonly-note');note.append(el('span','在 CC Switch 中编辑配置'),help('仅同步 OpenAI / Codex 第三方配置，不回写数据库、不切换其他工具的当前厂商。每轮调用读取最新 Key。','CC Switch 同步说明'));content.append(note);
+  const note=el('div',undefined,'readonly-note');note.append(el('span','在 CC Switch 中编辑配置'),help('仅同步支持 Responses 的 OpenAI / Codex 第三方配置，不回写数据库、不切换其他工具的当前厂商。每轮调用读取最新 Key。','CC Switch 同步说明'));content.append(note);
   for(const model of entry.models){
     const item=el('div',undefined,'cc-model');
     const identity=el('div',undefined,'cc-model-identity');

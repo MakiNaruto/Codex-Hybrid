@@ -83,8 +83,8 @@ Codex 用户目录默认是 `~/.codex`，可通过 `CODEX_HOME` 或首次初始�
 
 | 字段 | 填写内容 |
 | --- | --- |
-| `providers.<厂商标识>.base_url` | API 前缀，是否包含 `/v1` 按供应商要求，不填 `/chat/completions` |
-| `protocol` | Chat Completions 用 `openai_chat_completions`，Responses 用 `openai_responses` |
+| `providers.<厂商标识>.base_url` | API 前缀，是否包含 `/v1` 按供应商要求，不填 `/responses` |
+| `protocol` | 仅支持 `openai_responses` |
 | `credentials` | 直接填写 `api_key`，或用 `api_key_env` 配合 `env_file` 引用 Key，二选一 |
 | `models.<模型别名>.model_id` | 供应商实际支持的准确模型 ID |
 | `models.<模型别名>.display_name` | Codex 模型列表中的显示名称 |

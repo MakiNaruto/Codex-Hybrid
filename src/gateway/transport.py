@@ -1,4 +1,4 @@
-"""Shared streaming transport for OpenAI-compatible Chat Completions."""
+"""Shared streaming transport for Responses requests."""
 import errno
 import base64
 import json

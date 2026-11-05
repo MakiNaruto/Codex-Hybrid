@@ -16,7 +16,7 @@ class UnregisteredToolError(ValueError):
 
 
 class ResponsesAdapter:
-    """Explicit portable compatibility bridge, also used by ChatAdapter.
+    """Explicit portable Responses compatibility bridge.
 
     Native Responses routes use NativeResponsesAdapter instead.
     """

@@ -42,7 +42,7 @@ SAFE_VALUES = {
                    'GATEWAY_STREAM_ADAPTATION_FAILED', 'UPSTREAM_STREAM_ENDED_EARLY',
                    'UPSTREAM_PROTOCOL_MISMATCH', 'INVALID_STREAM_PAYLOAD', 'UNSUPPORTED_REASONING_HISTORY',
                    'UNSUPPORTED_SYSTEM_CONTENT', 'UNSUPPORTED_AGENT_MESSAGE_CONTENT'},
-    'protocol': {'openai_responses', 'openai_chat_completions'},
+    'protocol': {'openai_responses'},
     'route_type': {'official', 'external'},
     'upstream_error_type': {'invalid_request_error', 'authentication_error', 'permission_error',
                            'not_found_error', 'rate_limit_error', 'server_error', 'api_error',
@@ -236,88 +236,4 @@ def stderr_errors(lines, source, fallback_time=None, include_details=False):
             clean['time'] = entry_time
         errors.append(clean)
     for error in errors:
-        if 'time' not in error and fallback_time is not None:
-            error.update(time=fallback_time, time_source='file_modified')
-    return errors
-
-
-def recent_errors(directory, days=None, now=None, include_details=False):
-    if days not in (None, 1, 7, 30):
-        raise ValueError("Unsupported diagnostic period")
-    now = time.time() if now is None else now
-    cutoff = now - days * 86400 if days is not None else None
-    errors = []
-    found = False
-    unavailable = False
-    for base in ('service.jsonl', 'service.stderr', 'service.startup.stderr'):
-        # Runtime rotation retains three backups. Read old to new within each source.
-        for suffix in ('.3', '.2', '.1', ''):
-            source = base + suffix
-            try:
-                lines = read_records(directory / source)
-                modified = (directory / source).stat().st_mtime
-                found = True
-            except FileNotFoundError:
-                continue
-            except OSError:
-                unavailable = True
-                continue
-            if base != 'service.jsonl':
-                errors.extend(stderr_errors(lines, source, modified, include_details))
-                continue
-            for line in lines:
-                try:
-                    entry = json.loads(line)
-                except (ValueError, UnicodeError, RecursionError):
-                    continue
-                if (not isinstance(entry, dict) or not isinstance(entry.get('status'), str)
-                        or entry['status'] not in STATUSES):
-                    continue
-                clean = {'status': entry['status']}
-                clean.update(safe_details(entry))
-                if include_details:
-                    clean['detail_id'] = detail_id(line)
-                if isinstance(entry.get('phase'), str) and entry['phase'] in PHASES:
-                    clean['phase'] = entry['phase']
-                for field, maximum in [('time', 1e11), ('elapsed_ms', 1e12), ('http_status', 599)]:
-                    value = number(entry.get(field), maximum)
-                    if value is not None:
-                        clean[field] = value
-                if 'time' not in clean:
-                    clean.update(time=modified, time_source='file_modified')
-                errors.append(clean)
-    if cutoff is not None:
-        errors = [entry for entry in errors if cutoff <= entry.get('time', 0) <= now]
-    errors.sort(key=lambda entry: entry.get('time', 0), reverse=True)
-    # Legacy records share a file timestamp; merge identical safe summaries only.
-    grouped = []
-    legacy = {}
-    for entry in errors:
-        if entry.get('time_source') != 'file_modified':
-            grouped.append(entry)
-            continue
-        key = tuple(sorted(entry.items()))
-        if key in legacy:
-            previous = legacy[key]
-            previous['count'] = previous.get('count', 1) + 1
-        else:
-            legacy[key] = entry
-            grouped.append(entry)
-    errors = grouped
-    state = 'partial' if unavailable and found else 'unavailable' if unavailable else 'available' if found else 'missing'
-    result = {'state': state, 'errors': errors,
-              'coverage': {'retained_files_only': True, 'rotation_may_remove_history': True,
-                           'includes_successful_requests': False, 'read_failed': unavailable}}
-    return result
-
-
-def report(manager, days=1, include_details=False):
-    activity = manager.activity_state()
-    started = getattr(manager.gateway, 'started_at', None)
-    now = time.time()
-    return {'schema_version': 2, 'generated_at': now, 'period_days': days,
-            'environment': environment(),
-            'service': {'status': 'running', 'uptime_seconds':
-                        max(0, int(time.monotonic() - started)) if started is not None else None},
-            'routing_mode': manager.routing_state(), 'activity': activity,
-            'log': recent_errors(manager.directory, days=days, now=now, include_details=include_details)}
+        if 'time'

@@ -32,10 +32,10 @@
 
 | 字段 | 示例 / 含义 |
 | --- | --- |
-| API 前缀 | `https://api.deepseek.com`；是否包含 `/v1` 按供应商要求，不填 `/chat/completions` |
+| API 前缀 | `https://api.example.com/v1`；厂商须支持 Responses，不填 `/responses` |
 | 模型 ID | `deepseek-v4-flash`；须使用账号实际有权限的准确 ID |
 | 显示名称 | `DeepSeek Flash`；显示在 Codex 模型列表中 |
-| 协议 | 供应商支持的 Chat Completions 或 Responses |
+| 协议 | 仅支持 Responses（`openai_responses`） |
 | API Key | 输入不显示；保存在本机私有文件中 |
 
 向导在所选数据目录生成 `setup-models.yaml` 和 `provider.env`，然后询问是否现在启动服务。安装过程不会自动启用路由；在管理页打开“客户端路由”开关后，才会更新 Codex 配置。服务启动后会在管理链接可用时打开管理页。Key 输入不显示，首次配置不会自动调用付费 API。
@@ -56,21 +56,21 @@
 
 ### Responses 原生与兼容模式
 
-管理页将协议标为“供应商接口协议”，并在手动配置和 CC Switch 厂商卡片中持续展示实际转发方式。选择 Chat Completions 时，本工具保留 Responses → Chat Completions 转换；部分工具类型、独立工具通知和推理历史可能降级或不受支持，连接测试通过不代表全部桌面功能兼容。该配置需要通过本工具接入，不能据此认定 Codex 可以直连 Chat Completions。
+Windows 和 macOS 均仅支持 Responses API。管理页展示手动配置和 CC Switch 厂商的原生或 Portable Responses 转发方式。已移除 Chat Completions 支持：旧 YAML 中的 `openai_chat_completions` 会被拒绝，CC Switch 的 Chat 记录会从可导入列表中排除。请使用支持 Responses 的厂商地址，设置 `protocol: openai_responses`，并删除已废弃的 `token_limit_field` 字段；仅修改协议字段不会让厂商获得 Responses 能力。
 
-自行配置或 CC Switch 选择 Responses 后，默认使用 Portable 兼容转换；用户可在模型详情关闭，或显式配置 native 保留原生结构。不会自动切换为 Chat Completions 协议；Chat Completions 使用其现有转换。
+自行配置或 CC Switch 选择 Responses 后，默认使用原生模式；用户可在模型详情开启内容兼容转换，或显式配置 portable。
 
 独立 YAML 可在厂商层配置（管理页“高级参数”也提供这两个选项）：
 
 ```yaml
 protocol: openai_responses
-responses_compatibility: portable  # 默认；native 保留原生结构
+responses_compatibility: native  # 默认；portable 开启内容兼容转换
 history_migration: false        # true 仅移除可按完整内容重放的历史项 ID
 ```
 
 `portable` 会归并系统指令、展开工具定义、将独立工具输出降级为 user 上下文，并将可读推理转为历史文本、移除不透明推理；它已包含历史项 ID 重放。`history_migration` 本身不会解密推理或还原纯 ID 引用。两个服务都使用 Responses，不代表加密状态与文件资源可以互用。
 
-CC Switch 模式从所选 `model_providers.<厂商>` TOML 配置读取同名字段；本项目只读其数据库，不代写这些选项。未填写时使用 `portable` 和 `false`。协议仍由 CC Switch 的 `meta.apiFormat` 优先于 `wire_api` 决定。Chat Completions 不接受 `portable` 或开启历史迁移这两个 Responses 专属设置。
+CC Switch 模式从所选 `model_providers.<厂商>` TOML 配置读取同名字段；本项目只读其数据库，不代写这些选项。未填写时使用 `native` 和 `false`。CC Switch 的 `wire_api` 必须为 `responses`（未填时的默认值）；`meta.apiFormat` 若填写则必须为 `openai_responses`，其他协议不进入可导入列表。
 
 旧版单厂商 `.env` 路由也默认走原生 Responses；需要 Portable 时请改用上述 YAML 或 CC Switch 配置。
 
@@ -274,6 +274,6 @@ agent 消息适配也处理宿主将可读任务文本放在 `encrypted_content`
 
 局部兼容不缓存整轮输出，不自动重试生成；正文、阶段标记和未转换工具的参数增量直接转发。包装后的 custom 工具参数需收齐并验证字符串后才能还原为原生调用，因此该工具的输入增量不转发。原始 grammar 作为输入约束说明传递，不能保证上游强制遵守。加密 agent 消息不会解密或当作明文；不支持时明确失败。不要据简单连接测试推断历史切换、全部工具或嵌套 agent 已通过。
 
-管理页的模型详情可单独开关兼容模式。Hybrid 将覆盖值和已添加名单保存到私有 `settings.json` 的 `model_preferences`，不回写 CC Switch。YAML 的每个模型也可设置 `responses_compatibility`；优先级为 Hybrid 模型覆盖 → YAML 模型设置 → 厂商设置 → Responses 默认 portable。Chat 不显示此开关。
+管理页的模型详情可单独开关兼容模式。Hybrid 将覆盖值和已添加名单保存到私有 `settings.json` 的 `model_preferences`，不回写 CC Switch。YAML 的每个模型也可设置 `responses_compatibility`；优先级为 Hybrid 模型覆盖 → YAML 模型设置 → 厂商设置 → Responses 默认 native。
 
 已添加名单同时限制客户端目录与实时调用。升级首次发布保留已有模型；当前 Codex 第三方记录第一次被识别时自动加入该记录的全部模型，这是唯一的自动发现加项。此后新发现模型需手动添加，用户删除的自动加入模型也不会被静默恢复。不同 CC Switch 数据库的名单独立，切回原来源恢复其选择。通过独立管理保存新模型视为明确添加；仅在来源文件中出现的新模型不会自动加入。

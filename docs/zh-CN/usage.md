@@ -67,7 +67,7 @@ Windows 上，每次上游请求都会重新读取当前用户的系统 HTTP/HTT
 
 ### 跨模型调用子 agent
 
-主会话可选择支持工具调用的官方或第三方模型。网关会向官方、第三方原生 Responses、portable Responses 和 Chat Completions 路径中的协作工具补全已启用的模型目录；父模型可指定官方或其他第三方模型作为子 agent，子 agent 也可在客户端允许的层级与并发限制内继续创建子 agent。原生 Responses 保留工具命名空间和流事件，不转换为 portable 协议。
+主会话可选择支持工具调用的官方或第三方模型。网关会向官方、第三方原生 Responses、portable Responses 路径中的协作工具补全已启用的模型目录；父模型可指定官方或其他第三方模型作为子 agent，子 agent 也可在客户端允许的层级与并发限制内继续创建子 agent。原生 Responses 保留工具命名空间和流事件，不转换为 portable 协议。
 
 发送以下最小 prompt。**先替换模型 key**：手动示例是 `deepseek/flash`，向导填写模式是 `custom/default`，CC Switch 以实际注册目录为准，可用 `status` 查看模型 key 列表。验证反向调用时，将主会话切换为第三方模型，并将子模型 key 换成客户端支持的官方模型或另一已启用的第三方模型。
 

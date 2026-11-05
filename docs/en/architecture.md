@@ -24,21 +24,21 @@ Configuration, credentials, tokens, and backups live in the selected data direct
 
 ### Protocol compatibility boundaries
 
-Third-party Responses defaults to portable compatibility. Explicit `responses_compatibility: native` selects native transport: request fields, message types, tool namespaces, standalone tool outputs, reasoning and encrypted state, and streamed argument deltas are preserved. Routing replaces the address, credentials and model ID, applies explicit parameters/output budgets, and enforces no storage. It does not inject routing instructions, flatten tools, retry generations or fall back to Chat.
+Third-party Responses defaults to native transport (`responses_compatibility: native`): request fields, message types, tool namespaces, standalone tool outputs, reasoning and encrypted state, and streamed argument deltas are preserved. Routing replaces the address, credentials and model ID, applies explicit parameters/output budgets, and enforces no storage. It does not inject routing instructions, flatten tools, retry generations.
 
-Chat Completions retains the portable conversion. Responses uses that bridge by default or with explicit `responses_compatibility: portable`: readable reasoning becomes historical assistant text, opaque reasoning is omitted, system/developer messages are consolidated, and tools are flattened. This changes semantics and is not equivalent to native transport.
+Responses uses the portable bridge with explicit `responses_compatibility: portable`: readable reasoning becomes historical assistant text, opaque reasoning is omitted, system/developer messages are consolidated, and tools are flattened. This changes semantics and is not equivalent to native transport.
 
 History migration is separate. Native Responses supports `history_migration: true` to remove replayable top-level item IDs, preserving call IDs, nested resource IDs and bare references. It cannot decrypt reasoning or fetch missing history. Portable conversion already includes this ID handling. The official route keeps its existing migration behavior.
 
 Portable instruction consolidation applies to messages, not developer-role tool metadata. Native transport preserves named standalone outputs without a `call_id`; only the compatibility bridge converts them to user context with source attribution. Real tool results retain their call identities.
 
-When replayed tool history omits a namespace and has no exact registered alias, portable conversion resolves the short name only if exactly one registered tool of the same call kind matches. Explicit namespaces are never redirected. Unknown, ambiguous or mismatched tool kinds fail before forwarding; call IDs, arguments and results are preserved. This rule is shared by portable Responses and Chat Completions and does not change native transport or platform-specific behavior.
+When replayed tool history omits a namespace and has no exact registered alias, portable conversion resolves the short name only if exactly one registered tool of the same call kind matches. Explicit namespaces are never redirected. Unknown, ambiguous or mismatched tool kinds fail before forwarding; call IDs, arguments and results are preserved. This rule applies to portable Responses and does not change native transport or platform-specific behavior.
 
 Repeated definitions may update a tool's description; the last encountered description is retained when the execution schema is identical. Conflicting parameter schemas or bindings are still rejected.
 
 Both protocols share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. There is no automatic protocol switching. Native Responses does not retry generations; portable Responses retains its existing unknown-tool retry mechanism. Portable coordination guidance uses the request-scoped tool registry; ambiguous short tool names are not guessed.
 
-Hybrid stores membership and per-model compatibility overrides in its own settings.json, scoped by source; CC Switch remains read-only. Both directory publication and live routing enforce membership. Upgrade preserves previously published models; newly discovered models require an Add action. Hybrid model overrides take precedence over YAML model options and provider defaults. Explicit native is preserved; unspecified Responses compatibility defaults to portable.
+Hybrid stores membership and per-model compatibility overrides in its own settings.json, scoped by source; CC Switch remains read-only. Both directory publication and live routing enforce membership. Upgrade preserves previously published models; newly discovered models require an Add action. Hybrid model overrides take precedence over YAML model options and provider defaults. Explicit native is preserved; unspecified Responses compatibility defaults to native.
 
 ### Code responsibilities and reuse
 
@@ -63,8 +63,7 @@ The former root `desktop/` is now `apps/desktop/`, and `src/desktop/` is now `sr
 | `gateway/server.py` | HTTP lifecycle, authentication and route selection; `external_route` assembles external requests without executing tools |
 | `model_catalog/` | Configuration sources, model catalogs, credentials and model preferences |
 | `adapters/native_responses.py` | Native Responses transport with explicitly configured history ID migration |
-| `adapters/responses.py` | Portable tool registration, history mapping, conflict checks and event conversion, shared by Chat |
-| `adapters/chat.py` | Chat messages and stream conversion on top of the shared Portable rules |
+| `adapters/responses.py` | Portable tool registration, history mapping, conflict checks and event conversion |
 | `adapters/coordination.py` | Native collaboration namespace mapping and request-scoped spawn naming, independent of Portable conversion |
 | `adapters/request_compat.py` | History replay, routing context and sanitized errors |
 | `management/` | Publication, management HTTP and forwarding lifecycle; the service owns locks and settings snapshots while `routing.py` plans and commits recoverable routing transactions |

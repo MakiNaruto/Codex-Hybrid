@@ -30,10 +30,10 @@ In `install`, choose **1 = Manual API setup** and provide:
 
 | Field | Example / meaning |
 | --- | --- |
-| API base URL | `https://api.deepseek.com`; include `/v1` only if required, not `/chat/completions` |
+| API base URL | `https://api.example.com/v1`; use a Responses-capable provider and omit `/responses` |
 | Model ID | `deepseek-v4-flash`; use the exact ID available to your account |
 | Display name | `DeepSeek Flash`; shown in Codex's model picker |
-| Protocol | Chat Completions or Responses, as supported by the provider |
+| Protocol | Responses only (`openai_responses`) |
 | API key | Input is hidden and saved in local private files |
 
 The wizard generates `setup-models.yaml` and `provider.env`, then asks whether to start the service. It does not enable routing during installation; turn on **Client routing** in the management page to update Codex configuration. The page opens when the service starts and the link is available. Initial setup does not automatically call paid APIs.
@@ -54,19 +54,19 @@ Third-party-only and mixed routing use the same rules for third-party models. Th
 
 ### Native Responses and explicit compatibility
 
-The management page labels the choice as the provider API protocol and persistently explains the forwarding mode for both manual and CC Switch provider cards. Chat Completions retains Responses-to-Chat conversion through this gateway. Some tool types, standalone notifications and reasoning history may be downgraded or unsupported; a passing connection test does not establish full desktop compatibility. This configuration requires the gateway rather than a direct Codex connection to Chat Completions.
+Only the Responses API is supported on Windows and macOS. The management page shows native or portable Responses forwarding for manual and CC Switch providers. Chat Completions support has been removed: old YAML configurations using `openai_chat_completions` are rejected, and Chat records in CC Switch are excluded from the import list. Use a Responses-capable endpoint and set `protocol: openai_responses`; remove the obsolete `token_limit_field` setting. Changing the protocol field alone does not add Responses support to a provider.
 
-Responses defaults to portable compatibility for both YAML and CC Switch sources. Explicit native settings remain supported. Failures do not trigger Chat Completions fallback. Chat retains its existing conversion. Provider-level YAML options (also available under Advanced settings in management) are:
+Responses defaults to native mode for both YAML and CC Switch sources. Content compatibility conversion must be enabled explicitly. Provider-level YAML options (also available under Advanced settings in management) are:
 
 ```yaml
 protocol: openai_responses
-responses_compatibility: portable  # default; native preserves protocol structure
+responses_compatibility: native  # default; portable enables content compatibility conversion
 history_migration: false        # true removes only replayable top-level history item IDs
 ```
 
 Portable mode consolidates instructions, flattens tools, converts standalone tool outputs to user context, converts readable reasoning to historical text, and omits opaque reasoning. It already includes item-ID replay. History migration alone cannot decrypt reasoning or resolve bare item references. Responses support does not make encrypted state or file resources portable between services.
 
-For CC Switch, these fields are read from the selected `model_providers.<provider>` TOML table; the database remains read-only. Defaults are `portable` and `false`. CC Switch `meta.apiFormat` still overrides `wire_api`. Chat configurations reject `portable` or enabled history migration, which are Responses-specific. Legacy single-provider `.env` routing also defaults to native Responses; use YAML or CC Switch for portable compatibility.
+For CC Switch, these fields are read from the selected `model_providers.<provider>` TOML table; the database remains read-only. Defaults are `native` and `false`. CC Switch `wire_api` must be `responses` (also the default); `meta.apiFormat`, when present, must be `openai_responses`. Other protocols are excluded from the import list. Legacy single-provider `.env` routing also defaults to native Responses; use YAML or CC Switch for portable compatibility.
 
 ### Catalog and synchronization
 
@@ -265,6 +265,6 @@ Experimental native feature adaptations: keep the model in `native` mode and set
 
 This path streams immediately, without whole-generation buffering or generation retries. Text, phases and unaffected tool argument deltas are preserved. Wrapped custom inputs are restored only after complete JSON/string validation, so their wrapper argument deltas are suppressed. Original grammar is conveyed as guidance rather than guaranteed upstream enforcement. Encrypted agent messages are rejected rather than decrypted or treated as plaintext. Connection probes do not establish full history-switching or nested-agent acceptance.
 
-Model details offers a per-model compatibility switch. Hybrid stores this override and the added-model list in its private settings.json (`model_preferences`), without writing to CC Switch. YAML models may also specify responses_compatibility. Precedence: Hybrid model override → YAML model setting → provider setting → portable default for Responses. Chat does not expose this switch.
+Model details offers a per-model compatibility switch. Hybrid stores this override and the added-model list in its private settings.json (`model_preferences`), without writing to CC Switch. YAML models may also specify responses_compatibility. Precedence: Hybrid model override → YAML model setting → provider setting → native default for Responses.
 
 Membership controls both publication and live routing. The first upgrade publication retains previously advertised models. The first recognition of the current Codex third-party record is the only automatic discovery import: all of that record's models are added once. Later discoveries require explicit selection, and removing an imported model does not silently restore it. CC Switch database selections are scoped separately and restored when switching back. Saving a new model in independent management counts as an explicit Add; external source-file additions do not.

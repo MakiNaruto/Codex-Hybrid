@@ -79,8 +79,8 @@ Before the first initialization, copy `config/models.example.yaml` to `models.ya
 
 | Field | Value |
 | --- | --- |
-| `providers.<provider_id>.base_url` | API prefix; include `/v1` only as required by the provider, not `/chat/completions` |
-| `protocol` | `openai_chat_completions` or `openai_responses` |
+| `providers.<provider_id>.base_url` | API prefix; include `/v1` only as required by the provider, not `/responses` |
+| `protocol` | `openai_responses` only |
 | `credentials` | Either `api_key`, or `api_key_env` with optional `env_file` |
 | `models.<alias>.model_id` | Exact model ID supported by your provider account |
 | `models.<alias>.display_name` | Name displayed in Codex's model picker |

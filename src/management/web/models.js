@@ -10,10 +10,8 @@ function syncAdaptationControls(){
 }
 function modelDetailUpdate(model){
   const update={key:model.key};
-  if(model.protocol==='openai_responses'){
-    update.responses_compatibility=$('model-compatibility').getAttribute('aria-checked')==='true'?'portable':'native';
-    update.responses_adaptations=Object.entries(adaptationControls).filter(([,id])=>$(id).checked).map(([key])=>key);
-  }
+  update.responses_compatibility=$('model-compatibility').getAttribute('aria-checked')==='true'?'portable':'native';
+  update.responses_adaptations=Object.entries(adaptationControls).filter(([,id])=>$(id).checked).map(([key])=>key);
   return update;
 }
 function modelName(model){
@@ -40,7 +38,7 @@ function renderModelList(){
   for(const model of models){
     const row=el('div',undefined,'model-list-row');
     row.append(modelIdentity(model));
-    const mode=model.protocol==='openai_responses'?(model.responses_compatibility==='portable'?'兼容模式':model.responses_adaptations?.length?'原生 · 局部适配':'原生模式'):'Chat 转换';
+    const mode=model.responses_compatibility==='portable'?'Responses · 内容兼容转换':model.responses_adaptations?.length?'Responses · 原生局部适配':'Responses · 原生模式';
     row.append(el('span',mode,'model-list-mode'));
     const details=button('查看详情',()=>openModelDetail(model),'secondary model-list-details');
     details.setAttribute('aria-label',modelName(model)+'，查看详情');
@@ -97,7 +95,7 @@ function openAddModels(){
     list.append(row);
   }
   if(!list.children.length){
-    const empty=el('div',undefined,'model-list-empty');empty.append(el('h3',state.models.length?'所有模型均已添加':'还没有可添加的模型'),el('p','前往“管理连接”添加厂商，或在 CC Switch 中配置模型。','hint'),button('管理连接',()=>{$('add-models-dialog').close();$('connections-dialog').showModal();}));list.append(empty);
+    const empty=el('div',undefined,'model-list-empty');empty.append(el('h3',state.models.length?'所有模型均已添加':'还没有可添加的模型'),el('p','前往“管理连接”添加支持 Responses 的厂商，或在 CC Switch 中配置 Responses 模型。','hint'),button('管理连接',()=>{$('add-models-dialog').close();$('connections-dialog').showModal();}));list.append(empty);
   }
   updateAddCount();$('add-models-dialog').showModal();
 }
@@ -108,11 +106,11 @@ function openModelDetail(model){
   for(const [label,value] of [['模型 ID',model.model_id],['上下文窗口',model.context_window.toLocaleString()+' tokens'],['输出上限',model.max_output_tokens?model.max_output_tokens.toLocaleString()+' tokens':'未设置']]){
     const item=el('div',undefined,'model-meta-item');item.append(el('dt',label),el('dd',value));meta.append(item);
   }
-  $('model-compatibility-setting').hidden=model.protocol!=='openai_responses';
+  $('model-compatibility-setting').hidden=false;
   $('model-compatibility').setAttribute('aria-checked',String(model.responses_compatibility==='portable'));
   for(const [key,id] of Object.entries(adaptationControls))$(id).checked=(model.responses_adaptations||[]).includes(key);
   syncAdaptationControls();
-  $('model-detail-protocol').textContent=model.protocol==='openai_responses'?'接口协议 · Responses':'接口协议 · Chat Completions（已通过格式转换接入）';
+  $('model-detail-protocol').textContent='接口协议 · Responses';
   $('model-detail-test').replaceChildren(testButton(model));$('model-detail-error').textContent='';
   $('save-model-detail').disabled=false;$('remove-model').disabled=false;
   $('model-detail-dialog').showModal();
