@@ -2,5 +2,5 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
-& (Join-Path $PSScriptRoot '../apps/desktop/tools/build_windows.ps1') @args
+& (Join-Path $PSScriptRoot '../desktop/tools/build_windows.ps1') @args
 exit $LASTEXITCODE

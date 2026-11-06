@@ -14,8 +14,8 @@ from gateway.server import Gateway
 
 
 def main():
-    (ROOT / 'apps/desktop/build').mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='stage0-config-', dir=ROOT / 'apps/desktop/build') as temporary:
+    (ROOT / 'desktop/build').mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='stage0-config-', dir=ROOT / 'desktop/build') as temporary:
         directory = Path(temporary)
         settings = fixture(directory, 18891)  # No Server is constructed, so no port is bound.
         path = directory / 'codex-config.toml'
@@ -33,7 +33,7 @@ def main():
             'interpretation': 'Browser switch restores the original routing fields and removes its generated provider table.',
             'decision': 'Browser configuration roundtrip is covered; desktop process lifecycle remains deferred.',
         }
-        output = ROOT / 'apps/desktop/build/stage0/config-audit.json'
+        output = ROOT / 'desktop/build/stage0/config-audit.json'
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2), encoding='utf-8')
         print(json.dumps(report, indent=2))

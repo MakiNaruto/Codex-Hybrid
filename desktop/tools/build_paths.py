@@ -2,7 +2,7 @@
 from pathlib import Path
 
 DESKTOP = Path(__file__).resolve().parents[1]
-ROOT = DESKTOP.parents[1]
+ROOT = DESKTOP.parent
 if not (ROOT / 'pyproject.toml').is_file() or not (ROOT / 'src/management/web').is_dir():
     raise RuntimeError('Desktop tools must belong to a Codex Hybrid checkout')
 TAURI = DESKTOP / 'src-tauri'

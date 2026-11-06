@@ -16,15 +16,15 @@ Windows 改用 `py -3 -m venv .venv` 和 `.venv/Scripts/python.exe`。构建依�
 ## 调试入口
 
 - `src/management/web/` 提供共用页面，`app.js` 装配 `shared/` 与 `features/`，原 models/diagnostics/usage/desktop 接口保留。
-- `apps/desktop/src-tauri/src/main.rs` 装配和注册固定命令，`ipc.rs` 管理 sidecar 与请求，`lifecycle.rs` 处理窗口和退出。
-- `apps/desktop/sidecar/main.py` 分派冻结入口，包括 `desktop-controller`。
+- `desktop/src-tauri/src/main.rs` 装配和注册固定命令，`ipc.rs` 管理 sidecar 与请求，`lifecycle.rs` 处理窗口和退出。
+- `desktop/sidecar/main.py` 分派冻结入口，包括 `desktop-controller`。
 - `src/codex_integration/controller.py` 处理常驻控制会话。
 - `src/codex_integration/client.py` 是共享本机集成入口，平台实现分别位于 `src/codex_integration/platforms/windows/` 与 `platforms/macos/`，旧模块保留显式兼容导出。
 
 先按平台指南构建 sidecar，再运行窗口。
 
 ```sh
-CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo run --offline --locked --target-dir apps/desktop/build/stage0/tauri-target --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol
+CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo run --offline --locked --target-dir desktop/build/stage0/tauri-target --manifest-path desktop/src-tauri/Cargo.toml --features custom-protocol
 ```
 
 以上为 macOS 缓存示例。Windows 使用 PowerShell 构建入口准备 MSVC 环境。修改页面后也需重新构建包含页面的窗口。运行中的旧实例不会自动载入新产物。

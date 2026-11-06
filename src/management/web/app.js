@@ -207,13 +207,8 @@ function renderManagementPage(focusHeading=false){
     usage:['用量统计','查看模型调用趋势、Token 消耗与缓存命中情况。'],
     diagnostics:['运行与诊断','查看服务状态、请求错误与诊断信息。']
   };
-  let remembered='';
-  try{remembered=localStorage.getItem('hybrid-management-page')||'';}catch{}
-  const requested=window.location.hash.slice(1)||remembered;
-  // The packaged window opens on the switch; browsers keep model management first.
-  const fallback=window.hybridDesktop?'access':'models';
-  const current=Object.hasOwn(pages,requested)?requested:fallback;
-  try{localStorage.setItem('hybrid-management-page',current);}catch{}
+  const requested=window.location.hash.slice(1);
+  const current=Object.hasOwn(pages,requested)?requested:'access';
   for(const key of Object.keys(pages))$('page-'+key).hidden=key!==current;
   for(const link of document.querySelectorAll('.page-nav a')){
     if(link.dataset.page===current)link.setAttribute('aria-current','page');

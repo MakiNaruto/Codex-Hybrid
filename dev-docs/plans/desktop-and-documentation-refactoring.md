@@ -6,9 +6,9 @@
 
 桌面运行链为共用管理页面 → Tauri 固定命令 → Python sidecar 的 desktop-controller → 共用管理用例与本机集成。
 
-macOS Intel 构建链为 `scripts/build_desktop.sh` → `apps/desktop/tools/build_macos.sh` → `build_sidecar.py` → 冻结验证 → Cargo 构建 → 复制运行库并组装 `.app` → 应用内冻结验证 → 注册图标并按开关打开窗口。
+macOS Intel 构建链为 `scripts/build_desktop.sh` → `desktop/tools/build_macos.sh` → `build_sidecar.py` → 冻结验证 → Cargo 构建 → 复制运行库并组装 `.app` → 应用内冻结验证 → 注册图标并按开关打开窗口。
 
-Windows x64 构建链为 `scripts/build_desktop.ps1` → `apps/desktop/tools/build_windows.ps1` → 初始化 MSVC → Python/Rust 预检 → `build_sidecar.py` → 冻结验证 → Cargo release 构建 → 临时双 EXE 目录 → 产物内冻结验证 → 替换输出目录并在失败时恢复。
+Windows x64 构建链为 `scripts/build_desktop.ps1` → `desktop/tools/build_windows.ps1` → 初始化 MSVC → Python/Rust 预检 → `build_sidecar.py` → 冻结验证 → Cargo release 构建 → 临时双 EXE 目录 → 产物内冻结验证 → 替换输出目录并在失败时恢复。
 
 已确认的差异包括 macOS PyInstaller onedir、Windows onefile，macOS `.app` 内 Frameworks 链接及运行库，Windows 完整双 EXE 目录发布，以及不同的原生弹窗和退出流程。Apple Silicon 的目标映射已出现在构建工具中，验收状态需独立登记。
 
@@ -17,7 +17,7 @@ Windows x64 构建链为 `scripts/build_desktop.ps1` → `apps/desktop/tools/bui
 ## 2. 目标工程目录
 
 ```text
-apps/desktop/
+desktop/
 ├── README.md                         # 工程入口和开发导航
 ├── src-tauri/
 │   ├── Cargo.toml
@@ -78,7 +78,7 @@ src/codex_integration/                # 本机集成和控制业务
 
 | 原始位置 | 迁移位置 | 迁移要点 |
 | --- | --- | --- |
-| `apps/desktop/stage0/tauri/` | `apps/desktop/src-tauri/` | 同时修正 Cargo manifest 路径、externalBin、frontendDist、图标与 capabilities 引用 |
+| `desktop/stage0/tauri/` | `desktop/src-tauri/` | 同时修正 Cargo manifest 路径、externalBin、frontendDist、图标与 capabilities 引用 |
 | `stage0/build_probe.py` | `tools/build_sidecar.py` | 分离路径、平台产物规则与通用 PyInstaller 调用 |
 | `stage0/build_macos_intel.sh` | `tools/build_macos.sh` | 明确 Intel 支持条件，匹配 Python 与 Rust 架构 |
 | `scripts/build_desktop.sh` 中应用组装片段 | `tools/platforms/macos.py` 或平台脚本的对应函数 | 内联 Python 提取后可单独验证 Frameworks、plist 与图标路径 |
@@ -86,7 +86,7 @@ src/codex_integration/                # 本机集成和控制业务
 | `stage0/probe.py` | `sidecar/main.py` 与 `validation/probe.py` | 先核对现有命令，再区分运行入口和夹具；阶段内维持原命令可调用 |
 | `stage0/verify.py` | `validation/verify.py` | fixture 抽成显式模块，分别验证源码模式和冻结模式 |
 | `stage0/preflight.py`、`audit_config.py` | `validation/` | 标注只读盘点与临时数据写入边界，修正相互导入 |
-| `stage0/test_*.py` | `apps/desktop/tests/` | 修正读取源码的路径断言，保持行为断言 |
+| `stage0/test_*.py` | `desktop/tests/` | 修正读取源码的路径断言，保持行为断言 |
 | `stage0/requirements.txt` | `tools/requirements.txt` | 区分项目运行依赖、构建工具依赖与测试依赖 |
 | `stage0/README.md` | 开发工具指南与历史记录 | 逐节分类，当前复现命令进入开发指南，历史事实进入归档 |
 
@@ -98,7 +98,7 @@ src/codex_integration/                # 本机集成和控制业务
 
 使用集中路径模块表达仓库根、共用网页、Tauri 工程、工具缓存与输出根。避免迁移后继续依赖固定 `parents[3]`。构建脚本从自身位置定位仓库，并验证根目录标识文件。
 
-新 Tauri 工程内的 frontendDist 预期为 `../../../src/management/web`，externalBin 按新的配置位置计算，并通过实际 Tauri 构建确认。静态页面由同一源码目录提供，新增嵌套 JS 目录须同时纳入 Python 包和 sidecar 资源清单。
+新 Tauri 工程内的 frontendDist 预期为 `../../src/management/web`，externalBin 按新的配置位置计算，并通过实际 Tauri 构建确认。静态页面由同一源码目录提供，新增嵌套 JS 目录须同时纳入 Python 包和 sidecar 资源清单。
 
 ### 4.2 可复用构建阶段
 
@@ -157,7 +157,7 @@ dev-docs/
     ├── stage0-validation.md
     └── handoff-history.md
 
-apps/desktop/README.md               # 工程定位和开发导航链接
+desktop/README.md               # 工程定位和开发导航链接
 README.md / README.zh-CN.md          # 产品入口及用户/开发文档链接
 ```
 
@@ -165,14 +165,14 @@ README.md / README.zh-CN.md          # 产品入口及用户/开发文档链接
 
 | 当前文档 | 目标及拆分方式 |
 | --- | --- |
-| `apps/desktop/docs/build-macos-intel.md` | 当前环境与命令进入 `dev-docs/desktop/build-macos.md`，运行库布局进入 packaging，历史增量进入归档 |
-| `apps/desktop/docs/build-windows.md` | 当前构建指南进入 build-windows，托盘用户操作进入双语 desktop 用户指南 |
-| `apps/desktop/docs/private-management.md` | 协议规范进入 private-protocol，退出/托盘进入 lifecycle，带日期的验收事实进入归档 |
-| `apps/desktop/docs/web-desktop-alignment.md` | 当前职责进入 repository-layout，平台差异进入 platform-boundaries/lifecycle，验证历史进入归档 |
-| `apps/desktop/docs/handoff.md` | 当前状态与下一步进入 status，环境和命令进入 development，历史增量进入 handoff-history |
-| `apps/desktop/docs/plan.md` | 已确认产品范围与约束提取到对应当前主题，原文归档为 stage0-plan，未完成任务逐项映射到现行清单 |
-| `apps/desktop/docs/stage0-validation.md` | 原始证据保存在 archive，当前 validation 仅链接证据并列明可复现方法 |
-| `apps/desktop/stage0/README.md` | 工具操作进入 development/validation，历史探针范围进入 stage0-tools |
+| `desktop/docs/build-macos-intel.md` | 当前环境与命令进入 `dev-docs/desktop/build-macos.md`，运行库布局进入 packaging，历史增量进入归档 |
+| `desktop/docs/build-windows.md` | 当前构建指南进入 build-windows，托盘用户操作进入双语 desktop 用户指南 |
+| `desktop/docs/private-management.md` | 协议规范进入 private-protocol，退出/托盘进入 lifecycle，带日期的验收事实进入归档 |
+| `desktop/docs/web-desktop-alignment.md` | 当前职责进入 repository-layout，平台差异进入 platform-boundaries/lifecycle，验证历史进入归档 |
+| `desktop/docs/handoff.md` | 当前状态与下一步进入 status，环境和命令进入 development，历史增量进入 handoff-history |
+| `desktop/docs/plan.md` | 已确认产品范围与约束提取到对应当前主题，原文归档为 stage0-plan，未完成任务逐项映射到现行清单 |
+| `desktop/docs/stage0-validation.md` | 原始证据保存在 archive，当前 validation 仅链接证据并列明可复现方法 |
+| `desktop/stage0/README.md` | 工具操作进入 development/validation，历史探针范围进入 stage0-tools |
 | 中英文 `architecture.md` | 精简为用户原理并链接开发架构，详细目录树维护在 repository-layout |
 | 根 README、双语文档索引、桌面 README | 同步导航、平台状态和新路径 |
 

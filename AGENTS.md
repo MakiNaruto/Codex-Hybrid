@@ -31,7 +31,7 @@
 
 ## 桌面与脚本入口
 
-- Tauri 工程：`apps/desktop/src-tauri/`；冻结入口：`apps/desktop/sidecar/main.py`；构建工具：`apps/desktop/tools/`；验证与测试：`apps/desktop/validation/`、`apps/desktop/tests/`。共用管理业务与网页 HTTP 入口：`src/management/`；两端共用页面：`src/management/web/`。
+- Tauri 工程：`desktop/src-tauri/`；冻结入口：`desktop/sidecar/main.py`；构建工具：`desktop/tools/`；验证与测试：`desktop/validation/`、`desktop/tests/`。共用管理业务与网页 HTTP 入口：`src/management/`；两端共用页面：`src/management/web/`。
 - CLI、网页与桌面共用的 Codex 本机集成：`src/codex_integration/`。不要在桌面外壳内复制配置、会话迁移或进程控制业务。
 - 桌面公共入口：`src/codex_integration/client.py`；本机接入事务：`routing.py`；会话业务：`sessions/`；原 service/session_migration/codex_index 公开符号保留兼容。
 - Rust `main.rs` 负责装配，`ipc.rs` 负责请求/会话，`lifecycle.rs` 负责关闭与退出；平台弹窗各自维护。

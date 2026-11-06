@@ -5,20 +5,20 @@
 ## 源码与冻结检查
 
 ```sh
-.venv/bin/python -X utf8 apps/desktop/validation/preflight.py
-.venv/bin/python -X utf8 apps/desktop/validation/verify.py --output apps/desktop/build/stage0/source-results.json
-.venv/bin/python apps/desktop/tests/test_tray_lifecycle.py
+.venv/bin/python -X utf8 desktop/validation/preflight.py
+.venv/bin/python -X utf8 desktop/validation/verify.py --output desktop/build/stage0/source-results.json
+.venv/bin/python desktop/tests/test_tray_lifecycle.py
 ```
 
-Windows 使用 `.venv/Scripts/python.exe`。`preflight.py` 用于只读环境与进程盘点。验证夹具使用临时配置和模拟上游，需回环监听权限。`apps/desktop/validation/audit_config.py` 的配置往返检查使用临时数据，执行前核查入口边界。
+Windows 使用 `.venv/Scripts/python.exe`。`preflight.py` 用于只读环境与进程盘点。验证夹具使用临时配置和模拟上游，需回环监听权限。`desktop/validation/audit_config.py` 的配置往返检查使用临时数据，执行前核查入口边界。
 
 先按平台指南打包，再验证冻结程序。例如 Intel macOS。
 
 ```sh
-.venv/bin/python -X utf8 apps/desktop/validation/verify.py --executable apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin --output apps/desktop/build/stage0/frozen-results-macos-x86_64.json
+.venv/bin/python -X utf8 desktop/validation/verify.py --executable desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin --output desktop/build/stage0/frozen-results-macos-x86_64.json
 ```
 
-Windows 冻结程序路径为 `apps/desktop/dist/stage0/windows-x86_64/hybrid-stage0-probe.exe`，Cargo 检查需 MSVC x64 环境。平台构建脚本还执行产物内检查。冻结验证复制运行时资源、限制 Python 搜索环境，但宿主机仍安装 Python，干净机器验收需另外执行。
+Windows 冻结程序路径为 `desktop/dist/stage0/windows-x86_64/hybrid-stage0-probe.exe`，Cargo 检查需 MSVC x64 环境。平台构建脚本还执行产物内检查。冻结验证复制运行时资源、限制 Python 搜索环境，但宿主机仍安装 Python，干净机器验收需另外执行。
 
 ## 验收矩阵
 
@@ -63,7 +63,7 @@ Windows、Intel macOS 和 Apple Silicon 分开登记。真实 Codex 启停在专
 
 ```sh
 node --test tests/*.cjs
-CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" CARGO_TARGET_DIR="$PWD/apps/desktop/build/stage0/tauri-target" cargo test --offline --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --features custom-protocol --bin hybrid-stage0-shell
+CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" CARGO_TARGET_DIR="$PWD/desktop/build/stage0/tauri-target" cargo test --offline --locked --manifest-path desktop/src-tauri/Cargo.toml --features custom-protocol --bin hybrid-stage0-shell
 ```
 
 Node 最终 94 项覆盖原行为与新增模块加载、实际脚本顺序的模拟 DOM 初始化和草稿/状态接口。Intel Rust 四项覆盖托盘状态、超时与固定命令注册。HTTP 静态脚本和只读 API 检查是服务入口验证，真实浏览器本轮因 Work 设置 disabled 未能执行，页面和托盘交互仍需实机验收。

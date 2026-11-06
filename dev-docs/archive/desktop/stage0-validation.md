@@ -1,4 +1,4 @@
-> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `apps/desktop/docs/stage0-validation.md`。原文历史路径与命令仅用于理解当时执行条件。
+> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `desktop/docs/stage0-validation.md`。原文历史路径与命令仅用于理解当时执行条件。
 
 > 当前主题指南见[桌面开发文档](../../desktop/validation.md)。本文保留历史决策与按日期记录的验证范围，部分早期描述已被后续增量更新。
 
@@ -10,7 +10,7 @@
 
 ## 2026-10-28 后续状态说明
 
-下文保留 2026-10-26 探针结果，不代表当前生产实现仍有同样缺口。后续管理网页已增加字段级恢复与冲突校验、会话索引事务、空模型首次使用，以及 Windows / macOS 可选桌面操作；对应代码、自动化覆盖与未完成边界见[对齐记录](../../../apps/desktop/docs/web-desktop-alignment.md)。其中第 3 项配置恢复差距已由网页业务层补齐，但不能因此认定旧 CLI 路径、桌面实例互斥或打包验证通过；后续网页已实现管理进程监督独立网关子进程；私有桌面控制协议及打包验收仍未完成。
+下文保留 2026-10-26 探针结果，不代表当前生产实现仍有同样缺口。后续管理网页已增加字段级恢复与冲突校验、会话索引事务、空模型首次使用，以及 Windows / macOS 可选桌面操作；对应代码、自动化覆盖与未完成边界见[对齐记录](../../../desktop/docs/web-desktop-alignment.md)。其中第 3 项配置恢复差距已由网页业务层补齐，但不能因此认定旧 CLI 路径、桌面实例互斥或打包验证通过；后续网页已实现管理进程监督独立网关子进程；私有桌面控制协议及打包验收仍未完成。
 
 阶段 0 双平台窗口、打包、真实 Codex 重启仍未完成。2026-10-28 用户确认放弃任务状态探测，只保留 Codex 桌面运行检测；下文相关探测事项为历史记录，不再阻塞验收。下文“本机”指原 Windows 验证环境，不指阅读文档时的当前宿主。
 
@@ -18,7 +18,7 @@
 
 用户已调整为 macOS Intel x86_64 优先，Apple Silicon / Windows 延后。正式 `build_probe.py` 已支持 Intel；新增 `build_macos_intel.sh` 串联冻结、隔离检查和锁定依赖的离线 Tauri 编译。实际执行成功：20 项冻结检查通过，Tauri 开发窗口编译通过；架构选择 3 项及既有桌面分发/macOS 适配 9 项测试通过。构建过程未操作真实 Codex。沙箱内首次执行受 PyInstaller 信号量权限限制，允许本机运行后通过。
 
-这不包含正式 `.app` / `.dmg`、生产管理界面或无 Python 干净环境验收。复现见 [Intel 构建流程](../../../apps/desktop/docs/build-macos-intel.md)。以下保留历史验证记录。
+这不包含正式 `.app` / `.dmg`、生产管理界面或无 Python 干净环境验收。复现见 [Intel 构建流程](../../../desktop/docs/build-macos-intel.md)。以下保留历史验证记录。
 
 ## 2026-11-01 只读管理预览验收
 
@@ -50,33 +50,33 @@
 ### 2026-11-01 macOS 构建预检
 
 - 当前命令环境为 macOS 15.6、x86_64；Python 3.14.7 和 Rust 1.98.0 的宿主均为 x86_64，Xcode 16.0 可用。未发现 `/opt/homebrew` 下的 arm64 工具链，`arch -arm64` 无法执行。因此本轮不能验收计划中的 macOS Apple Silicon 产物，也未绕过构建脚本的目标架构检查。
-- 使用已有 `.venv/bin/python` 执行源码隔离探针，20 项检查通过；报告为 `apps/desktop/build/stage0/source-results-macos-x86_64.json`（忽略提交）。只验证当前 x86_64 源码环境，不代表 arm64、冻结程序或无 Python 环境通过。
+- 使用已有 `.venv/bin/python` 执行源码隔离探针，20 项检查通过；报告为 `desktop/build/stage0/source-results-macos-x86_64.json`（忽略提交）。只验证当前 x86_64 源码环境，不代表 arm64、冻结程序或无 Python 环境通过。
 - 首次运行复现旧夹具缺少 `models_cache.json` 导致 `SOURCE_UNAVAILABLE`；已补齐临时官方缓存，保留原有空来源、配置不变、Origin 限制及退出检查。未修改生产业务代码。
-- 尝试 `cargo check --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol`，依赖解析因 `index.crates.io` DNS 解析失败而停止，未进入原生编译，也未生成已验证的 Cargo.lock。此次尝试使用仓库内 `CARGO_HOME=apps/desktop/build/stage0/cargo-home`。
+- 尝试 `cargo check --manifest-path desktop/stage0/tauri/Cargo.toml --features custom-protocol`，依赖解析因 `index.crates.io` DNS 解析失败而停止，未进入原生编译，也未生成已验证的 Cargo.lock。此次尝试使用仓库内 `CARGO_HOME=desktop/build/stage0/cargo-home`。
 - 未修改真实 Codex 配置、未操作真实 Codex 生命周期、未发送付费 API 请求。后续需切换 arm64 原生执行环境，完成 Python 冻结构建、同组探针、Tauri 窗口及干净设备验收。
 
-继续验证：提升执行权限后 `cargo fetch` 下载成功，生成 `apps/desktop/stage0/tauri/Cargo.lock`；`cargo metadata --offline --locked --no-deps` 通过。此前 DNS 失败不再阻塞依赖获取。锁文件仅记录本轮解析结果，不代表双平台构建验证通过。
+继续验证：提升执行权限后 `cargo fetch` 下载成功，生成 `desktop/stage0/tauri/Cargo.lock`；`cargo metadata --offline --locked --no-deps` 通过。此前 DNS 失败不再阻塞依赖获取。锁文件仅记录本轮解析结果，不代表双平台构建验证通过。
 
 - 正式配置的 `cargo check --offline --locked` 已进入应用构建脚本，因不存在 `hybrid-stage0-probe-x86_64-apple-darwin` 停止；未制作或伪造该非目标平台 sidecar。
 - 为单独检查 Rust 窗口代码，使用临时环境覆盖 `TAURI_CONFIG='{"bundle":{"externalBin":[]}}'`，不修改正式配置。首次复现缺少 `icons/icon.png` 的编译宏错误；补齐 32×32 RGBA 几何占位图标后检查通过。依据为本轮下载的 `tauri-codegen 2.7.4` 的默认图标路径处理。
-- 通过命令：`TAURI_CONFIG='{"bundle":{"externalBin":[]}}' CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo check --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol`。日志为 `apps/desktop/build/stage0/cargo-check-shell-only-macos-x86_64.log`。此覆盖仅用于编译检查，不用于正常窗口运行、sidecar 验收或产物交付。
+- 通过命令：`TAURI_CONFIG='{"bundle":{"externalBin":[]}}' CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo check --offline --locked --manifest-path desktop/stage0/tauri/Cargo.toml --features custom-protocol`。日志为 `desktop/build/stage0/cargo-check-shell-only-macos-x86_64.log`。此覆盖仅用于编译检查，不用于正常窗口运行、sidecar 验收或产物交付。
 - 本轮没有链接运行窗口或验证按钮，也没有生成安装包。完整构建仍须在两种目标平台配合真实 sidecar 验证；阶段 0 保持未完成。
 
 ### 本地 Xcode 验证补充
 
-用户要求尝试本地 Xcode 后，确认 Xcode 16.0、Apple clang 16.0.0 和 macOS SDK 可用。使用 `xcrun clang -arch arm64` 编译并链接最小 C 程序成功，`file` 确认为 arm64 Mach-O；这仅证明 SDK/链接器支持交叉编译，不代表 Rust arm64 标准库、Python arm64 运行环境或应用实机验收已具备。测试文件均在忽略提交的 `apps/desktop/build/stage0/`。
+用户要求尝试本地 Xcode 后，确认 Xcode 16.0、Apple clang 16.0.0 和 macOS SDK 可用。使用 `xcrun clang -arch arm64` 编译并链接最小 C 程序成功，`file` 确认为 arm64 Mach-O；这仅证明 SDK/链接器支持交叉编译，不代表 Rust arm64 标准库、Python arm64 运行环境或应用实机验收已具备。测试文件均在忽略提交的 `desktop/build/stage0/`。
 
-- 使用同样临时排除 sidecar 的 `TAURI_CONFIG`，执行 `cargo build --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol` 成功，耗时约 2 分钟。日志为 `apps/desktop/build/stage0/cargo-build-shell-only-macos-x86_64.log`，产物经 `file` 确认为 x86_64 Mach-O。
-- 将桌面壳复制到本地临时 `.app`（`apps/desktop/build/stage0/Codex Hybrid Stage0 Shell.app`，仅包含可执行文件和最小 Info.plist），通过桌面 UI 成功打开 `Codex Hybrid Stage0 Probe` 窗口。真实页面显示中文标题、说明、检查按钮及等待状态，静态资源可加载。
+- 使用同样临时排除 sidecar 的 `TAURI_CONFIG`，执行 `cargo build --offline --locked --manifest-path desktop/stage0/tauri/Cargo.toml --features custom-protocol` 成功，耗时约 2 分钟。日志为 `desktop/build/stage0/cargo-build-shell-only-macos-x86_64.log`，产物经 `file` 确认为 x86_64 Mach-O。
+- 将桌面壳复制到本地临时 `.app`（`desktop/build/stage0/Codex Hybrid Stage0 Shell.app`，仅包含可执行文件和最小 Info.plist），通过桌面 UI 成功打开 `Codex Hybrid Stage0 Probe` 窗口。真实页面显示中文标题、说明、检查按钮及等待状态，静态资源可加载。
 - 点击“检查打包程序”后，页面显示 `检查失败：No such file or directory (os error 2)`，符合本次未包含 sidecar 的条件；证明前端到 Rust 命令的调用和错误返回路径可用，不代表 Python 通信成功。
 - 这是 x86_64 桌面壳的编译、链接及窗口运行验证，不是正式 Tauri bundle、安装包或目标 arm64 验收。没有更改正式 `externalBin` 配置，没有修改真实 Codex 配置或操作 Codex 启停。
 
 ### x86_64 sidecar 补充隔离验证
 
-- 将阶段 0 固定版本的 PyInstaller 6.22.3 和 hooks 2026.9 安装到仓库内 `apps/desktop/build/stage0/tools`。直接调用 PyInstaller，参数沿用 `build_probe.py` 并明确 `--target-arch x86_64`，产物单独保存为 `apps/desktop/dist/stage0/macos-x86_64/hybrid-stage0-probe`（约 15 MiB）。未放宽正式构建脚本的 Windows x64 / macOS arm64 架构检查，未将 Intel Mac 加入交付范围。
-- `.venv/bin/python -X utf8 apps/desktop/stage0/verify.py --executable apps/desktop/dist/stage0/macos-x86_64/hybrid-stage0-probe --output apps/desktop/build/stage0/frozen-results-macos-x86_64.json` 的 20 项检查全部通过，耗时约 51 秒。冻结程序复制到中文及空格临时路径，去除 Python 搜索变量并缩小 PATH，覆盖配置管理、模拟连接、真实临时网关、Origin 限制、协作退出、端口释放及控制通道 EOF 退出。宿主仍安装有 Python，不能视为干净机器验收。
-- 将该产物复制为 Tauri 所需的 `hybrid-stage0-probe-x86_64-apple-darwin` 后，正式配置下的 `cargo build --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol` 成功，不再覆盖 `externalBin`。日志为 `apps/desktop/build/stage0/cargo-build-with-sidecar-macos-x86_64.log`。
-- 本地临时 `.app` 为 `apps/desktop/build/stage0/Codex Hybrid Stage0 Sidecar.app`，包含 Rust 可执行文件、无目标后缀的 sidecar 和最小 Info.plist；不属于正式 Tauri 安装包。
+- 将阶段 0 固定版本的 PyInstaller 6.22.3 和 hooks 2026.9 安装到仓库内 `desktop/build/stage0/tools`。直接调用 PyInstaller，参数沿用 `build_probe.py` 并明确 `--target-arch x86_64`，产物单独保存为 `desktop/dist/stage0/macos-x86_64/hybrid-stage0-probe`（约 15 MiB）。未放宽正式构建脚本的 Windows x64 / macOS arm64 架构检查，未将 Intel Mac 加入交付范围。
+- `.venv/bin/python -X utf8 desktop/stage0/verify.py --executable desktop/dist/stage0/macos-x86_64/hybrid-stage0-probe --output desktop/build/stage0/frozen-results-macos-x86_64.json` 的 20 项检查全部通过，耗时约 51 秒。冻结程序复制到中文及空格临时路径，去除 Python 搜索变量并缩小 PATH，覆盖配置管理、模拟连接、真实临时网关、Origin 限制、协作退出、端口释放及控制通道 EOF 退出。宿主仍安装有 Python，不能视为干净机器验收。
+- 将该产物复制为 Tauri 所需的 `hybrid-stage0-probe-x86_64-apple-darwin` 后，正式配置下的 `cargo build --offline --locked --manifest-path desktop/stage0/tauri/Cargo.toml --features custom-protocol` 成功，不再覆盖 `externalBin`。日志为 `desktop/build/stage0/cargo-build-with-sidecar-macos-x86_64.log`。
+- 本地临时 `.app` 为 `desktop/build/stage0/Codex Hybrid Stage0 Sidecar.app`，包含 Rust 可执行文件、无目标后缀的 sidecar 和最小 Info.plist；不属于正式 Tauri 安装包。
 - 通过真实桌面 UI 启动该 `.app` 并点击“检查打包程序”，按钮显示进行中，随后恢复可点击并返回 JSON：`frozen: true`、`utf8_mode: 1`，Python 3.14.7、psutil 7.2.2、PyYAML 6.0.3，五项静态资源均为 `true`。前端 → Tauri Rust 命令 → 打包 Python → JSON 展示链路通过。没有使用模拟 sidecar 或修改 Rust 命令实现。
 - 结论仅适用于当前 macOS x86_64 环境；Windows Tauri、macOS arm64、无 Python 干净环境、正式 bundle、真实 Codex 正常退出/启动及安全停服仍待验收，阶段 0 不标记完成。
 
@@ -136,7 +136,7 @@ stdio 可作为 Rust 与 Python 的私有控制通道。探针只验证逐行 JS
 
 本次不冻结 UI 框架。最小 Tauri 窗口使用原生静态页面，目的是先验证系统工具链与 sidecar 调用，避免业务界面掩盖运行时问题。
 
-以下为早期阶段 0 顺序的历史记录；当前优先 Intel，后续接手顺序以[开发交接](../../../apps/desktop/docs/handoff.md)为准：
+以下为早期阶段 0 顺序的历史记录；当前优先 Intel，后续接手顺序以[开发交接](../../../desktop/docs/handoff.md)为准：
 
 1. 补齐 Windows Rust/MSVC 构建条件，实际编译并运行最小窗口，锁定 Cargo 依赖。
 2. 在用户的 macOS arm64 设备执行同一套构建与验证，记录真实结果。
@@ -145,7 +145,7 @@ stdio 可作为 Rust 与 Python 的私有控制通道。探针只验证逐行 JS
 
 ## 复现与产物
 
-工具说明见 [Stage0 README](../../../apps/desktop/stage0/README.md)。本机产物位于 apps/desktop/dist/stage0，结构化结果位于 apps/desktop/build/stage0/source-results.json、frozen-results.json 和 config-audit.json；这些目录被 Git 忽略，报告可按说明重建。二进制为验证探针，不是可日用客户端或安装包。
+工具说明见 [Stage0 README](../../../desktop/stage0/README.md)。本机产物位于 desktop/dist/stage0，结构化结果位于 desktop/build/stage0/source-results.json、frozen-results.json 和 config-audit.json；这些目录被 Git 忽略，报告可按说明重建。二进制为验证探针，不是可日用客户端或安装包。
 
 参考：[Tauri 系统前置条件](https://v2.tauri.app/start/prerequisites/)、[Tauri 外部程序打包](https://v2.tauri.app/develop/sidecar/)、[PyInstaller 工作方式](https://pyinstaller.org/en/stable/operating-mode.html)、[PyInstaller 构建选项](https://pyinstaller.org/en/stable/usage.html)、[官方 App Server 文档](https://learn.chatgpt.com/docs/app-server)。这些文档支持工具机制，不能代替上述待完成实测。
 
@@ -189,7 +189,7 @@ stdio 可作为 Rust 与 Python 的私有控制通道。探针只验证逐行 JS
 - Node：70 项通过，覆盖原生确认的取消、仅切换、切换并重启、单次重启票据、不可用及服务失败提示、草稿阻挡和从不自动操作偏好；包括原有共享网页与历史原型回归。
 - Python 桌面：47 项通过；首次沙箱运行仅回环监听被拒，允许本机回环监听后全项通过。测试不操作真实 Codex。
 - Rust：3 项通过，offline locked macOS Intel 构建通过；新增 AppKit 直接依赖均来自已锁定本地缓存。
-- 本机实际显示 NSAlert 并点击取消，返回 `Ok(0)`。另以临时构建的隔离窗口发出与托盘相同的事件，经过真实共享页面、Tauri IPC 和 AppKit 显示“重启 Codex？”；取消后确实收到 `cancel_restart`。诊断确认页面相关状态与桌面适配器均已加载。临时 fixture 禁止 `restart_codex` 与 `set_routing` 的真实操作；验证源码移至忽略目录 `apps/desktop/build/stage0/native-dialog-check-sources/`。
+- 本机实际显示 NSAlert 并点击取消，返回 `Ok(0)`。另以临时构建的隔离窗口发出与托盘相同的事件，经过真实共享页面、Tauri IPC 和 AppKit 显示“重启 Codex？”；取消后确实收到 `cancel_restart`。诊断确认页面相关状态与桌面适配器均已加载。临时 fixture 禁止 `restart_codex` 与 `set_routing` 的真实操作；验证源码移至忽略目录 `desktop/build/stage0/native-dialog-check-sources/`。
 - 状态栏菜单本身的 AX 读取仍超时，未证明真实托盘菜单点选、真实 Codex 重启、Windows 或 Apple Silicon 验收。此前“无反应”的完整菜单点击条件未复现；本轮已验证事件到原生确认及取消的链路，并增加检测中与异常反馈。
 
 ### macOS 托盘复用已有网页服务修复（2026-11-01）

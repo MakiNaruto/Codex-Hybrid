@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <script src="./theme.js"></script>
-  <title>Codex Hybrid · 模型管理</title>
+  <title>Codex Hybrid · 接入与运行</title>
   <link rel="stylesheet" href="./style.css">
   <script src="./transport.js" defer></script>
   <script src="./shared/dom.js" defer></script>
@@ -28,9 +28,9 @@
         <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-16.2-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
       </button>
     </div>
-    <nav class="page-nav" aria-label="管理页面"><a href="#access" data-page="access">接入与运行</a><a href="#models" data-page="models" aria-current="page">模型管理</a><a href="#usage" data-page="usage">用量统计</a><a href="#diagnostics" data-page="diagnostics">运行与诊断</a></nav>
-    <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1 id="page-title" tabindex="-1">模型管理</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
-    <p id="page-intro" class="intro">选择要在 Codex 中使用的模型，连接与兼容设置集中管理。</p>
+    <nav class="page-nav" aria-label="管理页面"><a href="#access" data-page="access" aria-current="page">接入与运行</a><a href="#models" data-page="models">模型管理</a><a href="#usage" data-page="usage">用量统计</a><a href="#diagnostics" data-page="diagnostics">运行与诊断</a></nav>
+    <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1 id="page-title" tabindex="-1">接入与运行</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
+    <p id="page-intro" class="intro">配置 Codex 接入方式，查看客户端状态与启动偏好。</p>
   </header>
   <section id="desktop-setup" aria-labelledby="desktop-setup-title" hidden>
     <h2 id="desktop-setup-title">欢迎使用 Codex Hybrid</h2>
@@ -38,7 +38,7 @@
     <p class="hint">请先安装并登录 Codex，确保本地存在官方模型缓存。</p>
     <button id="desktop-initialize" type="button">初始化管理配置</button>
   </section>
-  <div id="page-models" class="management-page">
+  <div id="page-models" class="management-page" hidden>
   <section class="providers-section" aria-labelledby="providers-heading">
     <div class="section-head"><div class="section-title"><h2 id="providers-heading">已添加模型</h2><span id="model-count" class="count-badge">0 个模型</span></div><div class="toolbar"><button id="refresh" class="secondary" type="button">刷新</button><button id="manage-connections" class="secondary" type="button">管理连接</button><button id="add-models" type="button">＋ 添加模型</button></div></div>
     <div class="catalog-notes"><span id="source-note" class="source-label"></span><span id="catalog-status" class="hint" role="status"></span><button type="button" class="help-trigger" aria-label="模型列表更新说明" aria-expanded="false" data-help="添加或删除模型后，请重启 Codex，新列表才会在 Codex 中生效。内容兼容转换设置、Key 或 API 地址修改后下一轮生效，无需重启。">?</button><span id="sync-status" class="hint" aria-live="off"></span></div>
@@ -48,7 +48,7 @@
     <p class="hint model-membership-note">只有已添加的第三方模型才会进入客户端列表，并可供子 agent 调用。官方模型保持原有管理方式。</p>
   </section>
   </div>
-  <div id="page-access" class="management-page" hidden>
+  <div id="page-access" class="management-page">
   <section class="access-hero" aria-labelledby="access-headline">
     <div class="access-hero-copy">
       <p id="routing-status" class="routing-status access-state" role="status"></p>

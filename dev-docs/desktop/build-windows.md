@@ -20,11 +20,11 @@ rustup target add x86_64-pc-windows-msvc
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_desktop.ps1
 ```
 
-根入口转发至 `apps/desktop/tools/build_windows.ps1`，平台入口会加载 MSVC x64 环境，检查编译工具，安装缺失的 PyInstaller，冻结后端并执行隔离验证，再编译 release 窗口。Cargo 使用锁定依赖，离线获取失败时联网获取。`STAGE0_PYTHON` 可指定另一个已安装项目依赖的 x64 Python，`CARGO_HOME` 可指定缓存。
+根入口转发至 `desktop/tools/build_windows.ps1`，平台入口会加载 MSVC x64 环境，检查编译工具，安装缺失的 PyInstaller，冻结后端并执行隔离验证，再编译 release 窗口。Cargo 使用锁定依赖，离线获取失败时联网获取。`STAGE0_PYTHON` 可指定另一个已安装项目依赖的 x64 Python，`CARGO_HOME` 可指定缓存。
 
-发布前在临时目录验证完整产物，再替换输出目录，失败时恢复原目录。输出为 `apps/desktop/dist/stage0/windows-x86_64/`，必须一起分发 `Codex Hybrid.exe` 与 `hybrid-stage0-probe.exe`。构建完成后不会自动启动窗口。
+发布前在临时目录验证完整产物，再替换输出目录，失败时恢复原目录。输出为 `desktop/dist/stage0/windows-x86_64/`，必须一起分发 `Codex Hybrid.exe` 与 `hybrid-stage0-probe.exe`。构建完成后不会自动启动窗口。
 
-报告为 `apps/desktop/build/stage0/frozen-results-windows-x86_64.json` 与 `packaged-results-windows-x86_64.json`。隔离验证需要允许本地回环监听。
+报告为 `desktop/build/stage0/frozen-results-windows-x86_64.json` 与 `packaged-results-windows-x86_64.json`。隔离验证需要允许本地回环监听。
 
 ## 失败定位与验收范围
 

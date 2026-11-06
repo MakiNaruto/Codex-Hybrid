@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "identifier": "local.codex-hybrid.stage0",
   "build": {
-    "frontendDist": "../../../src/management/web"
+    "frontendDist": "../../src/management/web"
   },
   "app": {
     "withGlobalTauri": true,

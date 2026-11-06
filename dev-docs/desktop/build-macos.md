@@ -27,17 +27,17 @@ STAGE0_OPEN_APP=0 bash scripts/build_desktop.sh
 bash scripts/build_desktop.sh
 ```
 
-脚本依次完成冻结、隔离验证、Cargo 编译、运行库和图标组装、应用内 sidecar 检查。开发预览产物为 `apps/desktop/build/stage0/Codex Hybrid Tray Preview.app`。默认运行模式会在完成后打开应用。
+脚本依次完成冻结、隔离验证、Cargo 编译、运行库和图标组装、应用内 sidecar 检查。开发预览产物为 `desktop/build/stage0/Codex Hybrid Tray Preview.app`。默认运行模式会在完成后打开应用。
 
 需要分步调试时，可准备工具并只构建 sidecar，再执行验证与 Cargo。完整入口包括依赖准备、组装和应用内检查。
 
 ```sh
-.venv/bin/python -m pip install --target apps/desktop/build/stage0/tools -r apps/desktop/tools/requirements.txt
-.venv/bin/python -X utf8 apps/desktop/tools/build_sidecar.py --tools-dir apps/desktop/build/stage0/tools
-CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo fetch --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+.venv/bin/python -m pip install --target desktop/build/stage0/tools -r desktop/tools/requirements.txt
+.venv/bin/python -X utf8 desktop/tools/build_sidecar.py --tools-dir desktop/build/stage0/tools
+CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo fetch --locked --manifest-path desktop/src-tauri/Cargo.toml
 ```
 
-独立 sidecar 位于 `apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin`，必须与相邻 `_internal/` 一起使用。debug 窗口位于 `apps/desktop/build/stage0/tauri-target/debug/hybrid-stage0-shell`。冻结报告位于 `apps/desktop/build/stage0/frozen-results-macos-x86_64.json`。
+独立 sidecar 位于 `desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin`，必须与相邻 `_internal/` 一起使用。debug 窗口位于 `desktop/build/stage0/tauri-target/debug/hybrid-stage0-shell`。冻结报告位于 `desktop/build/stage0/frozen-results-macos-x86_64.json`。
 
 ## 失败定位与验收范围
 

@@ -1,4 +1,4 @@
-> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `apps/desktop/docs/build-windows.md`。原文历史路径与命令仅用于理解当时执行条件。
+> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `desktop/docs/build-windows.md`。原文历史路径与命令仅用于理解当时执行条件。
 
 > 当前主题指南见[桌面开发文档](../../desktop/build-windows.md)。本文保留历史决策与按日期记录的验证范围，部分早期描述已被后续增量更新。
 
@@ -41,7 +41,7 @@ rustup target add x86_64-pc-windows-msvc
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_desktop.ps1
 ```
 
-默认使用根目录 `.venv/Scripts/python.exe`。可通过 `STAGE0_PYTHON` 指向另一个已安装项目依赖的 x64 Python。缺少 PyInstaller 时，脚本会把固定版本安装到 `apps/desktop/build/stage0/tools-windows-x86_64/`。Cargo 优先读取本地锁定依赖，缺少时联网下载；可用 `CARGO_HOME` 指定缓存目录。
+默认使用根目录 `.venv/Scripts/python.exe`。可通过 `STAGE0_PYTHON` 指向另一个已安装项目依赖的 x64 Python。缺少 PyInstaller 时，脚本会把固定版本安装到 `desktop/build/stage0/tools-windows-x86_64/`。Cargo 优先读取本地锁定依赖，缺少时联网下载；可用 `CARGO_HOME` 指定缓存目录。
 
 原生工具、依赖安装、冻结验证或 Rust 编译失败时，脚本立即报错停止。构建后不自动启动窗口。
 
@@ -55,14 +55,14 @@ Rust 的 MSVC 目标需要 Visual Studio 提供的链接器。安装 Rust、VS C
 
 ## 产物和验证
 
-输出目录为 `apps/desktop/dist/stage0/windows-x86_64/`，分发时保留以下两个文件在同一目录。
+输出目录为 `desktop/dist/stage0/windows-x86_64/`，分发时保留以下两个文件在同一目录。
 
 - `Codex Hybrid.exe` 为桌面窗口，嵌入 Windows ICO 图标和管理页。
 - `hybrid-stage0-probe.exe` 为单文件 Python 后端，包含 Windows 动态加载的本机集成模块。
 
-双击 `Codex Hybrid.exe` 启动。构建目录中的验证报告分别为 `apps/desktop/build/stage0/frozen-results-windows-x86_64.json` 和 `packaged-results-windows-x86_64.json`。隔离检查使用临时目录和模拟上游，需要允许本地回环监听；不会操作真实 Codex 配置或启停真实 Codex。
+双击 `Codex Hybrid.exe` 启动。构建目录中的验证报告分别为 `desktop/build/stage0/frozen-results-windows-x86_64.json` 和 `packaged-results-windows-x86_64.json`。隔离检查使用临时目录和模拟上游，需要允许本地回环监听；不会操作真实 Codex 配置或启停真实 Codex。
 
-当前交付为开发预览便携目录。安装包、代码签名，以及无 Python 的 Windows 干净环境验收仍需后续完成。实机需检查窗口启动、图标、后端调用、配置操作和下述托盘生命周期。macOS 的 `.app` 构建入口见 [Intel Mac 构建流程](../../../apps/desktop/docs/build-macos-intel.md)。
+当前交付为开发预览便携目录。安装包、代码签名，以及无 Python 的 Windows 干净环境验收仍需后续完成。实机需检查窗口启动、图标、后端调用、配置操作和下述托盘生命周期。macOS 的 `.app` 构建入口见 [Intel Mac 构建流程](../../../desktop/docs/build-macos-intel.md)。
 
 
 ## Windows 托盘
@@ -73,4 +73,4 @@ Windows 桌面预览提供与 macOS 相同的“管理、混合路由、重启 C
 
 切换仍复用管理预览与提交；独立重启复用 Windows 的安装识别、进程身份校验、Restart Manager 正常退出和 Store 激活。重启票据两分钟内有效且仅能使用一次，不运行时不会通过独立重启入口启动。路由已关闭且网关没有在途请求时可直接退出。接入仍开启、网关有在途请求，或网关尚未停止且无法确认路由或请求状态时，退出会显示原生确认框。确认后关闭 Codex Hybrid 和它自己的网关，保留已保存的路由配置。退出确认框等待期间管理服务继续响应页面刷新；取消则继续运行。Windows 的单实例约定与系统代理选择不变。
 
-回归命令：`python apps/desktop/stage0/test_tray_lifecycle.py`，以及在 MSVC x64 环境运行 `cargo test --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml --bin hybrid-stage0-shell`。Python 检查模拟 Windows/macOS 分支，不操作真实 Codex。完整菜单点选、隐藏后的草稿/网关保留、原生确认框焦点及真实 Codex 重启仍需实机验收；macOS 本轮未进行实机验证。
+回归命令：`python desktop/stage0/test_tray_lifecycle.py`，以及在 MSVC x64 环境运行 `cargo test --offline --locked --manifest-path desktop/stage0/tauri/Cargo.toml --bin hybrid-stage0-shell`。Python 检查模拟 Windows/macOS 分支，不操作真实 Codex。完整菜单点选、隐藏后的草稿/网关保留、原生确认框焦点及真实 Codex 重启仍需实机验收；macOS 本轮未进行实机验证。

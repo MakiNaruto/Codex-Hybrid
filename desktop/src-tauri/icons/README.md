@@ -13,13 +13,13 @@
 macOS 通过 `tauri.macos.conf.json` 覆盖图标配置，不改变 Windows 的资源选择。替换 `icon-macos.png` 后，在仓库根目录运行（Python 需安装 Pillow）：
 
 ```sh
-python3 -c "from PIL import Image; Image.open('apps/desktop/src-tauri/icons/icon-macos.png').save('apps/desktop/src-tauri/icons/icon.icns', format='ICNS')"
+python3 -c "from PIL import Image; Image.open('desktop/src-tauri/icons/icon-macos.png').save('desktop/src-tauri/icons/icon.icns', format='ICNS')"
 ```
 
 `export_icons.py` 分别从 `icon.png` 导出 Windows ICO、从 `icon-macos.png` 导出 macOS ICNS。在仓库根目录运行（Python 需安装 Pillow）：
 
 ```sh
-python3 apps/desktop/src-tauri/icons/export_icons.py
+python3 desktop/src-tauri/icons/export_icons.py
 ```
 
 Windows 沿用 `tauri.conf.json` 中的 PNG / ICO 配置。当前 Windows 原图复用 macOS「折芽」设计；后续可单独替换 `icon.png` 并重新导出。已检查 PNG 的 RGBA 格式、ICO 的全部尺寸及配置资源路径，Windows EXE、快捷方式和任务栏显示仍需在 Windows 实机重新构建后验收。

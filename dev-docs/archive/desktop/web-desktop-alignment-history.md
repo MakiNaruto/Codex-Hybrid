@@ -1,16 +1,16 @@
-> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `apps/desktop/docs/web-desktop-alignment.md`。原文历史路径与命令仅用于理解当时执行条件。
+> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `desktop/docs/web-desktop-alignment.md`。原文历史路径与命令仅用于理解当时执行条件。
 
 > 当前主题指南见[桌面开发文档](../../desktop/lifecycle.md)。本文保留历史决策与按日期记录的验证范围，部分早期描述已被后续增量更新。
 
 # 网页实现与桌面方案对齐
 
-对齐日期：2026-10-28。依据为管理页 `src/management/web/`、管理业务层及 `src/codex_integration/`，不是阶段 0 静态探针页面。本文记录可复用的现有行为；桌面完整目标以[实施计划](../../../apps/desktop/docs/plan.md)为准。代码与自动化覆盖不等于真实 Codex、真实厂商或双平台安装验收。
+对齐日期：2026-10-28。依据为管理页 `src/management/web/`、管理业务层及 `src/codex_integration/`，不是阶段 0 静态探针页面。本文记录可复用的现有行为；桌面完整目标以[实施计划](../../../desktop/docs/plan.md)为准。代码与自动化覆盖不等于真实 Codex、真实厂商或双平台安装验收。
 
 2026-11-01 平台顺序调整：先 macOS Intel x86_64，再 Apple Silicon 和 Windows；共享业务和平台专用行为边界保持不变。
 
 ## 共用管理页面（2026-11-01）
 
-Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览器共用 HTML、样式、模型管理、接入确认及诊断页面。旧 `apps/desktop/stage0/web/` 历史探针页面已清理，后续界面开发统一使用共用管理页。
+Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览器共用 HTML、样式、模型管理、接入确认及诊断页面。旧 `desktop/stage0/web/` 历史探针页面已清理，后续界面开发统一使用共用管理页。
 
 浏览器保留原有鉴权 HTTP 接口；桌面经 `transport.js` → `desktop_manage` → 常驻控制进程的 `web_api` 白名单，复用 Management 业务，不启动管理 HTTP 监听。私有接口覆盖状态、活动、进程、诊断周期、来源、模型、厂商、发布、测试、接入及桌面偏好。接入仍绑定同会话预览；首次启动要求用户明确初始化，不自动开启接入或恢复转发。Key 不回显，不通过命令行传递；断连不重试写入。
 
@@ -63,7 +63,7 @@ Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览
 
 2026-10-28 后续实现：管理与转发已分成独立监听，通过不依赖 Gateway 实例的 ManagementContext 复用配置和连接测试；增加服务所有权、操作及 CLI 控制锁，并保护同一 Codex 目录的迁移。用户已确认放弃任务状态探测，相关试验实现及页面提示已移除；检测到 Codex 桌面运行状态即满足此项目标，权限不足仍显示未知。详见[当前使用说明](../../../docs/zh-CN/usage.md#独立管理服务与实例互斥)。
 
-以下仍为桌面目标，不能标记已完成：Tauri 双平台打包、无 Python 环境运行、私有控制协议、双平台锁实机验收、托盘，以及桌面关闭窗口、退出与异常恢复的生命周期实机验收。目前网页管理已监督独立网关子进程并支持异常退出后的恢复入口；Tauri 私有 stdio 控制协议随后已实现，当前进度以本文顶部及[开发交接](../../../apps/desktop/docs/handoff.md)为准。
+以下仍为桌面目标，不能标记已完成：Tauri 双平台打包、无 Python 环境运行、私有控制协议、双平台锁实机验收、托盘，以及桌面关闭窗口、退出与异常恢复的生命周期实机验收。目前网页管理已监督独立网关子进程并支持异常退出后的恢复入口；Tauri 私有 stdio 控制协议随后已实现，当前进度以本文顶部及[开发交接](../../../desktop/docs/handoff.md)为准。
 
 关闭接入后网页继续运行管理服务；转发仅在无活动请求且进程检测为未运行时停止，否则保留。桌面版未来停止网关或退出应用时，仍需确认运行中的客户端不会继续依赖旧网关；无法确认时保留服务及恢复入口。停服条件与具体交互留待桌面阶段验证，不推翻本次已确认的可选桌面操作规则。
 
@@ -100,7 +100,7 @@ Tauri 的 `frontendDist` 已直接指向 `src/management/web/`，桌面与浏览
 
 后续阻塞边界修复：首次基线及事务 SQLite 备份均使用 5 秒截止时间，超时返回 `SESSION_BACKUP_TIMEOUT` 并停止配置/索引提交；首次准备目录可在重试时清理，事务临时记录按回滚路径清理。日志文件处理器采用独立 I/O 锁，后台关闭文件，`RuntimeLog.close()` 合计等待最多 0.2 秒，避免 Python 自动日志清理重新等待卡住的写入。覆盖长时间独占、短暂占用后成功、WAL 已提交数据备份、事件/stderr 写入卡住时进程退出及正常末尾片段保留。
 
-2026-11-01 窗口与图标调整：共享管理页移除“重启 Codex”“退出应用”按钮及其页面绑定，macOS 保留状态栏重启/退出、应用菜单退出与现有确认保护。状态栏由 CH 文本替换为单色模板图标。应用 PNG / ICNS / ICO 和状态栏 PNG 位于 `apps/desktop/stage0/tauri/icons/`，替换方法见该目录 README；`scripts/build_desktop.sh` 同步预览应用的 ICNS。Windows 仅提供图标资源并移除共享页面按钮，关闭流程保持原实现；未做 Windows 实机验收。
+2026-11-01 窗口与图标调整：共享管理页移除“重启 Codex”“退出应用”按钮及其页面绑定，macOS 保留状态栏重启/退出、应用菜单退出与现有确认保护。状态栏由 CH 文本替换为单色模板图标。应用 PNG / ICNS / ICO 和状态栏 PNG 位于 `desktop/stage0/tauri/icons/`，替换方法见该目录 README；`scripts/build_desktop.sh` 同步预览应用的 ICNS。Windows 仅提供图标资源并移除共享页面按钮，关闭流程保持原实现；未做 Windows 实机验收。
 
 2026-11-01 首次加载修复：桌面控制器补齐 `Management.start_sync()`，首次状态即可显示保存的 CC Switch 来源模型，后台同步随控制器退出而关闭。macOS 后台打包改为 onedir，重建和隔离验证同时复制相邻 `_internal` 运行库，减少 onefile 每次启动的解压等待；Windows 保留 onefile。接入仍不自动开启，残留 project 状态仍需显式恢复。验证使用临时目录，不代表 Windows/Apple Silicon 实机验收。
 
@@ -120,7 +120,7 @@ macOS 同目录已有网页服务时，先根据 `service.pid` 与进程的 `--s
 
 “混合路由”和“重启 Codex”共用独立原生确认框。异步预览完成后，显式调用 `NSApplication.activateIgnoringOtherApps(true)` 激活应用，与 Tauri 的 macOS `set_focus` 路径一致；不再在 macOS 14 及以上仅使用不保证激活成功的 `activate()`。确认框成为 key window 后请求激活，不主动显示或还原管理窗口。Windows 分支不变。
 
-隔离回归入口为 `apps/desktop/stage0/tauri/examples/alert_focus_check.rs`，复用实际弹窗代码，不加载管理控制器、不操作 Codex。使用空临时目录设置 `HYBRID_ALERT_CHECK_DIR`，可用 `HYBRID_ALERT_CHECK_WINDOW=hidden|minimized` 设置初始窗口状态；运行后将其他应用置前，再在目录创建 `trigger`。`before.json` 的 `active: false` 才说明覆盖了后台激活场景；`during.json` 应为 `active: true`，取消后 `after.json` 可确认管理窗口仍隐藏或最小化。验证仅限 macOS Intel 本机的原生确认框和现有桌面事件回归，不代表 Windows、Apple Silicon、全屏空间或真实 Codex 重启验收。
+隔离回归入口为 `desktop/stage0/tauri/examples/alert_focus_check.rs`，复用实际弹窗代码，不加载管理控制器、不操作 Codex。使用空临时目录设置 `HYBRID_ALERT_CHECK_DIR`，可用 `HYBRID_ALERT_CHECK_WINDOW=hidden|minimized` 设置初始窗口状态；运行后将其他应用置前，再在目录创建 `trigger`。`before.json` 的 `active: false` 才说明覆盖了后台激活场景；`during.json` 应为 `active: true`，取消后 `after.json` 可确认管理窗口仍隐藏或最小化。验证仅限 macOS Intel 本机的原生确认框和现有桌面事件回归，不代表 Windows、Apple Silicon、全屏空间或真实 Codex 重启验收。
 
 ## 2026-11-02 接入页重构与桌面窗口密度
 

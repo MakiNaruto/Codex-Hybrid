@@ -6,7 +6,7 @@ The desktop app shares the browser management interface and provides configurati
 
 ## Obtain and launch
 
-The current top-level macOS build entry supports Intel x86_64 and produces `apps/desktop/build/stage0/Codex Hybrid Tray Preview.app`. Windows x64 produces the portable directory `apps/desktop/dist/stage0/windows-x86_64/`. Keep `Codex Hybrid.exe` and `hybrid-stage0-probe.exe` together, then launch the window executable. Apple Silicon still requires native acceptance testing.
+The current top-level macOS build entry supports Intel x86_64 and produces `desktop/build/stage0/Codex Hybrid Tray Preview.app`. Windows x64 produces the portable directory `desktop/dist/stage0/windows-x86_64/`. Keep `Codex Hybrid.exe` and `hybrid-stage0-probe.exe` together, then launch the window executable. Apple Silicon still requires native acceptance testing.
 
 Source-build prerequisites and commands are in the [macOS build guide](../../dev-docs/desktop/build-macos.md) and [Windows build guide](../../dev-docs/desktop/build-windows.md). Developer guides are currently maintained in Chinese.
 

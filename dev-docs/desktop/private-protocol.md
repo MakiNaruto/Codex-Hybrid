@@ -18,7 +18,7 @@ Tauri 固定命令通过 stdin/stdout JSON 连接 `desktop-controller` 常驻 Py
 
 macOS 和 Windows 的 Rust 响应超时当前为状态、读取及退出 20 秒，`web_api` 连接测试 POST 75 秒，其余 POST 与管理操作 120 秒。超时断开会话并提示检查恢复状态。退出及外部服务所有权规则见[生命周期](lifecycle.md)。
 
-固定命令注册入口为 `apps/desktop/src-tauri/src/main.rs`，请求与会话位于 `ipc.rs`，退出位于 `lifecycle.rs`，Python 协议入口为 `src/codex_integration/controller.py`。完整历史操作表与后续增量保留在[私有协议历史](../archive/desktop/private-management-history.md)与[开发交接](../archive/desktop/handoff-history.md)。白名单变更需同时核查两端实现和冻结回归。
+固定命令注册入口为 `desktop/src-tauri/src/main.rs`，请求与会话位于 `ipc.rs`，退出位于 `lifecycle.rs`，Python 协议入口为 `src/codex_integration/controller.py`。完整历史操作表与后续增量保留在[私有协议历史](../archive/desktop/private-management-history.md)与[开发交接](../archive/desktop/handoff-history.md)。白名单变更需同时核查两端实现和冻结回归。
 
 ## 固定操作与错误契约
 

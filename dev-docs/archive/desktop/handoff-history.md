@@ -1,14 +1,14 @@
-> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `apps/desktop/docs/handoff.md`。原文历史路径与命令仅用于理解当时执行条件。
+> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `desktop/docs/handoff.md`。原文历史路径与命令仅用于理解当时执行条件。
 
 > 当前主题指南见[桌面开发文档](../../desktop/status.md)。本文保留历史决策与按日期记录的验证范围，部分早期描述已被后续增量更新。
 
-> 2026-11-05 构建入口调整：原根目录脚本迁至 `scripts/build_desktop.sh`，工作目录定位同步调整，保留 Intel macOS 构建行为。新增 `scripts/build_desktop.ps1`，在 Windows x64 本机冻结后端、验证并编译 Tauri release 窗口，输出双 EXE 便携目录。Python 冻结显式收集 Windows 本机集成模块。准备步骤见 [Windows 构建流程](../../../apps/desktop/docs/build-windows.md)，Windows 构建与运行仍待实机验收。
+> 2026-11-05 构建入口调整：原根目录脚本迁至 `scripts/build_desktop.sh`，工作目录定位同步调整，保留 Intel macOS 构建行为。新增 `scripts/build_desktop.ps1`，在 Windows x64 本机冻结后端、验证并编译 Tauri release 窗口，输出双 EXE 便携目录。Python 冻结显式收集 Windows 本机集成模块。准备步骤见 [Windows 构建流程](../../../desktop/docs/build-windows.md)，Windows 构建与运行仍待实机验收。
 
 > 2026-11-04 构建清理：本机 `build/`、`dist/`、Tauri `target/`、`gen/` 与 Python 缓存已清理，历史本机日志和手工测试包随之移除。源码、图标、锁文件和开发文档保留。根目录 `bash scripts/build_desktop.sh` 已补齐首次创建 Preview.app 和缺失构建依赖的准备步骤，可从空产物目录生成 Intel macOS 开发预览包。下文更早的“已有测试包”及“不能重建手工 Preview.app”描述属于历史状态。隔离回归覆盖首次/重复组装、plist、图标及旧运行库清理，现有真实冻结 sidecar 在新建应用目录和临时 HOME 下启动通过；本轮未执行清理后的完整下载和全量编译。
 
-> 2026-11-01 更新：当前 Tauri 窗口已切换为直接加载 `src/management/web/`。`transport.js` 将桌面请求交给私有 `web_api` 白名单，`desktop.js` 负责初始化和生命周期；旧 `apps/desktop/stage0/web/` 历史探针页面已于 2026-11-04 清理。详见 [页面对齐](../../../apps/desktop/docs/web-desktop-alignment.md#共用管理页面2026-11-01) 和 [私有协议](../../../apps/desktop/docs/private-management.md#共用网页适配)。以下较早的预览页面描述按历史进度阅读。
+> 2026-11-01 更新：当前 Tauri 窗口已切换为直接加载 `src/management/web/`。`transport.js` 将桌面请求交给私有 `web_api` 白名单，`desktop.js` 负责初始化和生命周期；旧 `desktop/stage0/web/` 历史探针页面已于 2026-11-04 清理。详见 [页面对齐](../../../desktop/docs/web-desktop-alignment.md#共用管理页面2026-11-01) 和 [私有协议](../../../desktop/docs/private-management.md#共用网页适配)。以下较早的预览页面描述按历史进度阅读。
 
-> 2026-11-01 目录整理：Tauri 外壳、构建和验证工具统一位于 `apps/desktop/`；原 Python `desktop` 包更名为 `codex_integration`，位于 `src/codex_integration/`。网页 HTTP 入口与共用页面仍位于 `src/management/`。下面命令已更新路径；旧构建产物需重新生成。
+> 2026-11-01 目录整理：Tauri 外壳、构建和验证工具统一位于 `desktop/`；原 Python `desktop` 包更名为 `codex_integration`，位于 `src/codex_integration/`。网页 HTTP 入口与共用页面仍位于 `src/management/`。下面命令已更新路径；旧构建产物需重新生成。
 >
 > 本次验证：Python 420 项（2 项跳过），JavaScript 74 项；Python wheel 构建与脱离源码目录的导入检查通过；Intel macOS 完整构建脚本通过 20 项冻结隔离检查、冻结控制进程检查及离线 Tauri 编译。平台控制与代理行为未调整，Windows 与 Apple Silicon 未做本次实机验收。
 
@@ -25,7 +25,7 @@
 - 主操作统一为“Codex 接入”；切换先预览再明确确认，不提供独立网关开关。启动应用不自动开启接入或启动网关。
 - 固定使用用户的 `~/.codex-hybrid`；桌面不接受前端传入任意路径或 shell 命令。
 
-先读仓库根目录 `AGENTS.md`，再读本文、[计划](../../../apps/desktop/docs/plan.md)、[协议](../../../apps/desktop/docs/private-management.md)、[验证记录](../../../apps/desktop/docs/stage0-validation.md)和[构建流程](../../../apps/desktop/docs/build-macos-intel.md)。历史计划存在早期阶段描述，以本文和计划顶部“当前推进”为当前顺序。
+先读仓库根目录 `AGENTS.md`，再读本文、[计划](../../../desktop/docs/plan.md)、[协议](../../../desktop/docs/private-management.md)、[验证记录](../../../desktop/docs/stage0-validation.md)和[构建流程](../../../desktop/docs/build-macos-intel.md)。历史计划存在早期阶段描述，以本文和计划顶部“当前推进”为当前顺序。
 
 ## 已实现及验证边界
 
@@ -51,14 +51,14 @@
 | `src/codex_integration/snapshot.py` | 脱敏快照、配置版本及读取竞争检测 |
 | `src/codex_integration/management.py` | 初始化、保存、主动连接测试 |
 | `src/codex_integration/restart.py` | macOS 独立重启的单次预览票据、过期与进程身份复核 |
-| `apps/desktop/stage0/tauri/src/desktop_tray.rs` | 双平台托盘菜单、状态显示及原生轮询（平台图标/鼠标行为分支） |
+| `desktop/stage0/tauri/src/desktop_tray.rs` | 双平台托盘菜单、状态显示及原生轮询（平台图标/鼠标行为分支） |
 | `src/management/web/desktop.js` | 共用页面的桌面初始化、重启确认及生命周期 |
 | `src/codex_integration/controller.py` | 常驻私有协议、实例所有权、预览/确认、网关与安全退出 |
 | `src/codex_integration/service.py` | 共享准备逻辑；新增可选参数默认保留原 CLI 行为 |
-| `apps/desktop/stage0/probe.py` | 冻结入口及 freeze_support；snapshot/manage/controller 模式 |
-| `apps/desktop/stage0/build_probe.py` | 架构映射、冻结及 macOS 动态模块 hidden import |
-| `apps/desktop/stage0/build_macos_intel.sh` | Intel 预检、冻结、隔离验证、Cargo 构建 |
-| `apps/desktop/stage0/tauri/src/main.rs` | sidecar 会话、固定命令白名单、macOS 托盘及退出保护 |
+| `desktop/stage0/probe.py` | 冻结入口及 freeze_support；snapshot/manage/controller 模式 |
+| `desktop/stage0/build_probe.py` | 架构映射、冻结及 macOS 动态模块 hidden import |
+| `desktop/stage0/build_macos_intel.sh` | Intel 预检、冻结、隔离验证、Cargo 构建 |
+| `desktop/stage0/tauri/src/main.rs` | sidecar 会话、固定命令白名单、macOS 托盘及退出保护 |
 | `src/management/web/` | 桌面与浏览器共用管理界面与接入预览 |
 
 ## 接手后按此顺序推进
@@ -78,10 +78,10 @@
 从仓库根目录执行。本机已验证 macOS 15.6 x86_64、Xcode 16、Python 3.14.7、Rust 1.98；当前不能执行 arm64 程序。工具/cache/build/dist 为本机产物，Git 忽略，换机器须按构建流程安装依赖。
 
 ```sh
-bash apps/desktop/stage0/build_macos_intel.sh
+bash desktop/stage0/build_macos_intel.sh
 
-CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo build --offline --locked \
-  --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol
+CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo build --offline --locked \
+  --manifest-path desktop/stage0/tauri/Cargo.toml --features custom-protocol
 
 node --check src/management/web/app.js
 node --check src/management/web/desktop.js
@@ -90,28 +90,28 @@ git diff --check
 
 冻结隔离验证需允许回环监听；PyInstaller 需本地进程/信号量权限。沙箱内受限失败先区分权限与代码故障。当前静态前端构建本身不要求 Node。
 
-历史通过结果：desktop Python 26 项、构建 4 项、共享 routing 12 项、web workflow 16 项、gateway transport 10 项、runtime control 35 项、冻结隔离 20 项及冻结 controller 生命周期；托盘增量后单独通过 controller 9 项和界面事件 3 项。日志位于 `apps/desktop/build/stage0/`；这些是历史证据，后续改动需重跑相应检查。
+历史通过结果：desktop Python 26 项、构建 4 项、共享 routing 12 项、web workflow 16 项、gateway transport 10 项、runtime control 35 项、冻结隔离 20 项及冻结 controller 生命周期；托盘增量后单独通过 controller 9 项和界面事件 3 项。日志位于 `desktop/build/stage0/`；这些是历史证据，后续改动需重跑相应检查。
 
 ## 本机产物与启动
 
-- sidecar：`apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin`
-- 窗口程序：`apps/desktop/stage0/tauri/target/debug/hybrid-stage0-shell`
-- 手工测试包：`apps/desktop/build/stage0/Codex Hybrid Tray Preview.app`
-- 托盘测试 HOME：`apps/desktop/build/stage0/tray-fixture-home`
-- 退出恢复测试 HOME：`apps/desktop/build/stage0/exit-fixture-home`（本轮已恢复原生配置，测试进程已清理）
-- 早期路由测试 HOME：`apps/desktop/build/stage0/routing-fixture-home`
+- sidecar：`desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin`
+- 窗口程序：`desktop/stage0/tauri/target/debug/hybrid-stage0-shell`
+- 手工测试包：`desktop/build/stage0/Codex Hybrid Tray Preview.app`
+- 托盘测试 HOME：`desktop/build/stage0/tray-fixture-home`
+- 退出恢复测试 HOME：`desktop/build/stage0/exit-fixture-home`（本轮已恢复原生配置，测试进程已清理）
+- 早期路由测试 HOME：`desktop/build/stage0/routing-fixture-home`
 
 隔离启动手工测试包（存在时）：
 
 ```sh
-HOME="$PWD/apps/desktop/build/stage0/tray-fixture-home" \
-"./apps/desktop/build/stage0/Codex Hybrid Tray Preview.app/Contents/MacOS/hybrid-stage0-shell"
+HOME="$PWD/desktop/build/stage0/tray-fixture-home" \
+"./desktop/build/stage0/Codex Hybrid Tray Preview.app/Contents/MacOS/hybrid-stage0-shell"
 ```
 
 使用真实用户配置打开：
 
 ```sh
-open "./apps/desktop/build/stage0/Codex Hybrid Tray Preview.app"
+open "./desktop/build/stage0/Codex Hybrid Tray Preview.app"
 ```
 
 `.app` 是目录，不能直接 `./…app` 执行。隔离启动应直接运行内部 executable；不要假设 `HOME=… open …app` 会把环境传给 Launch Services 启动的应用。启动前检查同一测试包是否已运行，避免绑定到旧实例；不要对已退出应用直接调用会自动启动应用的 UI API，否则可能使用真实 HOME。手工包会过时，修改后不能假设其已同步最新编译结果。
@@ -130,7 +130,7 @@ open "./apps/desktop/build/stage0/Codex Hybrid Tray Preview.app"
 
 可以直接告诉接手者：
 
-> 阅读 AGENTS.md、apps/desktop/docs/handoff.md 和 apps/desktop/docs/plan.md，检查工作树后继续 macOS x86_64。先完成托盘与安全退出实机验收，再做官方 app/dmg 打包和可复现脚本。Apple Silicon 留待对应设备构建；不要操作承载任务的真实 Codex，不要改动 Windows 约定。每项进度区分已实现、已测试和待验收，并更新交接文档。
+> 阅读 AGENTS.md、desktop/docs/handoff.md 和 desktop/docs/plan.md，检查工作树后继续 macOS x86_64。先完成托盘与安全退出实机验收，再做官方 app/dmg 打包和可复现脚本。Apple Silicon 留待对应设备构建；不要操作承载任务的真实 Codex，不要改动 Windows 约定。每项进度区分已实现、已测试和待验收，并更新交接文档。
 
 ## 2026-11-01 退出恢复增量
 
@@ -146,7 +146,7 @@ open "./apps/desktop/build/stage0/Codex Hybrid Tray Preview.app"
 - CH 托盘增加接入/网关状态、动态开启/关闭接入菜单、重启 Codex；开启/关闭会先读取状态并直接打开已有预览，点击菜单不会直接提交切换。状态原生线程每五秒尝试读取同一串行控制会话，忙时跳过、不积压；不自动重建断开的会话，断连显示不可用。安全退出期间禁止轮询及其他请求创建新会话。
 - 独立重启限 macOS；托盘与窗口共用确认区，显示活动和全应用影响。预览两分钟有效、单次使用；执行前复核已识别安装与 PID/创建时间。未运行不启动、检测未知不操作、正常退出失败不启动、不强杀、不重试。网关故障且配置仍接入时拒绝重启。
 - 重启预览与接入预览互相作废，配置编辑/切换使旧重启票据失效。服务端要求显式确认与票据，不接受前端路径；Windows 在接触管理目录前拒绝新增重启命令，既有平台实现与代理规则不变。
-- 源码桌面 37 项、Node 事件 11 项、Rust 状态映射 2 项通过。最终完整 Intel 脚本通过：20 项冻结探针、含重启取消票据的冻结 worker 生命周期（约 32 秒）、offline locked Cargo 编译。日志 `apps/desktop/build/stage0/tray-build-final.log`（忽略提交）。新增冻结回归只执行重启预览、取消及提交失效票据，绝不确认有效的真实 Codex 重启。
+- 源码桌面 37 项、Node 事件 11 项、Rust 状态映射 2 项通过。最终完整 Intel 脚本通过：20 项冻结探针、含重启取消票据的冻结 worker 生命周期（约 32 秒）、offline locked Cargo 编译。日志 `desktop/build/stage0/tray-build-final.log`（忽略提交）。新增冻结回归只执行重启预览、取消及提交失效票据，绝不确认有效的真实 Codex 重启。
 - 托盘自动化受菜单栏 AX 读取超时限制；完整点选与持续隐藏仍不得标记完成；草稿/网关跨关闭重开保留见最终原生窗口补充。控制通道长请求或无响应的超时恢复仍待单独处理。
 - 原生 API 依据：[Tauri 托盘文档](https://v2.tauri.app/learn/system-tray/)及本地锁定 Tauri 2.12.5 的 MenuItem / TrayIcon 源码。
 
@@ -172,5 +172,5 @@ open "./apps/desktop/build/stage0/Codex Hybrid Tray Preview.app"
 - Windows 启用 tray-icon，复用 `desktop_tray.rs` 的管理、混合路由、独立重启与退出菜单及原生状态轮询。macOS 的模板图标、AppKit 确认、应用菜单与 Dock 行为保留；Windows 使用应用 PNG 图标、右键菜单及双击恢复窗口。
 - Windows 原生确认位于 `windows_dialog.rs`，通过 TaskDialog 提供与 macOS 相同的取消/仅切换/切换并操作 Codex 选项。回车默认取消，Escape 和关闭框映射取消。隐藏时不显示管理窗口。
 - Windows 关闭改为隐藏并保留草稿和服务；退出被接入依赖阻止时进入共享恢复预览。独立重启开放给 Windows，通过 `client.py` 调用现有 Windows 安装识别、Restart Manager 与应用激活；macOS 业务语义不变。代理与 Windows 单实例规则不变。
-- 验证：Windows Rust 测试 4 项、新增 Python 生命周期检查 5 项、源码与冻结后端隔离检查各 20 项及 Windows x64 release 编译通过。macOS 分支只做模拟检查，本轮未进行 macOS 编译或实机验收。冻结产物验证结果见 `apps/desktop/build/stage0/windows-tray-packaged-results.json`。
+- 验证：Windows Rust 测试 4 项、新增 Python 生命周期检查 5 项、源码与冻结后端隔离检查各 20 项及 Windows x64 release 编译通过。macOS 分支只做模拟检查，本轮未进行 macOS 编译或实机验收。冻结产物验证结果见 `desktop/build/stage0/windows-tray-packaged-results.json`。
 - 待实机：托盘菜单点选、双击/最小化恢复、原生确认框焦点、草稿和运行中网关跨隐藏保留，以及真实 Codex 的正常重启/拒绝退出。验证未修改真实 Codex 配置或启停真实 Codex。

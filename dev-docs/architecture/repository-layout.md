@@ -14,7 +14,7 @@ src/
 ├── model_catalog/         sources/ 来源包、preferences 与 publication
 ├── adapters/              原生传输、history/context/stream_errors 与 portable/
 └── infrastructure/        共享错误、文件、锁、日志、SSE 与上游错误契约
-apps/desktop/
+desktop/
 ├── src-tauri/             Tauri 装配、ipc/lifecycle、托盘与原生弹窗
 ├── sidecar/main.py        冻结运行入口与兼容验证分派
 ├── tools/                 构建路径、sidecar、平台脚本和 macOS 组装
@@ -74,10 +74,10 @@ CLI → cli.__main__ → 本机集成与管理业务
 | `management/web/features/` | providers 厂商/模型编辑与 routing 接入/活动/进程控制，显式小接口初始化 |
 | `management/web/models.js`、`diagnostics.js`、`usage.js` | 模型成员设置、诊断和用量页面，继续使用共用接口 |
 | `management/web/transport.js`、`desktop.js` | 浏览器/桌面传输选择及桌面初始化/托盘操作 |
-| `apps/desktop/sidecar/main.py` | 冻结运行分派入口与多进程 freeze_support，验证模式延迟委托 `validation/probe.py` |
-| `apps/desktop/src-tauri/src/main.rs` | Tauri 装配、固定命令注册与事件接线 |
-| `apps/desktop/src-tauri/src/ipc.rs` | 串行 sidecar 会话、限额、超时、响应配对与状态轮询 |
-| `apps/desktop/src-tauri/src/lifecycle.rs` | 关闭隐藏、安全退出、原生菜单及所有权释放 |
+| `desktop/sidecar/main.py` | 冻结运行分派入口与多进程 freeze_support，验证模式延迟委托 `validation/probe.py` |
+| `desktop/src-tauri/src/main.rs` | Tauri 装配、固定命令注册与事件接线 |
+| `desktop/src-tauri/src/ipc.rs` | 串行 sidecar 会话、限额、超时、响应配对与状态轮询 |
+| `desktop/src-tauri/src/lifecycle.rs` | 关闭隐藏、安全退出、原生菜单及所有权释放 |
 | `infrastructure/proxy/` | 共用代理入口和 Windows/macOS 专用选择，gateway/transport 保留公共传输入口 |
 
 ## 数据与协议契约
@@ -92,7 +92,7 @@ Portable 先注册本次与历史发现的全部工具，再转换历史、验�
 
 `pyproject.toml` 当前显式列出六个业务包与新增 `infrastructure`，静态清单包含 `management/web/` 根资源及 `shared/*.js`、`features/*.js`。HTTP 对五个嵌套脚本逐项列白名单，冻结资源检查使用相对路径。PyInstaller 还需包含动态加载的各平台本机模块，源码导入成功后继续执行冻结运行验证。
 
-macOS 与 Windows 的根构建脚本转发到 `apps/desktop/tools/`，各平台工具分别维护环境引导和产物契约，详情见[打包](../desktop/packaging.md)。平台 API、代理、退出和安装脚本边界见[平台约定](platform-boundaries.md)。
+macOS 与 Windows 的根构建脚本转发到 `desktop/tools/`，各平台工具分别维护环境引导和产物契约，详情见[打包](../desktop/packaging.md)。平台 API、代理、退出和安装脚本边界见[平台约定](platform-boundaries.md)。
 
 ## 目标迁移与证据
 

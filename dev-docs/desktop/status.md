@@ -39,7 +39,7 @@
 | 真实浏览器与原生交互 | 本轮未验 | CUA 尝试受 Work 设置 disabled 限制，页面/托盘实机待验 |
 | 干净机器与签名 | 待验收 | 无 Python/Git/源码、安装升级、签名/公证 |
 
-最终三个报告均位于 `apps/desktop/build/stage0/`，分别为 `source-results-macos-x86_64.json`、`frozen-results-macos-x86_64.json` 和 `packaged-results-macos-x86_64.json`。本轮编译和隔离结果不能覆盖历史未完成的托盘点选、持续隐藏、真实 Dock 重开或真实 Codex 重启。完整构建命令复现见[验证指南](validation.md)。
+最终三个报告均位于 `desktop/build/stage0/`，分别为 `source-results-macos-x86_64.json`、`frozen-results-macos-x86_64.json` 和 `packaged-results-macos-x86_64.json`。本轮编译和隔离结果不能覆盖历史未完成的托盘点选、持续隐藏、真实 Dock 重开或真实 Codex 重启。完整构建命令复现见[验证指南](validation.md)。
 
 ## 继续推进
 
@@ -78,7 +78,7 @@
 
 ### 归档与剩余路径检查
 
-当前开发指南直接链接归档，`apps/desktop/docs/` 和 `stage0/README.md` 保留原标题顺序、旧锚点与历史章节跳转。根导航、桌面工程导航和双语用户原理页已连接当前架构。归档目录另设索引，便于按来源找回原始证据。
+当前开发指南直接链接归档，`desktop/docs/` 和 `stage0/README.md` 保留原标题顺序、旧锚点与历史章节跳转。根导航、桌面工程导航和双语用户原理页已连接当前架构。归档目录另设索引，便于按来源找回原始证据。
 
 当前指南、双语用户页、图标说明和 AGENTS.md 已同步新源码路径。历史归档保留当时路径，旧文档入口保留原标题锚点。`build/stage0`、`dist/stage0` 和 preview/stage0 应用身份属于保留的兼容契约，D08 已评审确认本轮保留。
 

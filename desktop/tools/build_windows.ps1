@@ -54,7 +54,7 @@ function Initialize-MsvcEnvironment {
 Windows x64 MSVC build tools are unavailable or incomplete (cl.exe, link.exe, Windows SDK, or x64 environment).
 Install Visual Studio 2022 Build Tools with "Desktop development with C++", including MSVC x64/x86 tools and a Windows 10/11 SDK.
 If already installed, repair/add these components in Visual Studio Installer, or run this script from Developer PowerShell for VS with an x64 target.
-Installing Rust or VS Code alone does not provide the MSVC linker. See apps/desktop/docs/build-windows.md.
+Installing Rust or VS Code alone does not provide the MSVC linker. See desktop/docs/build-windows.md.
 '@
     }
     Write-Host "Using MSVC linker: $($Linker.Source)"
@@ -64,7 +64,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'This entry point requires Windows x64.'
 }
 
-$Repository = (Resolve-Path (Join-Path $PSScriptRoot '../../..')).Path
+$Repository = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Push-Location $Repository
 try {
     Initialize-MsvcEnvironment
@@ -73,44 +73,44 @@ try {
         $Python = Join-Path $Repository '.venv/Scripts/python.exe'
     }
     if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
-        throw 'Prepare .venv using apps/desktop/docs/build-windows.md or set STAGE0_PYTHON.'
+        throw 'Prepare .venv using desktop/docs/build-windows.md or set STAGE0_PYTHON.'
     }
     Invoke-Checked $Python @('-c', 'import platform, struct, sys; assert sys.version_info >= (3, 11); assert platform.machine() == ''AMD64'' and struct.calcsize(''P'') == 8; import yaml, pydantic, psutil, watchdog')
     Get-Command cargo -ErrorAction Stop | Out-Null
     if (-not $env:CARGO_HOME) {
-        $env:CARGO_HOME = Join-Path $Repository 'apps/desktop/build/stage0/cargo-home'
+        $env:CARGO_HOME = Join-Path $Repository 'desktop/build/stage0/cargo-home'
     }
 
-    $Tools = 'apps/desktop/build/stage0/tools-windows-x86_64'
+    $Tools = 'desktop/build/stage0/tools-windows-x86_64'
     if (-not (Test-Path "$Tools/PyInstaller" -PathType Container)) {
-        Invoke-Checked $Python @('-m', 'pip', 'install', '--target', $Tools, '-r', 'apps/desktop/tools/requirements.txt')
+        Invoke-Checked $Python @('-m', 'pip', 'install', '--target', $Tools, '-r', 'desktop/tools/requirements.txt')
     }
-    $Manifest = 'apps/desktop/src-tauri/Cargo.toml'
+    $Manifest = 'desktop/src-tauri/Cargo.toml'
     & cargo fetch --offline --locked --manifest-path $Manifest
     if ($LASTEXITCODE -ne 0) {
         Invoke-Checked 'cargo' @('fetch', '--locked', '--manifest-path', $Manifest)
     }
 
-    Invoke-Checked $Python @('-X', 'utf8', 'apps/desktop/tools/build_sidecar.py', '--tools-dir', $Tools)
-    $Sidecar = 'apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-pc-windows-msvc.exe'
-    Invoke-Checked $Python @('-X', 'utf8', 'apps/desktop/validation/verify.py', '--executable', $Sidecar,
-        '--output', 'apps/desktop/build/stage0/frozen-results-windows-x86_64.json')
+    Invoke-Checked $Python @('-X', 'utf8', 'desktop/tools/build_sidecar.py', '--tools-dir', $Tools)
+    $Sidecar = 'desktop/dist/stage0/hybrid-stage0-probe-x86_64-pc-windows-msvc.exe'
+    Invoke-Checked $Python @('-X', 'utf8', 'desktop/validation/verify.py', '--executable', $Sidecar,
+        '--output', 'desktop/build/stage0/frozen-results-windows-x86_64.json')
 
     $Target = 'x86_64-pc-windows-msvc'
-    $TargetDirectory = 'apps/desktop/build/stage0/tauri-target'
+    $TargetDirectory = 'desktop/build/stage0/tauri-target'
     Invoke-Checked 'cargo' @('build', '--offline', '--locked', '--release', '--target', $Target,
         '--target-dir', $TargetDirectory, '--manifest-path', $Manifest, '--features', 'custom-protocol')
 
     # Verify a complete pair before replacing the previous preview directory.
-    $Output = 'apps/desktop/dist/stage0/windows-x86_64'
+    $Output = 'desktop/dist/stage0/windows-x86_64'
     $Staging = "$Output-$([Guid]::NewGuid().ToString('N')).tmp"
     $Backup = "$Staging.previous"
     New-Item -ItemType Directory -Path $Staging | Out-Null
     try {
         Copy-Item -LiteralPath "$TargetDirectory/$Target/release/hybrid-stage0-shell.exe" -Destination "$Staging/Codex Hybrid.exe"
         Copy-Item -LiteralPath $Sidecar -Destination "$Staging/hybrid-stage0-probe.exe"
-        Invoke-Checked $Python @('-X', 'utf8', 'apps/desktop/validation/verify.py', '--executable', "$Staging/hybrid-stage0-probe.exe",
-            '--output', 'apps/desktop/build/stage0/packaged-results-windows-x86_64.json')
+        Invoke-Checked $Python @('-X', 'utf8', 'desktop/validation/verify.py', '--executable', "$Staging/hybrid-stage0-probe.exe",
+            '--output', 'desktop/build/stage0/packaged-results-windows-x86_64.json')
         if (Test-Path -LiteralPath $Output) {
             Move-Item -LiteralPath $Output -Destination $Backup
         }

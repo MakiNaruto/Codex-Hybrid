@@ -1,10 +1,10 @@
-> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `apps/desktop/docs/build-macos-intel.md`。原文历史路径与命令仅用于理解当时执行条件。
+> 历史归档，保留原始决策、日期与验证范围。当前操作见[桌面开发导航](../../desktop/README.md)。原位置为 `desktop/docs/build-macos-intel.md`。原文历史路径与命令仅用于理解当时执行条件。
 
 > 当前主题指南见[桌面开发文档](../../desktop/build-macos.md)。本文保留历史决策与按日期记录的验证范围，部分早期描述已被后续增量更新。
 
 # macOS Intel 构建流程
 
-当前目标：macOS x86_64。采用 Tauri 2 + 冻结 Python；Xcode 用于原生编译、SDK 和链接，不编写 Swift 桌面层。Apple Silicon 后续实施，Windows 使用独立的 [Windows 构建流程](../../../apps/desktop/docs/build-windows.md)。
+当前目标：macOS x86_64。采用 Tauri 2 + 冻结 Python；Xcode 用于原生编译、SDK 和链接，不编写 Swift 桌面层。Apple Silicon 后续实施，Windows 使用独立的 [Windows 构建流程](../../../desktop/docs/build-windows.md)。
 
 ## 准备环境
 
@@ -17,13 +17,13 @@ rustc -vV
 python3 -c 'import platform; print(platform.machine())'
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip install --target apps/desktop/build/stage0/tools -r apps/desktop/stage0/requirements.txt
+.venv/bin/python -m pip install --target desktop/build/stage0/tools -r desktop/stage0/requirements.txt
 ```
 
 架构应为 x86_64，Rust host 应为 x86_64-apple-darwin。首次联网获取已锁定的 Rust 依赖：
 
 ```sh
-CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo fetch --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml
+CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo fetch --locked --manifest-path desktop/stage0/tauri/Cargo.toml
 ```
 
 ## 一条命令生成开发预览应用
@@ -38,26 +38,26 @@ STAGE0_OPEN_APP=0 bash scripts/build_desktop.sh
 
 脚本支持从空 `build/`、`dist/`、`target/` 目录重建，缺少 PyInstaller 工具时自动安装，Cargo 本地缺少锁定依赖时联网获取。随后执行隔离原型构建，创建应用目录、`Info.plist`、图标及 Python 运行库，并用临时 HOME 检查打包的 sidecar。
 
-产物为 `apps/desktop/build/stage0/Codex Hybrid Tray Preview.app`。更新前先正常退出正在运行的预览应用。清理后的首次构建需要重新下载依赖和完整编译。此入口目前仅支持 Intel macOS，开发预览包尚待签名、公证与干净机器验收。
+产物为 `desktop/build/stage0/Codex Hybrid Tray Preview.app`。更新前先正常退出正在运行的预览应用。清理后的首次构建需要重新下载依赖和完整编译。此入口目前仅支持 Intel macOS，开发预览包尚待签名、公证与干净机器验收。
 
 ## 单独重建隔离原型
 
 ```sh
-bash apps/desktop/stage0/build_macos_intel.sh
+bash desktop/stage0/build_macos_intel.sh
 ```
 
 脚本遇到错误立即停止，依次冻结 Python、运行 20 项隔离验证、使用 Cargo.lock 离线编译 Tauri 窗口。不关闭真实 Codex，不修改真实配置，不发送付费请求。验证使用临时本地端口；执行环境必须允许监听回环端口。可通过 `STAGE0_PYTHON` 指定已安装业务依赖的 Intel Python，通过 `CARGO_HOME` 指定已下载的 Rust 缓存。
 
 输出：
 
-- `apps/desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin`：Tauri sidecar。
-- `apps/desktop/stage0/tauri/target/debug/hybrid-stage0-shell`：开发窗口可执行程序。
-- `apps/desktop/build/stage0/frozen-results-macos-x86_64.json`：20 项冻结验证报告。
+- `desktop/dist/stage0/hybrid-stage0-probe-x86_64-apple-darwin`：Tauri sidecar。
+- `desktop/stage0/tauri/target/debug/hybrid-stage0-shell`：开发窗口可执行程序。
+- `desktop/build/stage0/frozen-results-macos-x86_64.json`：20 项冻结验证报告。
 
 从仓库启动窗口：
 
 ```sh
-CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo run --offline --locked --manifest-path apps/desktop/stage0/tauri/Cargo.toml --features custom-protocol
+CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo run --offline --locked --manifest-path desktop/stage0/tauri/Cargo.toml --features custom-protocol
 ```
 
 点击“检查打包程序”，应返回 `frozen: true`、UTF-8 和静态资源报告。窗口已提供配置初始化、厂商与模型编辑保存及主动连接测试；已提供接入预览、确认及恢复入口，完整生命周期与发布验收仍待完成。
@@ -82,7 +82,7 @@ CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo run --offline --loc
 保存复用现有业务方法和私有文件写入，Key 留空保留，未编辑的高级参数保留；配置版本不一致或已有服务实例时拒绝。CC Switch 保持只读。模型来源启用状态与是否加入目录分别展示；目前尚未提供独立调整目录成员的控件。连接测试使用已保存的配置，用户点击才发送，可能消耗额度；验证测试使用模拟上游，不发送付费请求。草稿打开时刷新及其他厂商编辑会被阻止，失败保留草稿，显式取消才丢弃。macOS 关闭窗口已调用隐藏以保留草稿，跨隐藏的实机验收仍待完成。
 
 
-协议与边界见 [私有管理接口](../../../apps/desktop/docs/private-management.md)。当前仍为开发预览，尚未生成正式安装包。
+协议与边界见 [私有管理接口](../../../desktop/docs/private-management.md)。当前仍为开发预览，尚未生成正式安装包。
 
 
 ## 常驻控制、接入与退出预览
@@ -95,11 +95,11 @@ CARGO_HOME="$PWD/apps/desktop/build/stage0/cargo-home" cargo run --offline --loc
 运行环境需允许临时回环监听，冻结程序还需 PyInstaller 本地进程/信号量权限。打包入口包含 `multiprocessing.freeze_support()`，冻结多进程需要实机验收网关启停与退出清理，不能只凭编译成功判断可用。
 
 
-当前完成项与后续顺序见[开发交接](../../../apps/desktop/docs/handoff.md)；手工测试包的终端启动方式也记录于该文档。
+当前完成项与后续顺序见[开发交接](../../../desktop/docs/handoff.md)；手工测试包的终端启动方式也记录于该文档。
 
 ## 首次配置加载与运行库（2026-11-01）
 
-macOS 后台程序改用 PyInstaller `--onedir`，避免每次打开应用时解压单文件运行库。Windows 仍使用 `--onefile`。Intel 构建仍输出带 target 后缀的 sidecar，但它必须与 `apps/desktop/dist/stage0/_internal/` 一起使用；不能单独分发该可执行文件。
+macOS 后台程序改用 PyInstaller `--onedir`，避免每次打开应用时解压单文件运行库。Windows 仍使用 `--onefile`。Intel 构建仍输出带 target 后缀的 sidecar，但它必须与 `desktop/dist/stage0/_internal/` 一起使用；不能单独分发该可执行文件。
 
 `build_macos_intel.sh` 在编译后把运行库复制到 `tauri/target/debug/_internal/`，支持直接运行未打包的壳。`scripts/build_desktop.sh` 同时更新手工预览应用的 `Contents/MacOS/_internal/`。隔离验证脚本也会复制相邻运行库。当前仍使用手工预览 `.app`，`bundle.active=false`，这不是已完成的 Tauri 安装包打包流程。
 

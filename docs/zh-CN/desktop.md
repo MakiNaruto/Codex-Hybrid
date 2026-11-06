@@ -6,7 +6,7 @@
 
 ## 获取与启动
 
-macOS 当前顶层构建入口支持 Intel x86_64，生成 `apps/desktop/build/stage0/Codex Hybrid Tray Preview.app`。Windows x64 生成 `apps/desktop/dist/stage0/windows-x86_64/` 便携目录，保留 `Codex Hybrid.exe` 和 `hybrid-stage0-probe.exe` 在同一目录后启动窗口。Apple Silicon 尚待本机验收。
+macOS 当前顶层构建入口支持 Intel x86_64，生成 `desktop/build/stage0/Codex Hybrid Tray Preview.app`。Windows x64 生成 `desktop/dist/stage0/windows-x86_64/` 便携目录，保留 `Codex Hybrid.exe` 和 `hybrid-stage0-probe.exe` 在同一目录后启动窗口。Apple Silicon 尚待本机验收。
 
 从源码构建的前置条件和命令见 [macOS 构建](../../dev-docs/desktop/build-macos.md)与 [Windows 构建](../../dev-docs/desktop/build-windows.md)。这些开发指南目前以中文维护。
 
