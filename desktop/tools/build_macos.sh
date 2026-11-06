@@ -19,8 +19,15 @@ if [[ ! -d desktop/build/stage0/tools/PyInstaller ]]; then
   "$PYTHON" -m pip install --target desktop/build/stage0/tools \
     -r desktop/tools/requirements.txt
 fi
-cargo fetch --offline --locked --manifest-path desktop/src-tauri/Cargo.toml || \
-  cargo fetch --locked --manifest-path desktop/src-tauri/Cargo.toml
+# A fresh isolated cache is expected to fail the offline probe. Only surface
+# errors from the actual download, so a cache miss does not look like a failure.
+if ! cargo fetch --offline --locked --manifest-path desktop/src-tauri/Cargo.toml >/dev/null 2>&1; then
+  echo "Cargo cache incomplete (CARGO_HOME=$CARGO_HOME). Downloading locked Cargo dependencies..."
+  if ! cargo fetch --locked --manifest-path desktop/src-tauri/Cargo.toml; then
+    echo "Cargo dependency download failed (CARGO_HOME=$CARGO_HOME). Check the registry/network configuration and retry." >&2
+    exit 1
+  fi
+fi
 
 "$PYTHON" -X utf8 desktop/tools/build_sidecar.py --tools-dir desktop/build/stage0/tools
 "$PYTHON" -X utf8 desktop/validation/verify.py \

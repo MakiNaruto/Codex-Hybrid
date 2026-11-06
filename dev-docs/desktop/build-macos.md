@@ -15,7 +15,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-主机与 Python 架构应为 x86_64。构建入口会安装缺失的固定版本 PyInstaller，并先离线获取锁定 Cargo 依赖，缺失时联网获取。可通过 `STAGE0_PYTHON` 指定已安装项目依赖的 Intel Python，`CARGO_HOME` 指定缓存。
+主机与 Python 架构应为 x86_64。构建入口会安装缺失的固定版本 PyInstaller，并先离线获取锁定 Cargo 依赖，缺失时提示正在下载并联网获取；预期的离线缓存缺失不会输出为构建错误。可通过 `STAGE0_PYTHON` 指定已安装项目依赖的 Intel Python，`CARGO_HOME` 指定缓存；默认使用仓库内 `desktop/build/stage0/cargo-home`，不会自动复用 `~/.cargo` 的缓存。
 
 ## 构建和产物
 
@@ -41,6 +41,6 @@ CARGO_HOME="$PWD/desktop/build/stage0/cargo-home" cargo fetch --locked --manifes
 
 ## 失败定位与验收范围
 
-Xcode 错误先检查 `xcode-select -p` 及 Xcode 中 Command Line Tools 选择。缺少 crate 时运行锁定依赖预取，缺少 PyInstaller 时执行上述工具安装。隔离验证需要本地回环监听及冻结进程所需的权限。
+Xcode 错误先检查 `xcode-select -p` 及 Xcode 中 Command Line Tools 选择。首次构建出现 `Cargo cache incomplete` 是正在联网补齐依赖的提示。若随后出现 `Cargo dependency download failed`，查看前面的 Cargo 错误，检查网络和 registry 配置，再运行上述锁定依赖预取命令或重试构建；无需删除 `serde_json` 依赖或修改锁文件。缺少 PyInstaller 时执行上述工具安装。隔离验证需要本地回环监听及冻结进程所需的权限。
 
 当前 `.app` 由脚本组装，Tauri 官方 bundle、正式 release 安装包、签名、公证及无 Python/Git/源码的干净环境验收仍待完成。历史 Intel 构建记录见[原构建文档](../archive/desktop/build-macos-intel-history.md)与[验证证据](../archive/desktop/stage0-validation.md)，2026-11-06 根构建入口已完成最终重冻与组装，Intel locked Cargo check/test/build、源码/冻结/应用内隔离检查通过，具体范围见[本轮矩阵](status.md#本轮验证矩阵)。窗口和托盘实机未在本轮运行。
