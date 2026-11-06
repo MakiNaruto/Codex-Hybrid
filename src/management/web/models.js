@@ -99,7 +99,7 @@ function openAddModels(){
   }
   updateAddCount();$('add-models-dialog').showModal();
 }
-function openModelDetail(model){
+function openModelDetail(model,sourceOnly=false){
   detailModel=model;modelDialogSource=state.source_id;
   $('model-detail-title').textContent=modelName(model);$('model-detail-provider').textContent=providerName(model)+' · '+(state.mode==='cc_switch'?'CC Switch':'独立管理');
   const meta=$('model-detail-meta');meta.replaceChildren();
@@ -111,8 +111,9 @@ function openModelDetail(model){
   for(const [key,id] of Object.entries(adaptationControls))$(id).checked=(model.responses_adaptations||[]).includes(key);
   syncAdaptationControls();
   $('model-detail-protocol').textContent='接口协议 · Responses';
-  $('model-detail-test').replaceChildren(testButton(model));$('model-detail-error').textContent='';
-  $('save-model-detail').disabled=false;$('remove-model').disabled=false;
+  $('model-detail-test').replaceChildren(testButton(model,sourceOnly));$('model-detail-error').textContent='';
+  $('save-model-detail').disabled=false;$('remove-model').disabled=!model.enabled;
+  $('model-remove-action').hidden=!model.enabled;
   $('model-detail-dialog').showModal();
 }
 async function persistModelUpdates(updates,dialog,errorId){

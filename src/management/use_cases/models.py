@@ -1,4 +1,4 @@
-"""Validate a full local model-preference batch without mutating live settings."""
+"""Validate a full local model/provider-preference batch without mutating live settings."""
 import copy
 
 from infrastructure.errors import ConfigError
@@ -12,7 +12,23 @@ def prepare_model_preferences(settings, catalog, updates):
         'added': [key for key, model in catalog.models.items() if model['enabled']], 'compatibility': {}})
     added = set(preferences['added'])
     seen = set()
+    seen_providers = set()
     for update in updates:
+        if isinstance(update, dict) and 'provider' in update:
+            provider = update['provider']
+            if (settings['source']['type'] != 'cc-switch'
+                    or set(update) != {'provider', 'enabled'} or not isinstance(provider, str)
+                    or type(update['enabled']) is not bool or provider in seen_providers
+                    or provider not in catalog.providers):
+                raise ConfigError('INVALID_MODEL_PREFERENCES')
+            seen_providers.add(provider)
+            disabled = set(preferences.get('disabled_providers', []))
+            if update['enabled']:
+                disabled.discard(provider)
+            else:
+                disabled.add(provider)
+            preferences['disabled_providers'] = sorted(disabled)
+            continue
         if (not isinstance(update, dict) or set(update) - {'key', 'added', 'responses_compatibility', 'responses_adaptations'}
                 or not isinstance(update.get('key'), str) or update['key'] in seen):
             raise ConfigError('INVALID_MODEL_PREFERENCES')

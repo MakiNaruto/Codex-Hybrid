@@ -39,12 +39,16 @@ def apply_preferences(catalog, settings):
     if preferences is None:
         return catalog
     if not isinstance(preferences, dict) or set(preferences) - {
-            'added', 'compatibility', 'adaptations', 'imported_records'}:
+            'added', 'compatibility', 'adaptations', 'imported_records', 'disabled_providers'}:
         raise ConfigError('INVALID_MODEL_PREFERENCES')
     added = preferences.get('added', [])
     compatibility = preferences.get('compatibility', {})
     adaptations = preferences.get('adaptations', {})
     imported = preferences.get('imported_records', [])
+    disabled = preferences.get('disabled_providers', [])
+    if (not isinstance(disabled, list) or any(not isinstance(key, str) for key in disabled)
+            or (disabled and settings['source']['type'] != 'cc-switch')):
+        raise ConfigError('INVALID_MODEL_PREFERENCES')
     from adapters.response_schemas import validate_adaptations
     if not isinstance(adaptations, dict):
         raise ConfigError('INVALID_MODEL_PREFERENCES')
@@ -63,11 +67,14 @@ def apply_preferences(catalog, settings):
                    for key, value in compatibility.items())):
         raise ConfigError('INVALID_MODEL_PREFERENCES')
     for key, model in catalog.models.items():
+        model['source_enabled'] = model['source_enabled'] and model['provider'] not in disabled
         model['enabled'] = model['source_enabled'] and key in added
         if key in compatibility and model['protocol'] == 'openai_responses':
             model['responses_compatibility'] = compatibility[key]
         if key in adaptations and model['protocol'] == 'openai_responses':
             model['responses_adaptations'] = list(adaptations[key])
+    for entry in getattr(catalog, 'inventory', []):
+        entry['enabled'] = entry['provider_key'] not in disabled
     if catalog.default_model and not catalog.models[catalog.default_model]['enabled']:
         catalog.default_model = None
     return catalog

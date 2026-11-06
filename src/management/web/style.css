@@ -708,3 +708,31 @@ dialog.usage-composition-dialog { width: min(1080px,calc(100vw - 48px)); max-wid
 :root.desktop-shell .access-headline { margin-top: 8px; font-size: 21px; }
 :root.desktop-shell .routing-footnote { margin-top: 12px; }
 .access-state:empty { display: none; }
+
+/* Keep dialog controls visible while the dialog content scrolls. */
+.connections-dialog > .model-dialog-heading,
+.add-models-dialog > .model-dialog-heading {
+  position: sticky; top: -28px; z-index: 2;
+  margin: -28px -28px 24px; padding: 28px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.model-detail-dialog > .model-dialog-heading {
+  position: sticky; top: 0; z-index: 2;
+  padding-bottom: 14px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.usage-composition-dialog-heading {
+  position: sticky; top: -24px; z-index: 2;
+  margin: -24px -24px 0; padding: 24px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.cc-model-detail { margin-top: 8px; padding: 4px 8px; font-size: 11px; }
+.disabled-providers { margin-top: 24px; }
+.disabled-providers > summary { padding: 16px 0; cursor: pointer; color: var(--muted); }
+.model-remove-action[hidden] { display: none; }
+.model-detail-actions:has(.model-remove-action[hidden]) { justify-content: flex-end; }
+@media (max-width: 560px) {
+  dialog.connections-dialog { padding: 16px; }
+  .connections-dialog > .model-dialog-heading { top: -16px; margin: -16px -16px 24px; padding: 16px; }
+  .usage-composition-dialog-heading { top: -16px; margin: -16px -16px 0; padding: 16px; }
+}

@@ -67,15 +67,15 @@ function testButton(model,sourceOnly=false){
 }
 const {dirtyCards,updateUnsaved,markDirty,clearDirty,discardDrafts,installUnloadGuard}=createProviderDrafts($('providers'),$('unsaved-status'),el);
 installUnloadGuard();
-const {providerCard,ccCard}=createProviderViews({
+const {providerCard,ccCard,ccProviderCards}=createProviderViews({
   getState:()=>state,el,field,help,button,testButton,markDirty,clearDirty,applyFilters,
-  api,refresh,message,clearConnectionResults:()=>connectionResults.clear()
+  api,refresh,message,errorMessage,openModelDetail:(...args)=>openModelDetail(...args),clearConnectionResults:()=>connectionResults.clear()
 });
 function applyFilters(){
   if(typeof renderModelList==='function')renderModelList();
   const query=$('model-search').value.trim().toLowerCase(),filter=$('model-filter').value;
   let visible=0,total=0;
-  for(const card of $('providers').children){
+  for(const card of $('providers').querySelectorAll('.card')){
     if(!card.classList.contains('card'))continue;total++;
     const text=(card.textContent+' '+[...card.querySelectorAll('input:not([type=password]):not([type=checkbox])')].map(input=>input.value).join(' ')).toLowerCase();
     const models=(state?.models||[]).filter(model=>model.provider===card.dataset.providerId);
@@ -155,7 +155,7 @@ async function refresh(automatic=false){
       }
       for(const draft of drafts)if(!draft.isConnected)$('providers').prepend(draft);
     }else{
-      for(const entry of state.inventory)$('providers').append(ccCard(entry));
+      $('providers').append(...ccProviderCards(state.inventory));
     }
     if(!$('providers').children.length)$('providers').append(el('p',state.mode==='cc_switch'?'CC Switch 中暂无可读取的第三方 OpenAI 配置。':'尚无厂商，请添加厂商和模型。','hint'));
     if(state.source_error)message('配置来源提示：'+state.source_error,true);

@@ -1,5 +1,5 @@
 'use strict';
-function createProviderViews({getState,el,field,help,button,testButton,markDirty,clearDirty,applyFilters,api,refresh,message,clearConnectionResults}){
+function createProviderViews({getState,el,field,help,button,testButton,openModelDetail,markDirty,clearDirty,applyFilters,api,refresh,message,errorMessage,clearConnectionResults}){
   function modelEditor(alias,model={},cc=false,savedModel){
     const row=el('div',undefined,'model-editor');
     const head=el('div',undefined,'model-card-head');
@@ -103,6 +103,17 @@ function createProviderViews({getState,el,field,help,button,testButton,markDirty
     const {card,sidebar,content,rows}=providerLayout(entry.name,'同步自 CC Switch · '+entry.models.length+' 个模型',true);
     card.classList.add('cc-provider');
     card.dataset.providerId=entry.provider_key;
+    const active=field('启用厂商',entry.enabled!==false,'checkbox');
+    const sourceId=getState().source_id;
+    active.input.onchange=async()=>{
+      const enabled=active.input.checked;active.input.disabled=true;
+      try{
+        await api('models',{source_id:sourceId,updates:[{provider:entry.provider_key,enabled}]});
+        await refresh();message('厂商已'+(enabled?'启用':'停用')+'。重启 Codex 后，最新模型列表才会在 Codex 中生效。');
+      }catch(error){active.input.checked=entry.enabled!==false;message(errorMessage(error),true);}
+      finally{active.input.disabled=false;}
+    };
+    sidebar.append(active.label);
     const badges=el('div',undefined,'provider-badges');badges.append(el('span','Responses','badge'),el('span','只读','badge'));sidebar.append(badges);
     badges.append(protocolIndicator(entry.responses_compatibility));
     const address=el('div',undefined,'provider-address');address.append(el('p',entry.base_url));sidebar.append(address);
@@ -126,9 +137,23 @@ function createProviderViews({getState,el,field,help,button,testButton,markDirty
         else metric.append(el('span','tokens','stat-unit'));
         stat.append(caption,metric);stats.append(stat);
       }
-      item.append(identity,testButton(getState().models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id),true),stats);rows.append(item);
+      const saved=getState().models.find(saved=>saved.provider===entry.provider_key&&saved.model_id===model.model_id);
+      if(saved){
+        const details=button('模型详情',()=>openModelDetail(saved,true),'secondary cc-model-detail');
+        details.setAttribute('aria-label',displayName+'，模型详情');identity.append(details);
+      }
+      item.append(identity,testButton(saved,true),stats);rows.append(item);
     }
     if(!entry.models.length)rows.append(el('p','暂无可同步的模型','hint'));return card;
   }
-  return {providerCard,ccCard};
+  function ccProviderCards(entries){
+    const active=[],disabled=[];
+    for(const entry of entries)(entry.enabled===false?disabled:active).push(ccCard(entry));
+    if(disabled.length){
+      const group=el('details',undefined,'disabled-providers');
+      group.append(el('summary','未启用厂商（'+disabled.length+'）'),...disabled);active.push(group);
+    }
+    return active;
+  }
+  return {providerCard,ccCard,ccProviderCards};
 }
