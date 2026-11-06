@@ -2,16 +2,12 @@
 import json
 
 from adapters.native_responses import NativeResponsesAdapter
-from adapters.request_compat import normalize_history, progress_guidance
-from adapters.response_schemas import (AdaptationSettings, AgentMessage, CustomArguments,
+from adapters.history import normalize_history
+from adapters.context import progress_guidance
+from adapters.response_schemas import (validate_adaptations, AgentMessage, CustomArguments,
                                       CustomCall, CustomTool, StandaloneOutput, host_plaintext)
 
 
-def validate_adaptations(value):
-    try:
-        return AdaptationSettings(adaptations=value).adaptations
-    except ValueError:
-        raise ValueError('INVALID_RESPONSES_ADAPTATIONS') from None
 
 
 class MinimalResponsesAdapter(NativeResponsesAdapter):

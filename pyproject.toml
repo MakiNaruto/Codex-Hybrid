@@ -23,6 +23,7 @@ include = [
     "model_catalog", "model_catalog.*",
     "management", "management.*",
     "codex_integration", "codex_integration.*",
+    "infrastructure", "infrastructure.*",
 ]
 namespaces = false
 
@@ -30,7 +31,10 @@ namespaces = false
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.package-data]
-"management" = ["web/*.html", "web/*.js", "web/*.css"]
+"management" = [
+    "web/*.html", "web/*.js", "web/*.css",
+    "web/shared/*.js", "web/features/*.js",
+]
 
 [tool.ruff]
 target-version = "py311"

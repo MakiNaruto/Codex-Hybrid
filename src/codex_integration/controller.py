@@ -193,4 +193,90 @@ class Controller:
         if action == 'save_provider':
             self.pending = None
             with self.manager.lock:
-                return management
+                return management.save(self.manager, request)
+        if action == 'test_connection':
+            return self.manager.test_connection(request['key'])
+        if action == 'save_desktop_preferences':
+            return self.manager.save_desktop_preferences(request['mode'], request['value'])
+        if action == 'preview_routing':
+            preview = self.manager.preview_routing(request['mode'])
+            self.pending = preview
+            # Do not expose session filenames, config contents or arbitrary warning text.
+            return {key: preview[key] for key in ('mode', 'revision', 'desktop', 'desktop_ticket',
+                    'session_count', 'model_change_count', 'index_repair_count', 'missing_rollouts',
+                    'activity', 'codex_process')}
+        if action == 'recover_forwarding':
+            if self.manager.routing_state() != 'project':
+                raise ConfigError('FORWARDING_UNAVAILABLE')
+            self.runtime.start()
+            if self.manager.routing_state() != 'project':
+                self.runtime.stop_if_safe(self.manager)
+                raise ConfigError('CLIENT_CONFIG_CHANGED')
+            return self.runtime.snapshot()
+        if action == 'set_routing':
+            pending, self.pending = self.pending, None
+            if pending is None or any(request[key] != pending[key] for key in ('mode', 'revision', 'desktop_ticket')):
+                raise ConfigError('INVALID_PREVIEW')
+            try:
+                return self.manager.set_routing(request['mode'], request['revision'], request['confirm_activity'],
+                    request['desktop_action'], request['desktop_was_running'], request['desktop_ticket'])
+            except Exception:
+                # Failed activation may have started forwarding; stop only if proven safe.
+                try:
+                    self.runtime.stop_if_safe(self.manager)
+                except Exception:
+                    pass
+                raise
+        raise ConfigError('INVALID_REQUEST')
+
+    def request(self, request):
+        try:
+            validate(request)
+            if self.closed:
+                raise ConfigError('FORWARDING_UNAVAILABLE')
+            return {'ok': True, 'result': self.handle(request)}
+        except Exception as error:
+            if isinstance(request, dict) and request.get('action') == 'web_api' and not isinstance(error, ConfigError):
+                from gateway.transport import error_event
+                return {'ok': False, 'error': error_event(error, 'management')['code']}
+            code = error.code if isinstance(error, ConfigError) else None
+            return {'ok': False, 'error': code if code in ERRORS else 'OPERATION_FAILED'}
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            if self.runtime is not None:
+                self.runtime.close()
+        finally:
+            try:
+                if self.manager is not None:
+                    self.manager.close()
+            finally:
+                self.locks.close()
+
+
+def main():
+    import sys
+    controller = Controller()
+    try:
+        while True:
+            line = sys.stdin.buffer.readline(65537)
+            if not line:
+                break
+            try:
+                if len(line) > 65536:
+                    # A framing violation ends the session, never parse the remainder as a command.
+                    print(json.dumps({'ok': False, 'error': 'INVALID_REQUEST'}), flush=True)
+                    break
+                result = controller.request(json.loads(line))
+            except Exception:
+                result = {'ok': False, 'error': 'INVALID_REQUEST'}
+            print(json.dumps(result, ensure_ascii=False), flush=True)
+            if controller.closed:
+                break
+    finally:
+        # Owner loss is crash cleanup, not a successful safe exit. Keep routing/baseline
+        # on disk for explicit recovery next launch; no worker may outlive its owner.
+        controller.close()

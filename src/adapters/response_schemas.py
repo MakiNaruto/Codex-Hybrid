@@ -86,3 +86,10 @@ class CustomCall(NativeItem):
 class CustomArguments(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True, hide_input_in_errors=True)
     input: str
+
+
+def validate_adaptations(value):
+    try:
+        return AdaptationSettings(adaptations=value).adaptations
+    except ValueError:
+        raise ValueError('INVALID_RESPONSES_ADAPTATIONS') from None

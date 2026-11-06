@@ -119,3 +119,7 @@ After adding or removing models, update the client model catalog and restart Cod
 | [Troubleshooting](docs/en/troubleshooting.md) | Missing models, 401 errors, installation, and rollback |
 | [Architecture](docs/en/architecture.md) | Repository layout, browser and desktop responsibilities, routing and credentials |
 | [Desktop app and builds](apps/desktop/README.md) | Tauri shell, Intel Mac builds and platform verification scope (Chinese) |
+
+## Developer documentation
+
+[Desktop engineering, build guides, and validation](dev-docs/README.md).

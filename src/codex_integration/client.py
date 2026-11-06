@@ -25,9 +25,9 @@ class DesktopControlError(OSError):
 
 def backend():
     if sys.platform == 'win32':
-        return import_module('codex_integration.windows_client')
+        return import_module('codex_integration.platforms.windows.client')
     if sys.platform == 'darwin':
-        return import_module('codex_integration.macos_client')
+        return import_module('codex_integration.platforms.macos.client')
     return None
 
 

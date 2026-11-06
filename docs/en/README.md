@@ -6,6 +6,7 @@
 
 | I want to… | Read |
 | --- | --- |
+| Launch, initialize, use the tray, or exit desktop preview | [Desktop guide](desktop.md) |
 | Configure providers, models, API keys, or CC Switch | [Configuration](configuration.md) |
 | Customize installation, commands, defaults, or private access links | [Commands and advanced setup](cli.md) |
 | Test connections, switch models, or create native subagents | [Usage and verification](usage.md) |

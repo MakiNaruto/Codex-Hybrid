@@ -1,69 +1,12 @@
 """Shared streaming transport for Responses requests."""
 import errno
-import base64
 import json
 import socket
 import ssl
-import sys
 import urllib.error
-import urllib.parse
-import urllib.request
 
-
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
-def discover_proxies():
-    if sys.platform != 'win32':
-        return urllib.request.getproxies()
-    # Windows follows the user's current system proxy switch. Environment
-    # variables inherited at service startup must not keep an old proxy alive.
-    return urllib.request.getproxies_registry()
-
-
-class WindowsSystemProxyHandler(urllib.request.ProxyHandler):
-    """Use Windows bypass rules too, without consulting inherited NO_PROXY."""
-
-    def proxy_open(self, request, proxy, protocol):
-        if request.host and urllib.request.proxy_bypass_registry(request.host):
-            return None
-        parsed = urllib.parse.urlsplit(proxy if '://' in proxy else 'http://' + proxy)
-        if parsed.username and parsed.password:
-            credentials = '{}:{}'.format(urllib.parse.unquote(parsed.username),
-                                         urllib.parse.unquote(parsed.password))
-            encoded = base64.b64encode(credentials.encode()).decode('ascii')
-            request.add_header('Proxy-Authorization', 'Basic ' + encoded)
-        hostport = urllib.parse.unquote(parsed.netloc.rsplit('@', 1)[-1])
-        original_protocol = request.type
-        request.set_proxy(hostport, parsed.scheme)
-        if original_protocol != parsed.scheme and original_protocol != 'https':
-            return self.parent.open(request, timeout=request.timeout)
-        return None
-
-
-class FreshProxyOpener:
-    """Discover proxies for every request, without sharing mutable handlers.
-
-    urllib's default ProxyHandler snapshots macOS system proxies at creation.
-    A desktop service can outlive VPN/proxy changes and sleep/wake cycles.
-    Rebuilding locally also keeps concurrent requests independent. Do not
-    replay failed POSTs: the upstream may already have accepted a generation.
-    """
-
-    def __init__(self, upstream_proxy=None):
-        self.upstream_proxy = upstream_proxy
-
-    def open(self, request, timeout=120):
-        windows = sys.platform == 'win32'
-        proxies = ({'http': self.upstream_proxy, 'https': self.upstream_proxy}
-                   if self.upstream_proxy and not windows else discover_proxies())
-        # Record only presence, never proxy URLs, credentials or bypass lists.
-        request.connected_proxy_configured = bool(proxies.get(request.type))
-        handler = WindowsSystemProxyHandler if windows else urllib.request.ProxyHandler
-        opener = urllib.request.build_opener(handler(proxies), NoRedirect())
-        return opener.open(request, timeout=timeout)
+from infrastructure.proxy import FreshProxyOpener, NoRedirect, WindowsSystemProxyHandler, discover_proxies
+from infrastructure.sse import records
 
 
 VALIDATION_CODES = frozenset({
@@ -108,43 +51,6 @@ def error_event(error, stage, requested_model=None):
     if requested_model is not None:
         event['requested_model'] = requested_model
     return event
-
-def records(source):
-    """Shared JSON SSE framing; event fields may supply missing payload types."""
-    data, event_type = [], ''
-    first = True
-
-    def decode():
-        value = json.loads('\n'.join(data))
-        if not isinstance(value, dict):
-            raise ValueError('INVALID_STREAM_PAYLOAD')
-        if event_type and not value.get('type'):
-            value['type'] = event_type
-        return value
-
-    for raw in source:
-        line = raw.decode('utf-8').rstrip('\r\n')
-        if first:
-            line = line.removeprefix('\ufeff')
-            first = False
-        if not line:
-            if data:
-                value = '\n'.join(data)
-                if value == '[DONE]':
-                    return
-                yield decode()
-            data, event_type = [], ''
-        elif line.startswith('data:'):
-            value = line[5:].removeprefix(' ')
-            if value == '[DONE]':
-                if data:
-                    yield decode()
-                return
-            data.append(value)
-        elif line.startswith('event:'):
-            event_type = line[6:].removeprefix(' ')
-    if data and '\n'.join(data) != '[DONE]':
-        yield decode()
 
 
 def relay(source, emit, requested_model):

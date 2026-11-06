@@ -6,6 +6,7 @@ from pathlib import Path
 
 from model_catalog.catalog import ConfigError
 from gateway.transport import error_event
+from management.commands import read, write, WRITE_ACTIONS
 
 
 WEB = Path(__file__).with_name('web')
@@ -48,6 +49,11 @@ def handle(handler, gateway, method):
               '/manage/models.js': ('models.js', 'application/javascript; charset=utf-8'),
               '/manage/usage.js': ('usage.js', 'application/javascript; charset=utf-8'),
               '/manage/diagnostics.js': ('diagnostics.js', 'application/javascript; charset=utf-8'),
+              '/manage/shared/dom.js': ('shared/dom.js', 'application/javascript; charset=utf-8'),
+              '/manage/shared/errors.js': ('shared/errors.js', 'application/javascript; charset=utf-8'),
+              '/manage/shared/drafts.js': ('shared/drafts.js', 'application/javascript; charset=utf-8'),
+              '/manage/features/providers.js': ('features/providers.js', 'application/javascript; charset=utf-8'),
+              '/manage/features/routing.js': ('features/routing.js', 'application/javascript; charset=utf-8'),
               '/manage/style.css': ('style.css', 'text/css; charset=utf-8')}
     if method == 'GET' and handler.path in static:
         name, mime = static[handler.path]
@@ -60,36 +66,32 @@ def handle(handler, gateway, method):
     try:
         manager = gateway.manager
         if method == 'GET' and handler.path == '/manage/api/processes':
-            reply(200, manager.process_state()); return True
+            reply(200, read(manager, 'processes')); return True
         if method == 'GET' and urlsplit(handler.path).path == '/manage/api/diagnostics':
-            from management.diagnostics import report
             periods = parse_qs(urlsplit(handler.path).query, keep_blank_values=True).get('days', ['1'])
             if len(periods) != 1 or periods[0] not in {'1', '7', '30', 'all'}:
                 reply(400, {'code': 'INVALID_DIAGNOSTIC_PERIOD'}); return True
             days = None if periods[0] == 'all' else int(periods[0])
-            reply(200, report(manager, days=days, include_details=True)); return True
+            reply(200, read(manager, 'diagnostics', period=days)); return True
         if method == 'GET' and urlsplit(handler.path).path.startswith('/manage/api/diagnostics/errors/'):
-            from management.diagnostics import error_detail
             identifier = urlsplit(handler.path).path.removeprefix('/manage/api/diagnostics/errors/')
-            detail = error_detail(manager.directory, identifier)
+            detail = read(manager, 'diagnostic_error', identifier=identifier)
             if detail is None:
                 reply(404, {'code': 'DIAGNOSTIC_RECORD_NOT_FOUND'})
             else:
                 reply(200, detail)
             return True
         if method == 'GET' and urlsplit(handler.path).path == '/manage/api/usage':
-            from management.usage import report
             query = parse_qs(urlsplit(handler.path).query, keep_blank_values=True)
             key = 'period' if set(query) == {'period'} else 'days' if set(query) == {'days'} else None
             periods = query.get(key, []) if key else []
             if len(periods) != 1 or periods[0] not in {'today', 'yesterday', '1', '7', '30'}:
                 reply(400, {'code': 'INVALID_USAGE_PERIOD'}); return True
-            reply(200, report(manager.directory, days=periods[0],
-                              labels=manager.model_labels())); return True
+            reply(200, read(manager, 'usage', period=periods[0])); return True
         if method == 'GET' and handler.path == '/manage/api/activity':
-            reply(200, manager.activity_state()); return True
+            reply(200, read(manager, 'activity')); return True
         if method == 'GET' and handler.path == '/manage/api/state':
-            reply(200, manager.view()); return True
+            reply(200, read(manager, 'state')); return True
         if method != 'POST':
             reply(404, {'code': 'NOT_FOUND'}); return True
         if handler.headers.get_content_type() != 'application/json':
@@ -121,26 +123,11 @@ def handle(handler, gateway, method):
                     runtime.stop_if_safe(manager)
                     raise ConfigError('FORWARDING_UNAVAILABLE')
                 result = runtime.snapshot()
-        elif handler.path == '/manage/api/routing/preview':
-            result = manager.preview_routing(body['mode'])
-        elif handler.path == '/manage/api/desktop/preferences':
-            result = manager.save_desktop_preferences(body.get('mode'), body.get('value'))
-        elif handler.path == '/manage/api/routing':
-            result = manager.set_routing(body['mode'], body.get('revision'),
-                                         body.get('confirm_activity', False), body.get('desktop_action', False),
-                                         body.get('desktop_was_running', False), body.get('desktop_ticket'))
-        elif handler.path == '/manage/api/source':
-            result = manager.set_source(body['mode'], body.get('cc_db_path'))
-        elif handler.path == '/manage/api/models':
-            result = manager.save_models(body.get('source_id'), body.get('updates'))
-        elif handler.path == '/manage/api/provider':
-            result = manager.save_provider(body['id'], body.get('spec'), body.get('api_key'), body.get('delete', False))
-        elif handler.path == '/manage/api/publish':
-            result = manager.publish()
-        elif handler.path == '/manage/api/test':
-            result = manager.test_connection(body['key'])
         else:
-            reply(404, {'code': 'NOT_FOUND'}); return True
+            action = handler.path.removeprefix('/manage/api/')
+            if not handler.path.startswith('/manage/api/') or action not in WRITE_ACTIONS:
+                reply(404, {'code': 'NOT_FOUND'}); return True
+            result = write(manager, action, body)
         reply(200, result)
     except Exception as error:
         event = {'code': error.code} if isinstance(error, ConfigError) else error_event(error, 'management')

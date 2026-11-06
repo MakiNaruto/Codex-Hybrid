@@ -1,7 +1,8 @@
 """Responses transport without portable history or tool-schema conversion."""
 import copy
 
-from adapters.request_compat import inline_history, stream_error_event
+from adapters.history import inline_history
+from adapters.stream_errors import stream_error_event
 
 
 class NativeResponsesAdapter:

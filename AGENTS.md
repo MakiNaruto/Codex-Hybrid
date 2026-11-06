@@ -12,7 +12,7 @@
 
 ## 上游代理的现有约定
 
-入口为 `src/gateway/transport.py`，网关转发和管理页连接测试共用此入口。
+公共传输入口为 `src/gateway/transport.py`，代理实现归属 `src/infrastructure/proxy/`，其中 Windows 与 macOS 分别维护在 `windows.py` 和 `macos.py`。网关转发和管理页连接测试共用此入口。
 
 | 行为 | Windows | macOS |
 | --- | --- | --- |
@@ -31,10 +31,12 @@
 
 ## 桌面与脚本入口
 
-- Tauri 应用与构建工具：`apps/desktop/`。共用管理业务与网页 HTTP 入口：`src/management/`；两端共用页面：`src/management/web/`。
+- Tauri 工程：`apps/desktop/src-tauri/`；冻结入口：`apps/desktop/sidecar/main.py`；构建工具：`apps/desktop/tools/`；验证与测试：`apps/desktop/validation/`、`apps/desktop/tests/`。共用管理业务与网页 HTTP 入口：`src/management/`；两端共用页面：`src/management/web/`。
 - CLI、网页与桌面共用的 Codex 本机集成：`src/codex_integration/`。不要在桌面外壳内复制配置、会话迁移或进程控制业务。
-- 桌面公共入口：`src/codex_integration/client.py`。
-- Windows：`src/codex_integration/windows_client.py`、`src/codex_integration/windows_processes.py`、`src/codex_integration/windows_restart_manager.py`；使用 Windows 进程与 Restart Manager 机制。
-- macOS：`src/codex_integration/macos_client.py`；使用应用标识、Apple events 与 Launch Services 机制。
+- 桌面公共入口：`src/codex_integration/client.py`；本机接入事务：`routing.py`；会话业务：`sessions/`；原 service/session_migration/codex_index 公开符号保留兼容。
+- Rust `main.rs` 负责装配，`ipc.rs` 负责请求/会话，`lifecycle.rs` 负责关闭与退出；平台弹窗各自维护。
+- Windows：`src/codex_integration/platforms/windows/client.py`、`src/codex_integration/platforms/windows/processes.py`、`src/codex_integration/platforms/windows/restart_manager.py`；使用 Windows 进程与 Restart Manager 机制。
+- macOS：`src/codex_integration/platforms/macos/client.py`；使用应用标识、Apple events 与 Launch Services 机制。
 - 安装和服务脚本：分别检查 `scripts/` 中 Windows `.cmd` / PowerShell 与 macOS `.sh` 的实际入口。
-- 平台行为与已验证边界另见 `apps/desktop/docs/web-desktop-alignment.md`。
+- 旧平台模块路径保留精确兼容导出，新增逻辑进入对应 `platforms/` 实现。
+- 平台行为见 `dev-docs/architecture/platform-boundaries.md`，当前验证范围见 `dev-docs/desktop/status.md`，历史对齐记录归入 `dev-docs/archive/desktop/`。

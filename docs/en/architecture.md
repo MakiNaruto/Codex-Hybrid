@@ -36,39 +36,10 @@ When replayed tool history omits a namespace and has no exact registered alias, 
 
 Repeated definitions may update a tool's description; the last encountered description is retained when the execution schema is identical. Conflicting parameter schemas or bindings are still rejected.
 
-Both protocols share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. There is no automatic protocol switching. Native Responses does not retry generations; portable Responses retains its existing unknown-tool retry mechanism. Portable coordination guidance uses the request-scoped tool registry; ambiguous short tool names are not guessed.
+Native and portable paths share SSE framing, including multiline data and types declared only by `event:`. Explicit upstream errors become sanitized terminal failures; protocol mismatches fail explicitly. EOF and `[DONE]` alone never imply success. There is no automatic protocol switching. Native Responses does not retry generations; portable Responses retains its existing unknown-tool retry mechanism. Portable coordination guidance uses the request-scoped tool registry; ambiguous short tool names are not guessed.
 
 Hybrid stores membership and per-model compatibility overrides in its own settings.json, scoped by source; CC Switch remains read-only. Both directory publication and live routing enforce membership. Upgrade preserves previously published models; newly discovered models require an Add action. Hybrid model overrides take precedence over YAML model options and provider defaults. Explicit native is preserved; unspecified Responses compatibility defaults to native.
 
-### Code responsibilities and reuse
+### Developer documentation
 
-```text
-apps/desktop/               Tauri shell, build tools and desktop validation notes
-src/
-├─ cli/                     Setup wizard and command line entry points
-├─ codex_integration/       Local Codex configuration, migration, platform control and private desktop protocol
-├─ management/              Shared management logic, runtime and browser HTTP adapter
-│  └─ web/                  HTML, CSS and JavaScript shared by browser and Tauri
-├─ gateway/                 Model request forwarding and service entry points
-├─ model_catalog/           Model sources and catalog
-└─ adapters/                Upstream protocol adapters
-```
-
-Browser and desktop entry points use different transports: browsers use HTTP through `management/http.py`; Tauri uses private stdio/IPC through `codex_integration/controller.py` and `web_api.py`. Both reuse management logic and UI assets. `web/transport.js` selects the transport, while `web/desktop.js` handles desktop lifecycle. Windows and macOS process control remain in separate `codex_integration/windows_*.py` and `macos_client.py` modules.
-
-The former root `desktop/` is now `apps/desktop/`, and `src/desktop/` is now `src/codex_integration/`. Use the new paths for builds, probes and direct Python imports; rebuild existing desktop packages. CLI commands, HTTP paths and user data locations retain their existing contracts. See the [desktop build notes](../../apps/desktop/README.md).
-
-| Module | Responsibility |
-| --- | --- |
-| `gateway/server.py` | HTTP lifecycle, authentication and route selection; `external_route` assembles external requests without executing tools |
-| `model_catalog/` | Configuration sources, model catalogs, credentials and model preferences |
-| `adapters/native_responses.py` | Native Responses transport with explicitly configured history ID migration |
-| `adapters/responses.py` | Portable tool registration, history mapping, conflict checks and event conversion |
-| `adapters/coordination.py` | Native collaboration namespace mapping and request-scoped spawn naming, independent of Portable conversion |
-| `adapters/request_compat.py` | History replay, routing context and sanitized errors |
-| `management/` | Publication, management HTTP and forwarding lifecycle; the service owns locks and settings snapshots while `routing.py` plans and commits recoverable routing transactions |
-| `codex_integration/configuration.py` | Pure TOML transformations shared by CLI and management: generate, recognize and restore owned fields and retain the current model, without file writes or OS calls |
-| `codex_integration/` | Client commands and services, session migration and platform-specific desktop control |
-| `management/web/` | `app.js` provides shared interactions and access orchestration, `models.js` owns the model page, and `diagnostics.js` scopes diagnostic periods and request state to its page |
-
-Portable requests register all current and discovered tools before mapping history, then validate duplicate execution schemas and generate guidance for the registered coordination aliases. Preserve this order: historical calls can depend on tool definitions that appear later in the request.
+See [Repository layout](../../dev-docs/architecture/repository-layout.md) for current modules and shared business boundaries, and [Platform boundaries](../../dev-docs/architecture/platform-boundaries.md) for proxies, process control, packaging, and exit behavior. Developer guides are currently maintained in Chinese. For desktop use, see the [Desktop guide](desktop.md).

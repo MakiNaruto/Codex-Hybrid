@@ -12,7 +12,7 @@ import time
 
 import psutil
 
-from codex_integration.windows_restart_manager import shutdown
+from codex_integration.platforms.windows.restart_manager import shutdown
 
 
 SOURCE = r'''

@@ -26,7 +26,7 @@ Codex 从自身的 `config.toml` 读取网关地址及模型目录路径；本�
 
 ### 协议兼容边界
 
-第三方 Responses 默认开启 Portable 兼容模式；显式选择 `responses_compatibility: native` 时使用原生路径：保留请求字段、消息类别、工具 namespace、独立工具输出、推理与加密字段，以及返回的工具参数增量事件。仅替换地址、认证、模型 ID，并应用显式配置的参数、输出预算和禁止存储策略。不注入外部模型提示词，不转换工具结构，不自动重试生成或切换协议。端点不支持这些特性时返回错误。
+第三方 Responses 默认使用 `responses_compatibility: native` 原生路径：保留请求字段、消息类别、工具 namespace、独立工具输出、推理与加密字段，以及返回的工具参数增量事件。仅替换地址、认证、模型 ID，并应用显式配置的参数、输出预算和禁止存储策略。不注入外部模型提示词，不转换工具结构，不自动重试生成或切换协议。端点不支持这些特性时返回错误。
 
 Responses 显式设置 `responses_compatibility: portable` 时使用兼容桥：可读历史推理或摘要变为普通历史文本，不转发不透明推理；system/developer 消息归并到系统指令区；工具定义展开并映射名称。这是语义降级，不保证与原生请求等价。
 
@@ -38,39 +38,10 @@ Responses 显式设置 `responses_compatibility: portable` 时使用兼容桥：
 
 同一工具重复声明时，若执行结构完全一致，允许说明文字更新并保留最后遇到的说明；参数结构或绑定冲突仍然拒绝。
 
-两个协议共用 SSE 分帧，支持多行数据及仅在 `event:` 中声明的事件类型。显式上游错误转换为脱敏的失败终态；协议类型不匹配单独报错。连接关闭和 `[DONE]` 本身不代表成功，不补造完成事件，不自动换协议。原生路径不重试生成；Portable Responses 保留原有未注册工具重试机制。兼容桥的协作工具说明来自本次实际注册的映射表；有歧义的短工具名不会被猜测执行。
+原生与兼容路径共用 SSE 分帧，支持多行数据及仅在 `event:` 中声明的事件类型。显式上游错误转换为脱敏的失败终态；协议类型不匹配单独报错。连接关闭和 `[DONE]` 本身不代表成功，不补造完成事件，不自动换协议。原生路径不重试生成；Portable Responses 保留原有未注册工具重试机制。兼容桥的协作工具说明来自本次实际注册的映射表；有歧义的短工具名不会被猜测执行。
 
 模型添加名单与模型级兼容覆盖保存在 Hybrid 的 `settings.json`，CC Switch 数据库保持只读。偏好按来源区分，名单同时控制目录发布与实时路由。首次升级保留先前已发布的模型；后续发现的新模型只有添加后才可使用。模型级 Hybrid 设置优先于 YAML 模型设置，后者优先于厂商设置；显式 native 保留，缺省 Responses 使用 native。
 
-### 代码职责与复用边界
+### 开发资料
 
-```text
-apps/desktop/               Tauri 桌面外壳、构建工具与桌面验证资料
-src/
-├─ cli/                     安装向导与命令行入口
-├─ codex_integration/       Codex 本机配置、会话迁移、平台控制与桌面私有协议
-├─ management/              两端共用的管理业务、运行时及网页 HTTP 适配
-│  └─ web/                  浏览器与 Tauri 共用的 HTML、CSS 和 JavaScript
-├─ gateway/                 模型请求转发与服务入口
-├─ model_catalog/           模型来源与目录
-└─ adapters/                上游协议适配
-```
-
-网页和桌面按入口与传输方式区分：浏览器通过 `management/http.py` 使用 HTTP，Tauri 通过 `codex_integration/controller.py` 和 `web_api.py` 使用私有 stdio/IPC；两者复用管理业务和页面。`web/transport.js` 选择传输方式，`web/desktop.js` 处理桌面生命周期。Windows 与 macOS 的进程控制仍分别位于 `codex_integration/windows_*.py` 和 `macos_client.py`。
-
-原根目录 `desktop/` 现为 `apps/desktop/`，原 `src/desktop/` 现为 `src/codex_integration/`。执行构建、探针或直接导入 Python 模块时使用新路径；已安装的旧桌面包需重新构建。CLI 命令、HTTP 路径和用户数据位置保持原有约定。桌面构建见[桌面应用说明](../../apps/desktop/README.md)。
-
-| 模块 | 职责 |
-| --- | --- |
-| `gateway/server.py` | HTTP 生命周期、认证和路由选择；`external_route` 组织第三方请求，不执行工具 |
-| `model_catalog/` | 配置来源、模型目录、凭据解析和模型偏好 |
-| `adapters/native_responses.py` | 原生 Responses 传输，历史 ID 迁移仅按配置启用 |
-| `adapters/responses.py` | Portable 工具注册、历史映射、冲突检查和返回事件转换 |
-| `adapters/coordination.py` | 原生协作 namespace 映射和请求内 spawn 名称一致性，独立于 Portable 转换 |
-| `adapters/request_compat.py` | 历史重放、路由上下文和脱敏错误转换 |
-| `management/` | 配置发布、管理 HTTP 接口和转发进程生命周期；服务层持有锁与配置快照，`routing.py` 组织路由预览与可恢复事务 |
-| `codex_integration/configuration.py` | CLI 与管理路由共用的纯 TOML 转换：生成、识别、恢复受管字段和保留当前模型，不读写文件或调用操作系统 |
-| `codex_integration/` | 客户端命令与服务、会话迁移和按平台分开的桌面控制 |
-| `management/web/` | `app.js` 提供公共交互与接入编排，`models.js` 处理模型页面，`diagnostics.js` 在独立作用域内管理诊断时间范围与请求状态 |
-
-Portable 请求按固定顺序处理：先注册本次请求和历史中发现的全部工具，再转换历史，随后检查重复工具的执行结构，最后生成实际可调用的协作工具说明。不要把工具发现移到历史转换之后：历史调用可能依赖后面才出现的工具定义。
+当前目录、共用业务及传输职责见[开发架构](../../dev-docs/architecture/repository-layout.md)。代理、进程控制、打包与退出差异见[平台边界](../../dev-docs/architecture/platform-boundaries.md)。桌面操作见[桌面指南](desktop.md)。开发文档目前以中文维护。

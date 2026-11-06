@@ -3,35 +3,25 @@ import copy
 import hashlib
 import hmac
 import json
-import os
 import tomllib
 from pathlib import Path
 import secrets
 import threading
 import time
-import urllib.request
 
 import yaml
 
 from model_catalog.sources import (
-    Catalog, ConfigError, apply_preferences,
+    Catalog, ConfigError,
     import_current_cc_record, load_source, merged_catalog, source_key,
-    update_cc_snapshot,
 )
 from model_catalog.catalog import identifier, read_yaml, string
 from codex_integration.configuration import uses_openai_auth
+from infrastructure.files import write_private_text
 
 
 def private_write(path, value):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    temporary = path.with_name(path.name + '.' + secrets.token_hex(8) + '.tmp')
-    try:
-        with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w', encoding='utf-8', newline='') as out:
-            out.write(value)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    return write_private_text(path, value)
 
 
 class Management:
@@ -48,11 +38,11 @@ class Management:
             cleanup_completed_records(self.directory)
         self.revision_secret = secrets.token_bytes(32)
         self.sync_error = None
-        self.sync_stop = threading.Event()
-        self.sync_thread = None
+        from management.synchronization import CCSyncWatcher
+        self._sync_watcher = CCSyncWatcher(self.gateway, self.lock, lambda: self.sync_cc())
+        self.sync_stop = self._sync_watcher.stop_event
         self.cc_catalog = None
         self.last_synced_at = None
-        self.sync_mode = 'periodic'
         self.routing_lock = threading.Lock()
         self.routing_operation = None
         self.desktop_records = None
@@ -132,54 +122,18 @@ class Management:
                 self.sync_error = error.code
         self.sync_cc()
 
-        def watch():
-            from management.cc_watch import CCWatch
-            watcher = None
-            watched_path = None
-            next_check = time.monotonic() + interval
-            try:
-                while not self.sync_stop.wait(min(0.1, interval)):
-                    try:
-                        with self.lock:
-                            source = self.gateway.settings['source']
-                            path = source['path'] if source['type'] == 'cc-switch' else None
-                        due = time.monotonic() >= next_check
-                        if path != watched_path or (path and watcher is None and due):
-                            if watcher is not None:
-                                watcher.stop()
-                            watcher = None
-                            watched_path = path
-                            self.sync_mode = 'periodic'
-                            if path:
-                                candidate = CCWatch(path)
-                                try:
-                                    candidate.start()
-                                except (ImportError, OSError, RuntimeError):
-                                    pass  # Keep the periodic safety net if notifications are unavailable.
-                                else:
-                                    watcher = candidate
-                                    self.sync_mode = 'watch'
-                            due = True  # Reconcile changes between startup/source switch and registration.
-                        if due or (watcher is not None and watcher.ready()):
-                            self.sync_cc()
-                            next_check = time.monotonic() + interval
-                    except ConfigError as error:
-                        if error.code != 'INSTANCE_BUSY':
-                            raise
-                        # A CLI transaction owns the data briefly; keep watching after it ends.
-                        continue
-            finally:
-                if watcher is not None:
-                    watcher.stop()
-                self.sync_mode = 'periodic'
+        self._sync_watcher.start(interval)
 
-        self.sync_thread = threading.Thread(target=watch, name='cc-switch-sync', daemon=True)
-        self.sync_thread.start()
+    @property
+    def sync_thread(self):
+        return self._sync_watcher.thread
+
+    @property
+    def sync_mode(self):
+        return self._sync_watcher.mode
 
     def stop_sync(self):
-        self.sync_stop.set()
-        if self.sync_thread is not None:
-            self.sync_thread.join(timeout=5)
+        self._sync_watcher.stop()
 
     def close(self):
         self.stop_sync()
@@ -230,17 +184,17 @@ class Management:
 
     @staticmethod
     def external_codex_config(config):
-        return bool(config) and config.get('model_provider', 'openai') not in {
-            'openai', 'codex-hybrid'}
+        from management.use_cases.catalog import external_codex_config
+        return external_codex_config(config)
 
     def routing_plan(self, mode):
-        from management.routing import plan
+        from codex_integration.routing import plan
         return plan(self.directory, self.gateway.settings, mode, self.revision_secret)
 
     def preview_routing(self, mode):
         with self.lock:
             if mode == 'project':
-                from management.routing import validate_baseline
+                from codex_integration.routing import validate_baseline
                 validate_baseline(self.directory, self.gateway.settings)
                 self.publish()
             *_, migration, revision = self.routing_plan(mode)
@@ -391,7 +345,7 @@ class Management:
                 # Compatibility for a standalone Gateway management listener.
                 # Routing serialization also protects this lazy initialization.
                 if self.desktop_records is None:
-                    from gateway.runtime_log import AsyncRecords
+                    from infrastructure.runtime_log import AsyncRecords
                     self.desktop_records = AsyncRecords(self.gateway.record)
                 records = self.desktop_records
             records.emit({'time': time.time(), 'status': 'desktop_operation', 'phase': 'desktop_control',
@@ -399,7 +353,7 @@ class Management:
         return result
 
     def _apply_routing(self, mode, revision=None, confirm_activity=False):
-        from management.routing import commit
+        from codex_integration.routing import commit
         with self.lock:
             return commit(self.directory, self.gateway.settings, mode, self.revision_secret,
                           revision, confirm_activity)
@@ -420,63 +374,13 @@ class Management:
                 if model['slug'] in settings['official_models']]
 
     def publish(self, source=None, catalog=None, extra=None):
+        from management.use_cases.catalog import prepare_publication, complete_publication, write_publication
         with self.lock:
-            settings = copy.deepcopy(self.gateway.settings)
-            old_source_key = source_key(settings['source'])
             codex_config = self.current_codex_config()
-            official_models_enabled = (
-                uses_openai_auth(codex_config) if codex_config is not None
-                else settings.get('official_models_enabled', True)
-            )
-            settings['official_models_enabled'] = official_models_enabled
-            initial_external = (
-                [] if settings['source']['type'] == 'cc-switch'
-                and self.external_codex_config(codex_config)
-                else [key for key in settings['models']
-                      if key not in settings['official_models']]
-            )
-            settings.setdefault('model_preferences', {}).setdefault(old_source_key, {
-                'added': initial_external,
-                'compatibility': {}})
-            if source is not None:
-                settings['source'] = source
-            if extra:
-                settings.update(extra)
-            external = catalog if catalog is not None else load_source(settings)
-            settings['model_preferences'].setdefault(source_key(settings['source']), {
-                'added': [], 'compatibility': {}})
-            if settings['source']['type'] == 'cc-switch':
-                if codex_config is not None:
-                    import_current_cc_record(
-                        external,
-                        settings['model_preferences'][source_key(settings['source'])],
-                        codex_config,
-                    )
-            external = apply_preferences(external, settings)
-            external_keys = [key for key, value in external.models.items() if value['enabled']]
-            settings.pop('routing_fallback_model', None)
-            official_source = self.official()
-            settings['official_catalog'] = official_source
-            official = official_source if official_models_enabled else []
-            merged = merged_catalog(
-                official_source, external, include_official=official_models_enabled)
-            settings['official_models'] = [model['slug'] for model in official]
-            settings['models'] = [m['slug'] for m in merged['models']]
-            update_cc_snapshot(settings, merged, external)
-            if external_keys:
-                settings['deepseek_model'] = external_keys[0]  # Historical smoke alias only.
-            else:
-                settings.pop('deepseek_model', None)
-            catalog_path = Path(settings['catalog'])
-            previous_catalog = (catalog_path.read_text(encoding='utf-8') if catalog_path.exists()
-                                else json.dumps({'models': official}, ensure_ascii=False))
-            private_write(catalog_path, json.dumps(merged, ensure_ascii=False))
-            try:
-                # The directory and its explicit bindings share one durable snapshot.
-                private_write(self.settings_path, json.dumps(settings, ensure_ascii=False))
-            except OSError:
-                private_write(catalog_path, previous_catalog)
-                raise
+            settings, external = prepare_publication(
+                self.gateway.settings, codex_config, source, catalog, extra)
+            merged, official = complete_publication(settings, external, self.official())
+            write_publication(self.settings_path, settings, merged, official)
             self.gateway.settings = settings  # Replace one snapshot; never mutate an in-flight request.
             self.sync_error = None
             if settings['source']['type'] == 'cc-switch':
@@ -599,46 +503,9 @@ class Management:
             if not isinstance(updates, list) or not updates or len(updates) > 1000:
                 raise ConfigError('INVALID_MODEL_PREFERENCES')
             catalog = load_source(settings)
-            preferences = settings.setdefault('model_preferences', {}).setdefault(key, {
-                'added': [key for key, model in catalog.models.items() if model['enabled']], 'compatibility': {}})
-            added = set(preferences['added'])
-            seen = set()
-            for update in updates:
-                if (not isinstance(update, dict) or set(update) - {'key', 'added', 'responses_compatibility', 'responses_adaptations'}
-                        or not isinstance(update.get('key'), str) or update['key'] in seen):
-                    raise ConfigError('INVALID_MODEL_PREFERENCES')
-                model_key = update['key']
-                seen.add(model_key)
-                if model_key not in catalog.models:
-                    raise ConfigError('MODEL_NOT_CONFIGURED')
-                model = catalog.models[model_key]
-                if 'added' in update:
-                    if type(update['added']) is not bool:
-                        raise ConfigError('CONFIG_INVALID_ENABLED')
-                    if update['added']:
-                        if not model['source_enabled']:
-                            raise ConfigError('MODEL_DISABLED_AT_SOURCE')
-                        added.add(model_key)
-                    else:
-                        added.discard(model_key)
-                if 'responses_compatibility' in update:
-                    value = update['responses_compatibility']
-                    if value not in ('native', 'portable'):
-                        raise ConfigError('CONFIG_INVALID_RESPONSES_COMPATIBILITY')
-                    if model['protocol'] != 'openai_responses':
-                        raise ConfigError('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
-                    preferences['compatibility'][model_key] = value
-                if 'responses_adaptations' in update:
-                    from adapters.minimal_responses import validate_adaptations
-                    if model['protocol'] != 'openai_responses':
-                        raise ConfigError('CONFIG_UNSUPPORTED_PROTOCOL_OPTIONS')
-                    try:
-                        value = validate_adaptations(update['responses_adaptations'])
-                    except ValueError:
-                        raise ConfigError('INVALID_RESPONSES_ADAPTATIONS') from None
-                    preferences.setdefault('adaptations', {})[model_key] = value
-            preferences['added'] = sorted(added)
-            return self.publish(extra={'model_preferences': settings['model_preferences']})
+            from management.use_cases.models import prepare_model_preferences
+            preferences = prepare_model_preferences(settings, catalog, updates)
+            return self.publish(extra={'model_preferences': preferences})
 
     def save_provider(self, provider_id, spec=None, api_key=None, delete=False):
         identifier(provider_id)
@@ -651,47 +518,14 @@ class Management:
             if settings['source']['type'] != 'yaml':
                 raise ConfigError('CC_MODE_IS_READ_ONLY')
             source_path = Path(settings['source']['path'])
-            raw = copy.deepcopy(read_yaml(source_path))
-            if delete:
-                if provider_id not in raw['providers']:
-                    raise ConfigError('PROVIDER_NOT_FOUND')
-                del raw['providers'][provider_id]
-            else:
-                if not isinstance(spec, dict):
-                    raise ConfigError('INVALID_PROVIDER_SPEC')
-                spec = copy.deepcopy(spec)
-                old = raw['providers'].get(provider_id, {})
-                env_name = ('CONNECTED_' + provider_id.upper().replace('-', '_').replace('.', '_') + '_'
-                            + hashlib.sha256(provider_id.encode()).hexdigest()[:8].upper() + '_KEY')
-                spec['credentials'] = old.get('credentials', {'api_key_env': env_name})
-                if api_key:
-                    string(api_key)
-                    spec['credentials'] = {'api_key': api_key}
-                raw['providers'][provider_id] = spec
-            if raw.get('default_model'):
-                provider, alias = raw['default_model'].split('/', 1)
-                entry = raw['providers'].get(provider, {})
-                if (not entry.get('enabled', True) or alias not in entry.get('models', {})
-                        or not entry['models'][alias].get('enabled', True)):
-                    raw.pop('default_model', None)
-            for provider in raw['providers'].values():
-                credentials = provider['credentials']
-                if 'env_file' in credentials:
-                    credentials['env_file'] = str((source_path.parent/Path(credentials['env_file']).expanduser()).resolve())
+            from management.use_cases.providers import prepare_provider_document, prepare_provider_preferences
+            raw, previous_models = prepare_provider_document(
+                read_yaml(source_path), source_path, provider_id, spec, api_key, delete)
             target = self.directory/'managed-models.yaml'
             catalog = Catalog(target, data=raw)
-            preferences = copy.deepcopy(settings.get('model_preferences', {}))
-            preference_key = source_key(settings['source'])
-            preference = preferences.setdefault(preference_key, {
-                'added': [key for key, model in load_source(settings).models.items() if model['enabled']],
-                'compatibility': {}})
-            if not delete:
-                old_models = old.get('models', {})
-                for alias, model in spec['models'].items():
-                    model_key = provider_id + '/' + alias
-                    if alias not in old_models and model.get('enabled', True):
-                        preference['added'].append(model_key)
-            preference['added'] = sorted(set(preference['added']) & set(catalog.models))
+            preferences = prepare_provider_preferences(
+                settings, catalog, load_source(settings), provider_id,
+                {} if delete else raw['providers'][provider_id]['models'], previous_models)
             official_models_enabled = settings.get('official_models_enabled', True)
             merged_catalog(self.official(), catalog, include_official=official_models_enabled)
             private_write(target, yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
@@ -700,47 +534,5 @@ class Management:
                                        'model_preferences': preferences})
 
     def test_connection(self, key):
-        began = time.monotonic()
-        settings = self.gateway.settings
-        if key in settings['official_models']:
-            raise ConfigError('EXTERNAL_MODEL_REQUIRED')
-        if settings['source']['type'] == 'cc-switch':
-            settings = copy.deepcopy(settings)
-            # Membership controls the client directory, not source connection tests.
-            preference = settings.get('model_preferences', {}).get(source_key(settings['source']))
-            if preference is not None:
-                preference['added'] = [*preference.get('added', []), key]
-        catalog = load_source(settings)
-        if settings['source']['type'] == 'cc-switch':
-            # Test the selected live configuration without publishing a partial directory.
-            settings['cc_snapshot'] = {'bindings': catalog.bindings}
-        model, _ = catalog.select(key)
-        if key not in settings['models']:
-            # A one-off connection test may precede publishing a newly discovered CC model.
-            settings = dict(settings, models=[*settings['models'], key])
-        body = {'model': key, 'stream': True, 'max_output_tokens': min(model['max_output_tokens'] or 8192, 8192),
-                'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': 'Reply with exactly hello and nothing else.'}]}]}
-        if not self.gateway.slots.acquire(blocking=False):
-            raise ConfigError('CONCURRENCY_LIMIT')
-        try:
-            url, payload, headers, adapt = self.route(body, {'Authorization': 'Bearer local-management-only'}, settings)
-            request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-            with self.gateway.opener.open(request, timeout=60) as response:
-                for event in self.sse_events(response):
-                    events = adapt(event)
-                    if not isinstance(events, list):
-                        events = [] if events is None else [events]
-                    for item in events:
-                        if item.get('type') == 'response.failed':
-                            raise ConfigError('UPSTREAM_STREAM_ERROR')
-                        if item.get('type') == 'response.incomplete':
-                            reason = item.get('response', {}).get('incomplete_details', {}).get('reason')
-                            raise ConfigError('UPSTREAM_OUTPUT_BUDGET_EXHAUSTED' if reason == 'max_output_tokens'
-                                              else 'UPSTREAM_INCOMPLETE')
-                        if item.get('type') == 'response.completed':
-                            # Do not return arbitrary upstream content or errors to the browser.
-                            return {'status': 'completed', 'model_key': key, 'model_id': model['model_id'],
-                                    'elapsed_ms': round((time.monotonic() - began) * 1000)}
-            raise ConfigError('UPSTREAM_STREAM_ENDED_EARLY')
-        finally:
-            self.gateway.slots.release()
+        from management.use_cases.connection_test import test_connection
+        return test_connection(self.gateway, self.route, self.sse_events, key)

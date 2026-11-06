@@ -119,3 +119,7 @@ cd codex-hybrid
 | [常见问题](docs/zh-CN/troubleshooting.md) | 模型未出现、401、安装失败、回滚 |
 | [工作原理](docs/zh-CN/architecture.md) | 目录结构、网页与桌面职责、请求路由与凭据边界 |
 | [桌面应用与构建](apps/desktop/README.md) | Tauri 外壳、Intel Mac 构建与平台验证范围 |
+
+## 开发者文档
+
+[桌面工程、构建指南与验证](dev-docs/README.md)。

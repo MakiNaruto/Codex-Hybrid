@@ -12,7 +12,7 @@ from model_catalog.catalog import Catalog, ConfigError, identifier, read_yaml
 # Only these stable codes cross the private process boundary.
 ERRORS = {'CONFIG_CHANGED', 'ALREADY_CONFIGURED', 'CODEX_NOT_READY', 'NOT_CONFIGURED',
           'SERVICE_ALREADY_RUNNING', 'INSTANCE_BUSY', 'CC_MODE_IS_READ_ONLY',
-          'INVALID_REQUEST', 'MODEL_DISABLED', 'MODEL_NOT_CONFIGURED', 'CONCURRENCY_LIMIT'}
+          'INVALID_REQUEST', 'MODEL_DISABLED', 'MODEL_NOT_CONFIGURED'}
 
 
 def validate(request):
@@ -55,7 +55,7 @@ def validate(request):
 
 def initialize(directory, codex_home):
     from codex_integration.service import official_cache, prepare
-    from management.service import private_write
+    from infrastructure.files import write_private_text as private_write
     if (directory / 'settings.json').exists() or (directory / 'state.json').exists():
         raise ConfigError('ALREADY_CONFIGURED')
     try:

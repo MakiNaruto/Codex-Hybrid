@@ -135,4 +135,79 @@ def inventory(path, *, strict=False):
         try:
             parsed = decode(app, raw, meta)
             if not parsed['models']:
-           
+                continue
+            entry.update(protocol=parsed['protocol'], base_url=parsed['base_url'], models=parsed['models'])
+            entry['_provider_config'] = parsed['provider_config']
+            entry.update({key: parsed[key] for key in ('responses_compatibility', 'history_migration')})
+            # Reuse endpoint/model validation without exposing the credential.
+            Catalog(Path(path).parent / 'cc-validation.yaml', data={'version': 1, 'providers': {
+                'check': {'protocol': parsed['protocol'], 'base_url': parsed['base_url'],
+                    'responses_compatibility': parsed['responses_compatibility'],
+                    'history_migration': parsed['history_migration'],
+                    'credentials': {'api_key_env': 'UNUSED'}, 'models': {
+                        model['model_id']: {'model_id': model['model_id']}
+                        for model in parsed['models']}}}}, source_identifiers=True)
+            entry['supported'] = True
+        except ConfigError as error:
+            if strict and error.code not in {
+                    'CC_OFFICIAL_LOGIN_NOT_SUPPORTED', 'CC_CUSTOM_HEADERS_NOT_SUPPORTED',
+                    'CC_PROTOCOL_NOT_SUPPORTED'}:
+                raise
+            entry['reason'] = error.code
+        except Exception:
+            if strict:
+                raise ConfigError('CC_CONFIG_INVALID') from None
+            entry['reason'] = 'CC_CONFIG_INVALID'
+        entry['_digest'] = configuration_digest(raw, meta)
+        # Never show even an invalid URL to a client: it might contain a token query.
+        if not entry['supported']:
+            continue
+        result.append(entry)
+    return result
+
+
+def selected_key(path, entry):
+    app, identifier = entry['ref'].split('/', 1)
+    try:
+        with closing(connect(path)) as db:
+            row = db.execute('SELECT settings_config,meta FROM providers WHERE id=? AND app_type=?', (identifier, app)).fetchone()
+    except sqlite3.Error:
+        raise ConfigError('CC_DATABASE_UNAVAILABLE') from None
+    if not row or configuration_digest(*row) != entry['_digest']:
+        raise ConfigError('CC_CONFIG_CHANGED_RELOAD')
+    return decode(app, *row)['key']
+
+
+def make_catalog(path):
+    entries = inventory(path, strict=True)
+    providers, refs = {}, {}
+    for entry in entries:
+        if not entry['supported']:
+            continue
+        key = entry['provider_key']
+        models = {}
+        for source_model in entry['models']:
+            alias = source_model['model_id']
+            models[alias] = {'model_id': source_model['model_id'],
+                'display_name': entry['name']+' · '+source_model['display_name'],
+                'max_output_tokens': source_model['max_output_tokens'], 'enabled': True}
+            if source_model['context_window'] is not None:
+                models[alias]['context_window'] = source_model['context_window']
+        providers[key] = {'protocol': entry['protocol'], 'base_url': entry['base_url'],
+                         'responses_compatibility': entry['responses_compatibility'],
+                         'history_migration': entry['history_migration'],
+                         'credentials': {'api_key_env': 'CC_READONLY_KEY'}, 'models': models}
+        refs[key] = entry
+    data = {'version': 1, 'providers': providers}
+    catalog = Catalog(Path(path).parent / 'cc-readonly.yaml', data=data, source_identifiers=True)
+    catalog.bindings = {
+        slug: {'provider_record_id': model['provider'], 'app_type': refs[model['provider']]['app_type'],
+               'model_id': model['model_id']}
+        for slug, model in catalog.models.items()}
+    catalog.inventory = entries
+    catalog.source_revision = configuration_digest(
+        str(Path(path).expanduser().resolve()), [(entry['ref'], entry['name'], entry['_digest']) for entry in entries])
+    for key, provider in catalog.providers.items():
+        entry = refs[key]
+        provider['key_resolver'] = lambda entry=entry: selected_key(path, entry)
+    return catalog

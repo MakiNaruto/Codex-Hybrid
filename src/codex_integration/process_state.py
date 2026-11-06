@@ -14,7 +14,7 @@ def _candidate_processes():
     if sys.platform != 'win32':
         yield from psutil.process_iter(('pid', 'name', 'status'))
         return
-    from codex_integration.windows_processes import process_names
+    from codex_integration.platforms.windows.processes import process_names
     for pid, name in process_names():
         if name.lower() not in CODEX_EXECUTABLES:
             continue

@@ -34,7 +34,7 @@ def _serve(connection, settings, settings_path, counter, log_drops=None):
     from gateway.server import Gateway, Server
     from management.runtime import ManagementContext
     from codex_integration.locking import DirectoryLock
-    from gateway.runtime_log import AsyncRecords
+    from infrastructure.runtime_log import AsyncRecords
     send_lock = threading.Lock()
 
     def send(value):
