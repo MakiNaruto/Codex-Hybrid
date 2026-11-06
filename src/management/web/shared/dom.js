@@ -53,7 +53,7 @@ function createManagementControls(message){
       });
       wrapper.addEventListener('focusout',event=>{if(!wrapper.contains(event.relatedTarget))close();});
       document.addEventListener('pointerdown',event=>{if(!wrapper.contains(event.target))close();});
-      wrapper.closest('details').addEventListener('toggle',event=>{if(!event.target.open)close();});
+      wrapper.closest('details')?.addEventListener('toggle',event=>{if(!event.target.open)close();});
       select.hidden=true;wrapper.append(trigger,list);wrapper.classList.add('is-enhanced');syncDesktopSelect(select);
     }
   }
