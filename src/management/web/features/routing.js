@@ -33,9 +33,13 @@ function createRoutingControls({getState,isSaving,setSaving,$,el,api,action,refr
     }finally{routingPolling=false;}
   }
   function confirmRouting(mode,preview){
-    const dialog=$('routing-dialog'),verb=mode==='project'?'开启':'关闭';
     const desktop=preview.desktop,preference=getState().desktop_preferences?.[mode]||'ask';
     const possible=desktop?.available&&desktop.status==='known'&&(mode==='project'||desktop.running);
+    if(preference==='auto'||preference==='never')return {
+      desktop_action:!!possible&&preference==='auto',
+      desktop_was_running:!!desktop?.running,desktop_ticket:preview.desktop_ticket,
+    };
+    const dialog=$('routing-dialog'),verb=mode==='project'?'开启':'关闭';
     const checkbox=$('desktop-action');
     checkbox.checked=possible&&preference==='auto';
     checkbox.disabled=!possible||preference==='never';
@@ -69,6 +73,7 @@ function createRoutingControls({getState,isSaving,setSaving,$,el,api,action,refr
     });
   }
   function finishRouting(text,error=false){
+    if(!$('routing-dialog').open){message(text,error);return;}
     $('routing-dialog-title').textContent=error?'接入切换失败':'操作结果';
     $('routing-dialog-description').textContent=text;
     $('routing-dialog-warning').hidden=true;$('desktop-action-row').hidden=true;

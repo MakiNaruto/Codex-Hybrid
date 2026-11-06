@@ -68,7 +68,9 @@
       try{
         const preview=await desktop.api('routing/preview',{mode});
         const client=preview.desktop;
-        const possible=client?.available&&client.status==='known'&&(mode==='project'||client.running)&&state.desktop_preferences?.[mode]!=='never';
+        const preference=state.desktop_preferences?.[mode]||'ask';
+        const automatic=preference==='auto'||preference==='never';
+        const possible=client?.available&&client.status==='known'&&(mode==='project'||client.running)&&preference!=='never';
         const buttons=['取消','仅'+verb];
         if(possible)buttons.push(verb+'并'+(client.running?'重启':'启动')+' Codex');
         let committed=false;
@@ -77,13 +79,13 @@
           detail+=possible&&client.running?'\n重启可能中断 Codex 所有窗口中的任务。':'\n请重新打开 Codex 使更改生效。';
           detail+=activityNote(preview);
           if(preview.missing_rollouts>0)detail+='\n部分历史文件缺失，请在管理页面检查。';
-          const choice=await alert(verb+'混合路由？',detail,buttons);
+          const choice=automatic?(preference==='auto'&&possible?2:1):await alert(verb+'混合路由？',detail,buttons);
           if(choice!==1&&!(choice===2&&possible))return;
           committed=true;
           const result=await desktop.api('routing',{mode,revision:preview.revision,confirm_activity:true,desktop_action:choice===2,desktop_was_running:!!client?.running,desktop_ticket:preview.desktop_ticket});
           const title='混合路由已'+verb,summary=nativeRoutingResult(result);
           const completed=choice===1||['started','already_running'].includes(result.desktop_result);
-          if(quietSuccess&&completed&&!result.warnings?.length)message(title+'。'+summary);
+          if((quietSuccess||automatic)&&completed&&!result.warnings?.length)message(title+'。'+summary);
           else await alert(title,summary);
         }finally{if(!committed)await desktop.request({action:'cancel_preview'});}
       }finally{routingSaving=false;await refresh();renderRouting();}
