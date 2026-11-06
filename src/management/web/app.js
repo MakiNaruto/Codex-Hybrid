@@ -100,25 +100,18 @@ function changeSource(mode,path){return action(async()=>{
 function renderAccessSummary(){
   if(!state)return;
   const enabled=(state.models||[]).filter(model=>model.enabled).length;
-  const official=Number.isFinite(state.official_model_count)?state.official_model_count:0;
   const open=state.routing_mode==='project';
   const external=state.routing_mode==='external';
   const switchable=['project','openai','external'].includes(state.routing_mode);
-  const headline=!switchable?'当前 Codex 配置无法切换接入'
-    :open?(enabled?'Codex 可使用 '+enabled+' 个第三方模型':'接入已开启，但还没有启用第三方模型')
-    :external?(state.routing_interrupted?'接管已中断 · 当前使用第三方直连配置':'当前使用第三方直连配置')
-    :(official?'Codex 正在使用 '+official+' 个官方模型':'Codex 正在使用官方模型');
   let note;
   if(state.source_error)note='配置来源需要检查：'+state.source_error;
-  else if(state.catalog_pending)note='模型列表有变更，保存模型设置后请重启 Codex。';
   else if(external&&state.routing_interrupted)note='Codex 配置已在接管期间变化，请确认后重新开启接入。';
-  else if(!enabled)note='先添加模型，再开启接入。';
-  else note=open?'在 Codex 中选择第三方模型即可使用。':
-    external?'开启后，Codex 可调用当前第三方直连配置和已添加的其他厂商模型。':
-    '开启后，Codex 可调用你配置的第三方模型。';
+  else if(!switchable)note='请检查 Codex 配置后重试。';
+  else if(!enabled)note=open?'路由接入已开启，请在模型页添加并启用模型。':'请先在模型页添加并启用模型，再开启路由接入。';
+  else note=open?'Codex 已配置为通过 Hybrid 路由接入。':'开启后，Codex 将通过 Hybrid 路由接入。';
   // role="status" regions re-announce on every write, so only change real text.
   const write=(id,text)=>{const node=$(id);if(node&&node.textContent!==text)node.textContent=text;};
-  write('access-headline',headline);
+  write('access-headline','路由接入');
   write('access-note',note);
 }
 let refreshing=false;
@@ -202,10 +195,10 @@ initDesktopSelects();
 // URL fragments keep each settings page directly linkable and survive refresh.
 function renderManagementPage(focusHeading=false){
   const pages={
-    access:['接入与运行','配置 Codex 接入方式，查看客户端状态与启动偏好。'],
-    models:['模型管理','选择要在 Codex 中使用的模型，连接与兼容设置集中管理。'],
-    usage:['用量统计','查看模型调用趋势、Token 消耗与缓存命中情况。'],
-    diagnostics:['运行与诊断','查看服务状态、请求错误与诊断信息。']
+    access:'接入与运行',
+    models:'模型管理',
+    usage:'用量统计',
+    diagnostics:'运行与诊断'
   };
   const requested=window.location.hash.slice(1);
   const current=Object.hasOwn(pages,requested)?requested:'access';
@@ -214,10 +207,9 @@ function renderManagementPage(focusHeading=false){
     if(link.dataset.page===current)link.setAttribute('aria-current','page');
     else link.removeAttribute('aria-current');
   }
-  $('page-title').textContent=pages[current][0];
-  $('page-intro').textContent=pages[current][1];
-  document.title='Codex Hybrid · '+pages[current][0];
-  if(focusHeading)$('page-title').focus();
+  $('page-title').textContent=pages[current];
+  document.title='Codex Hybrid · '+pages[current];
+  if(focusHeading)$('page-title').focus({preventScroll:true});
 }
 window.addEventListener('hashchange',()=>{closeHelp();renderManagementPage(true);});
 renderManagementPage();

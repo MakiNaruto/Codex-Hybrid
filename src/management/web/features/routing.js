@@ -13,7 +13,7 @@ function createRoutingControls({getState,isSaving,setSaving,$,el,api,action,refr
     toggle.setAttribute('aria-busy',String(busy));
     $('routing-status').textContent=progress||(isSaving()?'正在准备或切换…':routingError||(
       getState()?.routing_interrupted&&getState()?.routing_mode!=='project'?'接管已中断 · Codex 配置已变化，请重新开启接入':
-      getState()?.routing_mode==='project'?({running:'已开启',starting:'已开启 · 正在启动…',recovering:'已开启 · 正在自动重试…',fault:'已开启 · 模型转发异常',stopped:'已开启 · 模型转发未运行'}[getState()?.forwarding?.status]||'已开启 · 正在检查状态…'):getState()?.routing_mode==='openai'?'已关闭 · 使用原生路由':getState()?.routing_mode==='external'?'已关闭 · 当前使用第三方直连配置':'无法切换：请检查 Codex 配置'));
+      getState()?.routing_mode==='project'?({running:'已开启',starting:'已开启 · 正在启动…',recovering:'已开启 · 正在自动重试…',fault:'已开启 · 模型转发异常',stopped:'已开启 · 模型转发未运行'}[getState()?.forwarding?.status]||'已开启 · 正在检查状态…'):['openai','external'].includes(getState()?.routing_mode)?'已关闭':'无法切换：请检查 Codex 配置'));
     if(progress&&isSaving()&&$('routing-dialog').open&&$('routing-dialog-confirm').disabled){
       $('routing-dialog-description').textContent=progress;
     }
@@ -113,7 +113,7 @@ function createRoutingControls({getState,isSaving,setSaving,$,el,api,action,refr
     }
   };
   function renderForwarding(forwarding){
-    if(!forwarding)return;
+    if(!forwarding){$('forwarding-status').hidden=true;$('retry-forwarding').hidden=true;return;}
     const status=forwarding.status;
     const labels={starting:'正在启动',running:'运行中',fault:'故障，自动恢复已停止',stopped:'已停止',recovering:'意外退出，正在自动恢复'};
     let detail=status==='recovering'?'（第 '+forwarding.retry_attempt+'/'+forwarding.retry_limit+' 次，预计 '+new Date(forwarding.retry_at*1000).toLocaleTimeString()+' 重试）':'';
@@ -121,7 +121,10 @@ function createRoutingControls({getState,isSaving,setSaving,$,el,api,action,refr
     if(status==='fault'&&Object.hasOwn(reasons,forwarding.error_reason))detail='：'+reasons[forwarding.error_reason];
     if(status==='running'&&['openai','external'].includes(getState()?.routing_mode))detail='（接入已关闭，暂保留供运行中的客户端使用）';
     if(Number.isSafeInteger(forwarding.log_dropped_records)&&forwarding.log_dropped_records>0)detail+=' · 已丢弃 '+forwarding.log_dropped_records+' 条日志（积压或写入失败）';
-    $('forwarding-status').textContent='管理服务可用 · 模型转发'+(labels[status]||'状态未知')+detail;
+    $('forwarding-status').textContent='模型转发'+(labels[status]||'状态未知')+detail;
+    $('forwarding-status').hidden=!(['fault','recovering'].includes(status)
+      ||(getState()?.routing_mode==='project'&&status==='stopped')
+      ||(Number.isSafeInteger(forwarding.log_dropped_records)&&forwarding.log_dropped_records>0));
     $('retry-forwarding').hidden=getState()?.routing_mode!=='project'||!['fault','stopped'].includes(status);
     $('retry-forwarding').disabled=isSaving()||!!getState()?.routing_operation;
   }

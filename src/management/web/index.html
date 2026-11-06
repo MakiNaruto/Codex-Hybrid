@@ -28,9 +28,8 @@
         <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4m0-16.2-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
       </button>
     </div>
-    <nav class="page-nav" aria-label="管理页面"><a href="#access" data-page="access" aria-current="page">接入与运行</a><a href="#models" data-page="models">模型管理</a><a href="#usage" data-page="usage">用量统计</a><a href="#diagnostics" data-page="diagnostics">运行与诊断</a></nav>
-    <div class="page-heading"><div><p class="eyebrow">工作空间 / 设置</p><h1 id="page-title" tabindex="-1">接入与运行</h1></div><span class="page-label">连接 · 配置 · 调用</span></div>
-    <p id="page-intro" class="intro">配置 Codex 接入方式，查看客户端状态与启动偏好。</p>
+    <nav class="page-nav" aria-label="管理页面"><a href="#access" data-page="access" aria-current="page">接入</a><a href="#models" data-page="models">模型</a><a href="#usage" data-page="usage">用量</a><a href="#diagnostics" data-page="diagnostics">诊断</a></nav>
+    <h1 id="page-title" class="visually-hidden" tabindex="-1">接入与运行</h1>
   </header>
   <section id="desktop-setup" aria-labelledby="desktop-setup-title" hidden>
     <h2 id="desktop-setup-title">欢迎使用 Codex Hybrid</h2>
@@ -49,43 +48,38 @@
   </section>
   </div>
   <div id="page-access" class="management-page">
-  <section class="access-hero" aria-labelledby="access-headline">
+  <div class="access-overview">
+  <section class="access-hero access-card" aria-labelledby="access-headline">
     <div class="access-hero-copy">
       <p id="routing-status" class="routing-status access-state" role="status"></p>
-      <h2 id="access-headline" class="access-headline">正在读取接入状态…</h2>
+      <h2 id="access-headline" class="access-headline">路由接入</h2>
       <p id="access-note" class="access-note" role="status">正在读取配置…</p>
+      <p id="forwarding-status" class="hint access-forwarding-status" role="status" hidden></p>
+      <button id="retry-forwarding" class="secondary" type="button" hidden>重试转发</button>
     </div>
     <div class="access-control">
       <p id="routing-label" class="visually-hidden">接入第三方模型</p>
       <button id="routing-toggle" class="routing-toggle" type="button" role="switch" aria-checked="false" aria-labelledby="routing-label" aria-describedby="routing-status" disabled><span class="routing-thumb" aria-hidden="true"></span></button>
     </div>
   </section>
-  <section class="access-status-card" aria-label="运行状态">
-    <div class="access-row">
-      <span class="access-row-label">网关</span>
-      <div class="access-row-body">
-        <p id="forwarding-status" class="hint" role="status"></p>
-        <span id="gateway-activity" class="client-process" role="status" title="仅统计网关请求；Codex 工具执行或等待审批可能仍在进行。" hidden></span>
-      </div>
-      <button id="retry-forwarding" class="secondary access-row-action" type="button" hidden>重试</button>
-    </div>
-    <div class="access-row">
-      <span class="access-row-label">客户端</span>
-      <div class="access-row-body">
-        <div id="client-process-list" class="client-process-clients"><span class="hint">尚未检测</span></div>
-        <p id="client-process-note" class="hint" role="status">点击“检测”更新桌面端、VS Code 端、CLI 端和网关状态。</p>
-      </div>
-      <button id="detect-processes" class="secondary access-row-action" type="button">检测</button>
-    </div>
-  </section>
-  <details class="desktop-behavior">
-    <summary>桌面端行为<span>启动与重启偏好</span></summary>
+  <section class="desktop-behavior access-card" aria-labelledby="desktop-behavior-title">
+    <div class="desktop-behavior-heading"><h2 id="desktop-behavior-title" class="desktop-behavior-title">桌面端偏好</h2><p class="desktop-behavior-description">设置接入切换时的启动与重启方式</p></div>
     <div class="desktop-preferences">
       <div class="desktop-preference-row"><label for="desktop-project">开启接入时</label><div class="desktop-select"><select id="desktop-project"><option value="ask">每次询问</option><option value="auto">自动启动或重启</option><option value="never">不操作桌面端</option></select></div></div>
       <div class="desktop-preference-row"><label for="desktop-openai">关闭接入时</label><div class="desktop-select"><select id="desktop-openai" aria-describedby="desktop-close-note"><option value="ask">每次询问</option><option value="auto">自动重启</option><option value="never">不操作桌面端</option></select></div></div>
     </div>
     <p id="desktop-close-note" class="hint">关闭接入时，自动重启仅对已运行的桌面端生效。</p>
-  </details>
+  </section>
+    <section class="access-row access-card access-clients" aria-labelledby="client-status-title">
+      <h2 id="client-status-title" class="access-row-label">客户端</h2>
+      <div class="access-row-body">
+        <div id="client-process-list" class="client-process-clients"><span class="hint">尚未检测</span></div>
+        <span id="gateway-activity" class="client-process" role="status" title="仅统计网关请求；Codex 工具执行或等待审批可能仍在进行。" hidden></span>
+        <p id="client-process-note" class="hint" role="status">检测桌面端、VS Code、CLI 和网关的运行状态。</p>
+      </div>
+      <button id="detect-processes" class="secondary access-row-action" type="button">检测</button>
+    </section>
+  </div>
   <p class="routing-footnote">切换前预览影响，并确认是否重启桌面端。</p>
   </div>
   <div id="page-usage" class="management-page" hidden>
