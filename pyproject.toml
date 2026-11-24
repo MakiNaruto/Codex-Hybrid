@@ -32,7 +32,7 @@ dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools.package-data]
 "management" = [
-    "web/*.html", "web/*.js", "web/*.css",
+    "web/*.html", "web/*.js", "web/*.css", "web/app-icon.png",
     "web/shared/*.js", "web/features/*.js",
 ]
 

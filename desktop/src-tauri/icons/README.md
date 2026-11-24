@@ -10,13 +10,9 @@
 | `icon.ico` | Windows EXE / 应用图标 | 从 `icon.png` 导出，包含 16、24、32、48、64、128、256 像素尺寸；尚未 Windows 实机验收 |
 | `tray.png` | macOS 菜单栏 / 状态栏图标 | 44 × 44，RGBA PNG，透明背景、黑色图形；作为 2× 模板图标，系统自动适配明暗模式 |
 
-macOS 通过 `tauri.macos.conf.json` 覆盖图标配置，不改变 Windows 的资源选择。替换 `icon-macos.png` 后，在仓库根目录运行（Python 需安装 Pillow）：
+macOS 通过 `tauri.macos.conf.json` 选择图标，Windows 使用 `tauri.conf.json` 中的资源。管理页和浏览器标签页共用从 `icon-macos.png` 缩小导出的 [128 × 128 PNG](../../../src/management/web/app-icon.png)。
 
-```sh
-python3 -c "from PIL import Image; Image.open('desktop/src-tauri/icons/icon-macos.png').save('desktop/src-tauri/icons/icon.icns', format='ICNS')"
-```
-
-`export_icons.py` 分别从 `icon.png` 导出 Windows ICO、从 `icon-macos.png` 导出 macOS ICNS。在仓库根目录运行（Python 需安装 Pillow）：
+`export_icons.py` 从 `icon.png` 导出 Windows ICO，从 `icon-macos.png` 导出 macOS ICNS 和管理页 PNG。替换原图后，在仓库根目录运行（Python 需安装 Pillow）：
 
 ```sh
 python3 desktop/src-tauri/icons/export_icons.py

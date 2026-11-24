@@ -41,6 +41,7 @@ def handle(handler, gateway, method):
         reply(403, (WEB/'entry.html').read_bytes(), 'text/html; charset=utf-8')
         return True
     static = {'/manage/': ('index.html', 'text/html; charset=utf-8'),
+              '/manage/app-icon.png': ('app-icon.png', 'image/png'),
               '/manage/entry.js': ('entry.js', 'application/javascript; charset=utf-8'),
               '/manage/theme.js': ('theme.js', 'application/javascript; charset=utf-8'),
               '/manage/transport.js': ('transport.js', 'application/javascript; charset=utf-8'),

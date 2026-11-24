@@ -1,4 +1,4 @@
-"""Export each platform's RGBA icon master; requires Pillow."""
+"""Export desktop and web assets from the RGBA icon masters; requires Pillow."""
 from pathlib import Path
 from PIL import Image
 
@@ -14,3 +14,5 @@ with Image.open(root / 'icon-macos.png') as source:
     if icon.size != (1024, 1024):
         raise ValueError('icon-macos.png must be 1024 × 1024 pixels')
     icon.save(root / 'icon.icns', format='ICNS')
+    web_icon = root.parents[2] / 'src' / 'management' / 'web' / 'app-icon.png'
+    icon.resize((128, 128), Image.Resampling.LANCZOS).save(web_icon, optimize=True)

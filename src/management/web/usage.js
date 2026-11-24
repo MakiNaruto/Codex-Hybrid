@@ -92,13 +92,31 @@
     }
   }
   function hideTooltip(){$('usage-chart-tooltip').hidden=true;}
+  function bindTooltip(hit,tooltip,show){
+    const position=event=>{
+      const stage=tooltip.parentElement.getBoundingClientRect(),box=tooltip.getBoundingClientRect();
+      const anchor=hit.getBoundingClientRect(),gap=12,margin=8;
+      const x=Number.isFinite(event?.clientX)?event.clientX:anchor.left+anchor.width/2;
+      const y=Number.isFinite(event?.clientY)?event.clientY:anchor.top;
+      const minX=Math.max(margin,stage.left+margin);
+      const maxX=Math.min(window.innerWidth-margin,stage.right-margin)-box.width;
+      const left=Math.max(minX,Math.min(x-box.width/2,maxX));
+      let top=y-box.height-gap;
+      if(top<margin)top=y+gap;
+      top=Math.max(margin,Math.min(top,window.innerHeight-box.height-margin));
+      tooltip.style.left=left+'px';tooltip.style.top=top+'px';
+    };
+    for(const event of ['pointerenter','focus'])hit.addEventListener(event,event=>{show();position(event);});
+    hit.addEventListener('pointermove',event=>{if(!tooltip.hidden)position(event);});
+    for(const event of ['pointerleave','blur'])hit.addEventListener(event,()=>{tooltip.hidden=true;});
+  }
   function renderTrend(models){
     const root=$('usage-trend');root.replaceChildren();
-    $('usage-trend-note').textContent='每个模型一种颜色，柱内按模型堆叠 · '+(calendarPeriod()?'按本地时间小时分组 · 统计时段 00:00–24:00':'按 UTC 日期分组');
-    const width=Math.max(640,data.buckets.length*26+76);
-    const left=58,right=18,topY=28,plotHeight=180,baseline=topY+plotHeight,plotWidth=width-left-right;
-    const svg=svgNode('svg',{viewBox:'0 0 '+width+' 252',role:'group','aria-label':metric==='requests'?'按模型堆叠的请求数趋势柱状图':'按模型堆叠的 Token 用量趋势柱状图'});
-    svg.setAttribute('style','min-width:'+width+'px');
+    $('usage-trend-note').textContent=calendarPeriod()?'按本地时间小时分组':'按 UTC 日期分组';
+    const width=Math.max(540,data.buckets.length*22+76);
+    const left=54,right=18,topY=18,plotHeight=158,baseline=topY+plotHeight,plotWidth=width-left-right;
+    const svg=svgNode('svg',{viewBox:'0 0 '+width+' 208',role:'group','aria-label':metric==='requests'?'按模型堆叠的请求数趋势柱状图':'按模型堆叠的 Token 用量趋势柱状图'});
+    svg.setAttribute('style','min-width:'+Math.max(320,data.buckets.length*16+76)+'px');
     const totals=data.buckets.map((time,index)=>models.reduce((sum,row)=>sum+bucketValue(row,index),0));
     const top=niceTop(Math.max(1,...totals));
     for(let i=0;i<=4;i++){
@@ -120,13 +138,12 @@
       const visibleModels=models.filter(row=>bucketValue(row,index)>0);
       if(visibleModels.length){
         const detail=bucketLabel(time,true)+' · '+visibleModels.map(row=>modelSummary(row,index)).join(' · ');
-        const hit=svgNode('rect',{x:bucketX,y:topY,width:bucketWidth,height:plotHeight,class:'usage-chart-hit',tabindex:0,role:'img','aria-label':detail});
-        for(const event of ['pointerenter','focus'])hit.addEventListener(event,()=>showTooltip(index,models));
-        for(const event of ['pointerleave','blur'])hit.addEventListener(event,hideTooltip);
+        const hit=svgNode('rect',{x:bucketX+(bucketWidth-barWidth)/2,y,width:barWidth,height:baseline-y,class:'usage-chart-hit',tabindex:0,role:'img','aria-label':detail});
+        bindTooltip(hit,$('usage-chart-tooltip'),()=>showTooltip(index,models));
         group.append(hit);
       }
       svg.append(group);
-      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:234,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
+      if(labels.has(index))svg.append(svgNode('text',{x:bucketX+bucketWidth/2,y:198,'text-anchor':index===0?'start':index===data.buckets.length-1?'end':'middle',class:'usage-axis'},data.bucket_seconds===3600?hourLabel(time):bucketLabel(time)));
     });
     root.append(svg);hideTooltip();
   }
@@ -170,11 +187,10 @@
         group.append(svgNode('rect',{x:bucketX+(bucketWidth-barWidth)/2,y,width:barWidth,height:partHeight,class:'usage-composition-bar stack-'+part.tone}));
       }
       if(partsTotal(parts)>0){
-        const detail=compositionSummary(row,index),hit=svgNode('rect',{x:bucketX,y:topY,width:bucketWidth,height:plotHeight,class:'usage-composition-hit',tabindex:0,role:'img','aria-label':detail});
-        for(const event of ['pointerenter','focus'])hit.addEventListener(event,()=>{
+        const detail=compositionSummary(row,index),hit=svgNode('rect',{x:bucketX+(bucketWidth-barWidth)/2,y,width:barWidth,height:baseline-y,class:'usage-composition-hit',tabindex:0,role:'img','aria-label':detail});
+        bindTooltip(hit,tooltip,()=>{
           compositionTooltip(row,index,tooltip);tooltip.hidden=false;
         });
-        for(const event of ['pointerleave','blur'])hit.addEventListener(event,()=>{tooltip.hidden=true;});
         group.append(hit);
       }
       svg.append(group);
@@ -211,6 +227,19 @@
       heading.append(title,expand);card.append(heading,renderCompositionChart(row));root.append(card);
     }
   }
+  function tokenMix(totals){
+    const mix=el('div',undefined,'usage-token-mix');
+    const total=partsTotal(totals);
+    mix.setAttribute('role','img');
+    mix.setAttribute('aria-label',tokenParts.map(part=>part.label+' '+number(totals[part.key])).join('，'));
+    if(!total)return mix;
+    for(const part of tokenParts){
+      const segment=el('span',undefined,'usage-mix-'+part.tone);
+      segment.style.flexGrow=String(totals[part.key]);
+      mix.append(segment);
+    }
+    return mix;
+  }
   function render(){
     if(!data)return;
     const selected=$('usage-model').value;
@@ -218,8 +247,12 @@
     const totals={...empty(),uncached_tokens:0};
     for(const row of models){for(const key of fields)totals[key]+=row[key];totals.uncached_tokens+=uncached(row);}
     const metrics=$('usage-metrics');metrics.replaceChildren();
-    for(const [title,key,note] of [['总用量','total_tokens','输入与输出合计'],['缓存命中','cached_tokens','包含在输入 Tokens 中'],['缓存未命中','uncached_tokens','按输入减去缓存命中'],['输出 Tokens','output_tokens','模型生成的 Token'],['请求数','requests','含失败及未返回用量的请求']]){
-      const item=el('div',undefined,'usage-stat');item.append(el('span',title,'hint'),el('strong',number(totals[key])),el('small',note));metrics.append(item);
+    for(const [title,key,note] of [['总 Tokens','total_tokens','输入与输出合计'],['缓存命中','cached_tokens','已缓存的输入 Tokens'],['缓存未命中','uncached_tokens','未缓存的输入 Tokens'],['输出 Tokens','output_tokens','模型生成的 Tokens'],['请求数','requests','包含失败请求']]){
+      const item=el('div',undefined,'usage-stat');
+      item.append(el('span',title,'usage-stat-label'),el('strong',number(totals[key])),el('small',note));
+      if(key==='total_tokens')item.append(tokenMix(totals));
+      if(tokenParts.some(part=>part.key===key))item.dataset.tokenPart=key;
+      metrics.append(item);
     }
     const warnings={missing:'尚无请求日志。',unavailable:'日志无法读取，请稍后重试。',partial:'部分日志无法读取，统计不完整。',available:''};
     const missing=totals.requests-totals.requests_with_usage;
@@ -229,7 +262,10 @@
     const ranking=$('usage-ranking'),rows=$('usage-model-rows');ranking.replaceChildren();rows.replaceChildren();
     const max=Math.max(1,...models.map(partTotal));
     for(const row of models.slice(0,6)){
-      const item=el('div',undefined,'usage-rank '+colorClass(row)),heading=el('div',undefined,'usage-rank-heading');heading.append(el('span',modelLabel(row)),el('strong',compact(partTotal(row))));
+      const item=el('div',undefined,'usage-rank '+colorClass(row)),heading=el('div',undefined,'usage-rank-heading');
+      const name=el('span',modelLabel(row));
+      name.title=modelLabel(row);
+      heading.append(name,el('strong',compact(partTotal(row))));
       const svg=svgNode('svg',{viewBox:'0 0 300 7','aria-hidden':'true',preserveAspectRatio:'none'});
       svg.append(svgNode('rect',{width:300,height:7,rx:3.5,class:'usage-rank-track'}),svgNode('rect',{width:partTotal(row)/max*300,height:7,rx:3.5,class:'usage-rank-bar'}));
       item.append(heading,svg);ranking.append(item);

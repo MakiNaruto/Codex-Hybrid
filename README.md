@@ -21,10 +21,10 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
       <img src="docs/images/codex-third-party-subagent.png" width="520" alt="An official-model agent delegates to a third-party model as a native subagent">
     </td>
     <td align="center" valign="top" width="33%">
-      <img src="docs/images/management.png" width="520" alt="Manually add a provider, API key, and model">
+      <img src="docs/images/management.png" width="520" alt="Independent connection settings for a Responses provider and its models">
     </td>
     <td align="center" valign="top" width="33%">
-      <img src="docs/images/management-ccswitch.png" width="520" alt="Select CC Switch and reuse existing providers and models">
+      <img src="docs/images/management-ccswitch.png" width="520" alt="CC Switch selected as a read-only source for providers and models">
     </td>
   </tr>
   <tr>
@@ -33,6 +33,12 @@ Manage providers, models, and API keys locally, with optional CC Switch integrat
     <td align="center"><sub>Reuse CC Switch configuration</sub></td>
   </tr>
 </table>
+
+<div align="center">
+  <img src="docs/images/management-overview.png" width="960" alt="Usage dashboard with Token totals, usage trends, model rankings, and the management sidebar">
+  <br>
+  <sub>Usage overview with sample data</sub>
+</div>
 
 | What you want to do | How it works |
 | --- | --- |

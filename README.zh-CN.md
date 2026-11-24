@@ -21,10 +21,10 @@
       <img src="docs/images/codex-third-party-subagent.png" width="520" alt="官方主 agent 调用第三方模型作为原生子 agent 的示例">
     </td>
     <td align="center" valign="top" width="33%">
-      <img src="docs/images/management.png" width="520" alt="手动添加厂商、API Key 和模型">
+      <img src="docs/images/management.png" width="520" alt="在独立管理中配置支持 Responses 的厂商与模型">
     </td>
     <td align="center" valign="top" width="33%">
-      <img src="docs/images/management-ccswitch.png" width="520" alt="选择 CC Switch 并复用已有厂商与模型">
+      <img src="docs/images/management-ccswitch.png" width="520" alt="选择 CC Switch 作为只读来源，复用已有厂商与模型">
     </td>
   </tr>
   <tr>
@@ -33,6 +33,12 @@
     <td align="center"><sub>复用 CC Switch 配置</sub></td>
   </tr>
 </table>
+
+<div align="center">
+  <img src="docs/images/management-overview.png" width="960" alt="用量概览展示 Token 总量、使用趋势、模型排行和管理侧栏">
+  <br>
+  <sub>用量概览（示例数据）</sub>
+</div>
 
 | 你想做什么 | 如何使用 |
 | --- | --- |

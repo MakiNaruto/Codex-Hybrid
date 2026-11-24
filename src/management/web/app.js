@@ -209,7 +209,10 @@ function renderManagementPage(focusHeading=false){
   }
   $('page-title').textContent=pages[current];
   document.title='Codex Hybrid · '+pages[current];
-  if(focusHeading)$('page-title').focus({preventScroll:true});
+  if(focusHeading){
+    $('page-title').focus({preventScroll:true});
+    window.scrollTo?.(0,0);
+  }
 }
 window.addEventListener('hashchange',()=>{closeHelp();renderManagementPage(true);});
 renderManagementPage();
