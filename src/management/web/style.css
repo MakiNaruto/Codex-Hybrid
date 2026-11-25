@@ -870,7 +870,8 @@ dialog.usage-composition-dialog { width: min(1080px,calc(100vw - 48px)); max-wid
 @media (max-width: 560px) { .access-overview > .access-card { padding: 18px; border-radius: 14px; } .access-hero { gap: 16px; } .access-headline { font-size: 21px; } }
 
 /* Desktop shell density: the packaged window is 900x640. */
-:root.desktop-shell main { padding: 16px 20px 32px; }
+/* Let the full-height sidebar layout take precedence over this padding. */
+:where(.desktop-shell) main { padding: 16px 20px 32px; }
 :root.desktop-shell header { margin-bottom: 16px; }
 :root.desktop-shell .brand-mark { width: 28px; height: 28px; }
 :root.desktop-shell .page-nav { margin-top: 16px; }
